@@ -1,0 +1,29 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*service-account*.json
+secrets/
+
+# Claude Code (개인 설정)
+CLAUDE.local.md
+.claude/settings.local.json
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Gradle / Build
+build/
+.gradle/
+out/
+*.log
+
+# 로컬 전용 (Claude Code 참고용, 커밋 안 함)
+prototype/
+CLAUDE.md
+.claude/
+docs/
