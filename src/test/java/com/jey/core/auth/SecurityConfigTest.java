@@ -1,0 +1,39 @@
+package com.jey.core.auth;
+
+import com.jey.TestcontainersConfiguration;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@Import(TestcontainersConfiguration.class)
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+class SecurityConfigTest {
+
+	@Autowired
+	MockMvc mockMvc;
+
+	@Test
+	void API_명세는_인증_없이_열린다() throws Exception {
+		mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk());
+	}
+
+	@Test
+	void 헬스_체크는_인증_없이_열린다() throws Exception {
+		mockMvc.perform(get("/actuator/health")).andExpect(status().isOk());
+	}
+
+	@Test
+	void 그_외_경로는_인증이_없으면_401() throws Exception {
+		mockMvc.perform(get("/api/v1/anything")).andExpect(status().isUnauthorized());
+	}
+
+}
