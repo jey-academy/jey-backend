@@ -21,6 +21,7 @@ build/
 .gradle/
 out/
 *.log
+HELP.md
 
 # 로컬 전용 (Claude Code 참고용, 커밋 안 함)
 prototype/

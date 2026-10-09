@@ -1,0 +1,14 @@
+# docker-compose.yml의 MySQL(호스트 포트 3307)·Redis(6380)에 붙는다. 로컬 전용 값이라 그대로 커밋한다.
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3307/jey?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: jey
+    password: jey
+  data:
+    redis:
+      host: localhost
+      port: 6380
+
+logging:
+  level:
+    org.hibernate.SQL: debug
