@@ -1,0 +1,5 @@
+# DB·Redis 접속 정보는 TestcontainersConfiguration의 @ServiceConnection이 넣는다.
+logging:
+  level:
+    org.testcontainers: warn
+    tc: warn
