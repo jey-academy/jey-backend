@@ -5,15 +5,19 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
+import com.jey.core.auth.LoginAttemptLimiter.Blocked;
+import com.jey.core.auth.LoginAttemptLimiter.Scope;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.auth.domain.User;
 import com.jey.core.auth.domain.UserRepository;
 import com.jey.core.shared.BusinessException;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -30,6 +34,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -53,9 +58,11 @@ class LoginServiceTest {
 	// 따로 정하지 않으면 "한도를 넘지 않았다"(빈 값)로 답한다.
 	private final LoginAttemptLimiter attemptLimiter = mock(LoginAttemptLimiter.class);
 
+	private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
 	private final LoginService loginService = new LoginService(authenticationManager, sessionStrategy,
 			contextRepository, users, attemptLimiter, new AuthProperties(List.of(), false, null, false, null, null, null),
-			Clock.systemUTC());
+			meterRegistry, Clock.systemUTC());
 
 	@Test
 	void 비밀번호가_틀리면_자격_증명_오류다() {
@@ -135,7 +142,8 @@ class LoginServiceTest {
 	// 한도를 넘은 뒤에는 비밀번호가 맞는지조차 알려 주지 않는다. 해시 계산도 하지 않는다.
 	@Test
 	void 시도_한도를_넘으면_비밀번호를_검증하지_않고_거부한다(CapturedOutput output) {
-		when(attemptLimiter.countAttempt("typed-id", "127.0.0.1")).thenReturn(Optional.of(Duration.ofMillis(89_001)));
+		when(attemptLimiter.countAttempt("typed-id", "127.0.0.1"))
+				.thenReturn(Optional.of(new Blocked(Scope.IP, Duration.ofMillis(89_001))));
 		var response = new MockHttpServletResponse();
 
 		assertThatThrownBy(() -> loginService.login("typed-id", "typed-password", new MockHttpServletRequest(),
@@ -146,18 +154,46 @@ class LoginServiceTest {
 		verifyNoInteractions(authenticationManager, sessionStrategy, contextRepository);
 		// 89.001초는 90초로 올린다. 내림하면 프론트가 아직 막혀 있을 때 다시 시도한다.
 		assertThat(response.getHeader(HttpHeaders.RETRY_AFTER)).isEqualTo("90");
-		assertThat(output).contains("로그인 시도 제한 초과: ip=127.0.0.1").doesNotContain("typed-id");
+		// 어느 한도에 걸렸는지 남아야 "한 계정이 막혔다"와 "그 IP 전체가 막혔다"를 구분할 수 있다.
+		assertThat(output).contains("로그인 시도 제한 초과: ip=127.0.0.1 scope=IP retryAfter=90s")
+				.doesNotContain("typed-id");
 	}
 
 	@Test
 	void 남은_시간이_1초보다_짧아도_Retry_After는_1초다() {
-		when(attemptLimiter.countAttempt(any(), any())).thenReturn(Optional.of(Duration.ofMillis(1)));
+		when(attemptLimiter.countAttempt(any(), any()))
+				.thenReturn(Optional.of(new Blocked(Scope.LOGIN_ID_AND_IP, Duration.ofMillis(1))));
 		var response = new MockHttpServletResponse();
 
 		assertThatThrownBy(() -> loginService.login("typed-id", "typed-password", new MockHttpServletRequest(),
 				response)).isInstanceOf(BusinessException.class);
 
 		assertThat(response.getHeader(HttpHeaders.RETRY_AFTER)).isEqualTo("1");
+	}
+
+	// Redis가 응답하지 않아 횟수를 세지 못한 경우다. "셀 수 없으니 통과"로 바꾸면 장애 동안 제한이 꺼진다.
+	@Test
+	void 시도_횟수를_세지_못하면_비밀번호를_검증하지_않는다() {
+		var redisDown = new RedisConnectionFailureException("down");
+		when(attemptLimiter.countAttempt(any(), any())).thenThrow(redisDown);
+
+		assertThatThrownBy(this::login).isSameAs(redisDown);
+
+		verifyNoInteractions(authenticationManager, sessionStrategy, contextRepository);
+	}
+
+	// 비밀번호가 맞았어도 횟수를 되돌리지 못했으면 로그인시키지 않는다. 세션도 같은 Redis에 있어 어차피 저장할 수 없다.
+	@Test
+	void 성공_처리에_실패하면_세션을_만들지_않는다() {
+		User user = savedUser();
+		authenticationSucceedsWith(user);
+		when(users.findById(USER_ID)).thenReturn(Optional.of(user));
+		var redisDown = new RedisConnectionFailureException("down");
+		doThrow(redisDown).when(attemptLimiter).loginSucceeded(any(), any());
+
+		assertThatThrownBy(this::login).isSameAs(redisDown);
+
+		verifyNoInteractions(sessionStrategy, contextRepository);
 	}
 
 	@Test
@@ -170,6 +206,50 @@ class LoginServiceTest {
 
 		verify(attemptLimiter).countAttempt("typed-id", "127.0.0.1");
 		verify(attemptLimiter).loginSucceeded("typed-id", "127.0.0.1");
+		assertThat(attempts("success", "none")).isEqualTo(1);
+	}
+
+	// 실패와 차단이 갑자기 늘면 누군가 비밀번호를 대입하고 있다는 신호다. 로그를 뒤지지 않고도 보이게 지표로 센다.
+	@Test
+	void 로그인_시도를_결과별로_센다() {
+		when(authenticationManager.authenticate(any())).thenThrow(new BadCredentialsException("bad"));
+		assertThatThrownBy(this::login).isInstanceOf(BusinessException.class);
+		assertThatThrownBy(this::login).isInstanceOf(BusinessException.class);
+
+		when(attemptLimiter.countAttempt(any(), any()))
+				.thenReturn(Optional.of(new Blocked(Scope.LOGIN_ID_AND_IP, Duration.ofMinutes(1))));
+		assertThatThrownBy(this::login).isInstanceOf(BusinessException.class);
+
+		assertThat(attempts("failure", "none")).isEqualTo(2);
+		assertThat(attempts("blocked", "login_id_and_ip")).isEqualTo(1);
+		assertThat(meterRegistry.find(LoginService.ATTEMPTS_METRIC).tag("result", "success").counter()).isNull();
+	}
+
+	@Test
+	void 비활성_계정의_로그인도_실패로_센다() {
+		authenticationSucceedsWith(savedUser());
+		User nowDisabled = savedUser();
+		nowDisabled.disable();
+		when(users.findById(USER_ID)).thenReturn(Optional.of(nowDisabled));
+
+		assertThatThrownBy(this::login).isInstanceOf(BusinessException.class);
+
+		assertThat(attempts("failure", "none")).isEqualTo(1);
+	}
+
+	// 내부 오류는 로그인 실패가 아니다. 실패로 세면 DB 장애가 공격처럼 보인다.
+	@Test
+	void 내부_오류는_로그인_실패로_세지_않는다() {
+		when(authenticationManager.authenticate(any())).thenThrow(new AuthenticationServiceException("misconfigured"));
+
+		assertThatThrownBy(this::login).isInstanceOf(IllegalStateException.class);
+
+		assertThat(meterRegistry.find(LoginService.ATTEMPTS_METRIC).counters()).isEmpty();
+	}
+
+	private double attempts(String result, String scope) {
+		return meterRegistry.get(LoginService.ATTEMPTS_METRIC).tag("result", result).tag("scope", scope).counter()
+				.count();
 	}
 
 	@Test

@@ -50,6 +50,7 @@ jey:
       max-failures-per-login-id-and-ip: 5
       # 한 IP에서 아이디와 무관하게 실패할 수 있는 횟수. 같은 공유기를 쓰는 사람끼리 나눠 쓴다.
       max-failures-per-ip: 30
+      # hmac-key(아이디를 Redis 키에 넣을 때 쓰는 비밀키)는 기본값이 없다. 프로필마다 넣어야 하고, 없으면 서버가 뜨지 않는다.
 
 management:
   endpoints:

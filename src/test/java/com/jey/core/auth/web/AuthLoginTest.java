@@ -453,8 +453,12 @@ class AuthLoginTest {
 				.andExpect(cookie().doesNotExist(SESSION))
 				.andReturn();
 
-		assertThat(Long.parseLong(blocked.getResponse().getHeader("Retry-After"))).isBetween(1L, 15 * 60L);
-		assertThat(output).contains("로그인 시도 제한 초과: ip=" + ip).doesNotContain(staff.getLoginId());
+		// 기본 설정의 기간은 15분이다.
+		assertThat(Long.parseLong(blocked.getResponse().getHeader("Retry-After"))).isBetween(14 * 60L, 15 * 60L);
+		// 키 이름이 바뀌면 clearLoginAttempts가 아무것도 지우지 못하게 되고, 원인과 먼 테스트가 429로 깨진다. 여기서 드러나게 한다.
+		assertThat(redis.keys(LOGIN_ATTEMPT_KEYS)).isNotEmpty();
+		assertThat(output).contains("로그인 시도 제한 초과: ip=" + ip + " scope=LOGIN_ID_AND_IP")
+				.doesNotContain(staff.getLoginId());
 	}
 
 	// 한도를 넘은 뒤에 비밀번호가 맞는지 알려 주면, 막힌 동안에도 비밀번호를 계속 확인할 수 있다.
@@ -529,6 +533,29 @@ class AuthLoginTest {
 		loginFrom(ip, staff.getLoginId(), PASSWORD).andExpect(status().isTooManyRequests());
 	}
 
+	// 잠긴 계정으로 로그인 버튼을 계속 눌러도 같은 공유기를 쓰는 다른 사람까지 막히면 안 된다.
+	@Test
+	void 막힌_계정으로_계속_시도해도_같은_IP의_다른_계정은_로그인된다() throws Exception {
+		String ip = newIp();
+		for (int i = 0; i < 5; i++) {
+			loginFrom(ip, staff.getLoginId(), "wrong-password").andExpect(status().isUnauthorized());
+		}
+		for (int i = 0; i < 40; i++) {
+			loginFrom(ip, staff.getLoginId(), "wrong-password").andExpect(status().isTooManyRequests());
+		}
+
+		loginFrom(ip, admin.getLoginId(), PASSWORD).andExpect(status().isOk());
+	}
+
+	// 로그인에 성공한 시도는 IP 횟수에 남지 않는다. 남으면 정상적으로 로그인한 사람들만으로 그 IP가 막힌다.
+	@Test
+	void 성공한_로그인은_IP_한도를_쓰지_않는다() throws Exception {
+		String ip = newIp();
+		for (int i = 0; i < 31; i++) {
+			loginFrom(ip, staff.getLoginId(), PASSWORD).andExpect(status().isOk());
+		}
+	}
+
 	// 다른 출처의 응답 헤더는 서버가 노출한다고 밝혀야 프론트의 JavaScript가 읽을 수 있다.
 	@Test
 	void Retry_After_헤더는_다른_출처의_프론트가_읽을_수_있다() throws Exception {
@@ -537,6 +564,7 @@ class AuthLoginTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(loginJson(staff.getLoginId(), "wrong-password")))
 				.andExpect(status().isUnauthorized())
+				.andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
 				.andExpect(header().string("Access-Control-Expose-Headers", containsString("Retry-After")));
 	}
 

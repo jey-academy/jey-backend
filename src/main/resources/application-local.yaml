@@ -17,6 +17,8 @@ jey:
     allowed-origins: http://localhost:5173
     # 로컬은 HTTPS가 아니라서 Secure 쿠키를 끈다. 기본값은 켜짐이다.
     secure-cookies: false
+    login-attempt-limit:
+      hmac-key: local-only-login-attempt-hmac-key-0123456789
     initial-admin:
       login-id: admin
       password: local-admin-1234

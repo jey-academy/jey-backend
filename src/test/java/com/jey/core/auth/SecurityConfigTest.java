@@ -41,7 +41,10 @@ class SecurityConfigTest {
 
 	@Test
 	void API_명세는_인증_없이_열린다() throws Exception {
-		mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk());
+		mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
+				// 오류 경로는 API가 아니다. 명세에 실리면 프론트의 API 클라이언트 생성에 섞인다.
+				.andExpect(jsonPath("$.paths['/error']").doesNotExist())
+				.andExpect(jsonPath("$.paths['/api/v1/auth/login']").exists());
 	}
 
 	@Test

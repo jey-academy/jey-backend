@@ -8,3 +8,5 @@ jey:
   auth:
     allowed-origins: http://localhost:5173
     secure-cookies: false
+    login-attempt-limit:
+      hmac-key: test-only-login-attempt-hmac-key-0123456789
