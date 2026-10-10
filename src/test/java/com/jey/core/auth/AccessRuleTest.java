@@ -13,7 +13,6 @@ import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.web.method.HandlerMethod;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 class AccessRuleTest {
@@ -70,7 +69,7 @@ class AccessRuleTest {
 
 		assertThat(AccessRule.appliesTo(foreign)).isFalse();
 		assertThat(AccessRule.appliesTo(handler(new DeskController(), "inherited"))).isTrue();
-		assertThatCode(() -> AccessRule.requireAllMarked(List.of(foreign))).doesNotThrowAnyException();
+		assertThat(AccessRule.requireAllMarked(List.of(foreign))).isZero();
 	}
 
 	@Test
@@ -82,6 +81,16 @@ class AccessRuleTest {
 				.withMessageContaining("UnmarkedController#forgotten")
 				.withMessageContaining("UnmarkedController#both")
 				.withMessageNotContaining("DeskController");
+	}
+
+	// 시작할 때 이 수가 0이면 검사가 매핑을 보지 못한 것이다.
+	@Test
+	void 확인한_컨트롤러_메서드의_수를_돌려준다() throws Exception {
+		var foreign = new HandlerMethod(new Object(), Object.class.getMethod("toString"));
+		var handlers = List.of(handler(new DeskController(), "inherited"), handler(new DeskController(), "adminOnly"),
+				foreign);
+
+		assertThat(AccessRule.requireAllMarked(handlers)).isEqualTo(2);
 	}
 
 	private static HandlerMethod handler(Object controller, String methodName) throws NoSuchMethodException {

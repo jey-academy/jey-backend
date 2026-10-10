@@ -568,6 +568,39 @@ class AuthLoginTest {
 				.andExpect(header().string("Access-Control-Expose-Headers", containsString("Retry-After")));
 	}
 
+	// 역할 검사는 세션에 저장된 권한을 본다. 다른 역할 테스트는 권한을 직접 넣으므로,
+	// 실제 로그인이 권한을 넣고 그것이 세션에서 되살아나는지는 여기서만 확인된다.
+	@Test
+	void 로그인한_세션의_역할로_접근_규칙이_적용된다() throws Exception {
+		Cookie staffSession = loginAndGetSession(staff.getLoginId());
+		Cookie adminSession = loginAndGetSession(admin.getLoginId());
+
+		mockMvc.perform(get("/api/v1/test-access/desk").cookie(staffSession)).andExpect(status().isOk());
+		mockMvc.perform(get("/api/v1/test-access/admin").cookie(staffSession))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
+		mockMvc.perform(get("/api/v1/test-access/admin").cookie(adminSession)).andExpect(status().isOk());
+	}
+
+	@Test
+	void 연계_학원_계정으로_로그인하면_연계_학원_기능만_쓰고_식별자가_세션에_남는다() throws Exception {
+		String loginId = "partner-" + UUID.randomUUID().toString().substring(0, 8);
+		users.saveAndFlush(User.create(loginId, passwordHash, "연계학원", UserRole.PARTNER, null, 7L));
+		Cookie session = loginAndGetSession(loginId);
+
+		mockMvc.perform(get("/api/v1/test-access/partner/id").cookie(session))
+				.andExpect(status().isOk())
+				.andExpect(content().string("7"));
+		mockMvc.perform(get("/api/v1/test-access/desk").cookie(session))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
+		// 내 정보 응답에는 연계 학원 식별자를 내보내지 않는다.
+		mockMvc.perform(get("/api/v1/auth/me").cookie(session))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.role").value("PARTNER"))
+				.andExpect(jsonPath("$.partnerId").doesNotExist());
+	}
+
 	private User newUser(String prefix, String name, UserRole role, Long campusId) {
 		String loginId = prefix + "-" + UUID.randomUUID().toString().substring(0, 8);
 		return User.create(loginId, passwordHash, name, role, campusId, null);

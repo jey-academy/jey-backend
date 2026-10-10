@@ -100,14 +100,19 @@ class RoleAccessTest {
 				.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
 	}
 
-	// 누가 무엇을 하려다 막혔는지 남긴다. 계정 ID만 남기고 아이디와 이름은 남기지 않는다.
+	// 누가 무엇을 하려다 막혔는지 남긴다. 계정 ID와 세션에 든 권한만 남기고 아이디와 이름은 남기지 않는다.
 	@Test
 	@WithJeyUser(role = UserRole.PARTNER, partnerId = 7, id = 4242)
 	void 역할_거부는_로그에_남는다(CapturedOutput output) throws Exception {
 		mockMvc.perform(get("/api/v1/test-access/desk")).andExpect(status().isForbidden());
 
-		assertThat(output.getOut()).contains("역할 거부").contains("account=4242").contains("/api/v1/test-access/desk")
-				.doesNotContain("test-partner");
+		assertThat(output.getOut().lines().filter(line -> line.contains("account=4242"))).singleElement()
+				.asString()
+				.contains("접근 거부")
+				.contains("code=AUTH_ROLE_NOT_ALLOWED")
+				.contains("ROLE_PARTNER")
+				.contains("GET /api/v1/test-access/desk");
+		assertThat(output.getOut()).doesNotContain("test-partner").doesNotContain("테스트 사용자");
 	}
 
 	// 존재하지 않는 주소는 컨트롤러가 없으므로 접근 규칙과 무관하게 404다.

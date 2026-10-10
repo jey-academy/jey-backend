@@ -22,26 +22,26 @@ class CampusScopeTest {
 	@Test
 	void 관리자는_전_지점이다() {
 		assertThat(ADMIN.campusScope()).isEqualTo(new CampusScope.All());
-		assertThat(ADMIN.campusScope(null)).isEqualTo(new CampusScope.All());
+		assertThat(ADMIN.campusScopeFor(null)).isEqualTo(new CampusScope.All());
 	}
 
 	@Test
 	void 관리자가_지점을_고르면_그_지점이다() {
-		assertThat(ADMIN.campusScope(2L)).isEqualTo(new CampusScope.Only(2L));
+		assertThat(ADMIN.campusScopeFor(2L)).isEqualTo(new CampusScope.Only(2L));
 	}
 
 	// "지점을 안 골랐다"를 전 지점으로 해석하면 직원이 다른 지점 수납을 보게 된다.
 	@Test
 	void 직원은_지점을_고르지_않아도_소속_지점이다() {
 		assertThat(STAFF_OF_1.campusScope()).isEqualTo(new CampusScope.Only(1L));
-		assertThat(STAFF_OF_1.campusScope(null)).isEqualTo(new CampusScope.Only(1L));
-		assertThat(STAFF_OF_1.campusScope(1L)).isEqualTo(new CampusScope.Only(1L));
+		assertThat(STAFF_OF_1.campusScopeFor(null)).isEqualTo(new CampusScope.Only(1L));
+		assertThat(STAFF_OF_1.campusScopeFor(1L)).isEqualTo(new CampusScope.Only(1L));
 	}
 
 	// 조용히 소속 지점으로 바꿔 답하면 화면에는 고른 지점의 자료처럼 보인다.
 	@Test
 	void 직원이_다른_지점을_고르면_거부한다() {
-		assertCampusNotAllowed(() -> STAFF_OF_1.campusScope(2L));
+		assertCampusNotAllowed(() -> STAFF_OF_1.campusScopeFor(2L));
 	}
 
 	@Test
@@ -60,8 +60,8 @@ class CampusScopeTest {
 	@Test
 	void 연계_학원은_지점_자료를_다루지_못한다() {
 		assertCampusNotAllowed(PARTNER::campusScope);
-		assertCampusNotAllowed(() -> PARTNER.campusScope(null));
-		assertCampusNotAllowed(() -> PARTNER.campusScope(1L));
+		assertCampusNotAllowed(() -> PARTNER.campusScopeFor(null));
+		assertCampusNotAllowed(() -> PARTNER.campusScopeFor(1L));
 		assertCampusNotAllowed(() -> PARTNER.requireCampus(1L));
 	}
 

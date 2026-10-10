@@ -92,8 +92,7 @@ public class User extends BaseEntity {
 		if (!passwordHash.startsWith("{")) {
 			throw new IllegalArgumentException("passwordHash는 해시된 값이어야 한다");
 		}
-		role.validateCampus(campusId);
-		role.validatePartner(partnerId);
+		role.validateAffiliation(campusId, partnerId);
 		return new User(normalizedLoginId, passwordHash, name, role, campusId, partnerId);
 	}
 

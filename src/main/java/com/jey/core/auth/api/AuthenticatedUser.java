@@ -16,7 +16,9 @@ import com.jey.core.shared.BusinessException;
  * <p>로그인 시점의 값이다. 계정의 이름·역할·지점을 바꾸면 그 계정의 세션을 끊어 다시 로그인하게 해야 반영된다.
  *
  * @param displayName 화면에 보일 이름
- * @param campusId 소속 지점. 직원만 가진다. 관리자와 연계 학원은 {@code null}
+ * @param campusId 소속 지점. 직원만 가진다. 관리자와 연계 학원은 {@code null}.
+ *     {@code null}이 "전 지점"을 뜻하지 않는다(연계 학원도 {@code null}이다).
+ *     다룰 수 있는 지점은 이 값을 직접 보지 말고 {@link #campusScope()}로 판단한다.
  * @param partnerId 연계 학원 식별자. 연계 학원만 가진다. 그 밖의 역할은 {@code null}
  */
 public record AuthenticatedUser(Long id, String loginId, String displayName, UserRole role, Long campusId,
@@ -27,8 +29,7 @@ public record AuthenticatedUser(Long id, String loginId, String displayName, Use
 		Objects.requireNonNull(loginId, "loginId");
 		Objects.requireNonNull(displayName, "displayName");
 		Objects.requireNonNull(role, "role");
-		role.validateCampus(campusId);
-		role.validatePartner(partnerId);
+		role.validateAffiliation(campusId, partnerId);
 	}
 
 	/**
@@ -57,12 +58,13 @@ public record AuthenticatedUser(Long id, String loginId, String displayName, Use
 
 	/**
 	 * 목록 조회에 쓴다. 화면이 고른 지점으로 범위를 좁힌다.
+	 * 단건 확인에는 쓰지 않는다. {@code null}을 넘기면 확인 없이 허용 범위를 돌려주므로, 자료의 지점은 {@link #requireCampus}로 확인한다.
 	 * 직원이 다른 지점을 고르면 소속 지점으로 바꿔 주지 않고 거부한다. 바꿔 주면 고른 지점의 자료처럼 보인다.
 	 *
 	 * @param requestedCampusId 화면이 고른 지점. 고르지 않았으면 {@code null}
 	 * @throws BusinessException 다룰 수 없는 지점을 골랐을 때({@code AUTH_CAMPUS_NOT_ALLOWED})
 	 */
-	public CampusScope campusScope(Long requestedCampusId) {
+	public CampusScope campusScopeFor(Long requestedCampusId) {
 		CampusScope allowed = campusScope();
 		if (requestedCampusId == null) {
 			return allowed;

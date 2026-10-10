@@ -4,13 +4,17 @@ import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
 import com.jey.core.auth.api.UserRole;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -20,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class CampusScopeAccessTest {
 
 	@Autowired
@@ -62,6 +67,21 @@ class CampusScopeAccessTest {
 		mockMvc.perform(get("/api/v1/test-access/invoices").param("campusId", "2"))
 				.andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.code").value("AUTH_CAMPUS_NOT_ALLOWED"));
+	}
+
+	// "권한이 없다고 나온다"는 문의가 왔을 때 누가 어느 주소에서 막혔는지 찾을 수 있어야 한다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = 5151)
+	void 지점_범위_거부는_로그에_남는다(CapturedOutput output) throws Exception {
+		mockMvc.perform(get("/api/v1/test-access/invoices/2")).andExpect(status().isForbidden());
+
+		assertThat(output.getOut().lines().filter(line -> line.contains("account=5151"))).singleElement()
+				.asString()
+				.contains("접근 거부")
+				.contains("code=AUTH_CAMPUS_NOT_ALLOWED")
+				.contains("ROLE_STAFF")
+				.contains("GET /api/v1/test-access/invoices/2");
+		assertThat(output.getOut()).doesNotContain("test-staff").doesNotContain("테스트 사용자");
 	}
 
 	@Test

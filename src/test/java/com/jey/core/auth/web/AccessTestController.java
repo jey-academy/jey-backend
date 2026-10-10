@@ -38,6 +38,13 @@ class AccessTestController {
 		return "ok";
 	}
 
+	// 세션에서 되살린 로그인 정보에 연계 학원 식별자가 남아 있는지 확인하는 데 쓴다.
+	@GetMapping("/partner/id")
+	@AllowedRoles(UserRole.PARTNER)
+	String partnerId(@AuthenticationPrincipal(errorOnInvalidType = true) AuthenticatedUser user) {
+		return String.valueOf(user.partnerId());
+	}
+
 	@GetMapping("/any")
 	@AnyRole
 	String any() {
@@ -56,7 +63,7 @@ class AccessTestController {
 	@GetMapping("/invoices")
 	String invoices(@AuthenticationPrincipal(errorOnInvalidType = true) AuthenticatedUser user,
 			@RequestParam(required = false) Long campusId) {
-		return switch (user.campusScope(campusId)) {
+		return switch (user.campusScopeFor(campusId)) {
 			case CampusScope.All all -> "all";
 			case CampusScope.Only only -> "campus:" + only.campusId();
 		};

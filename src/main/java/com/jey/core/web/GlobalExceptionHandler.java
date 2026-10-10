@@ -1,5 +1,6 @@
 package com.jey.core.web;
 
+import java.security.Principal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -9,16 +10,19 @@ import com.jey.core.shared.ErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationServiceException;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.Errors;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
@@ -34,8 +38,13 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
 	private static final String BINDING_FAILURE_MESSAGE = "형식이 올바르지 않습니다.";
 
+	private static final int MAX_LOGGED_URI_LENGTH = 200;
+
 	@ExceptionHandler(BusinessException.class)
 	ResponseEntity<Object> handleBusiness(BusinessException ex, WebRequest request) {
+		if (ex.getErrorCode().status() == HttpStatus.FORBIDDEN) {
+			logDenied(ex, request);
+		}
 		return respond(ex, ex.getErrorCode(), ex.getMessage(), request);
 	}
 
@@ -116,6 +125,24 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	private ResponseEntity<Object> respond(Exception ex, ErrorCode errorCode, String detail, WebRequest request) {
 		ProblemDetail problem = problem(errorCode, detail != null ? detail : errorCode.message());
 		return handleExceptionInternal(ex, problem, new HttpHeaders(), errorCode.status(), request);
+	}
+
+	// 로그인은 했지만 허용되지 않은 요청이다(역할, 지점 범위 등). 누가 무엇을 하려다 막혔는지 남긴다.
+	// 이름은 계정 ID다. 아이디와 실명은 남기지 않는다. 권한은 세션에 든 값이라, 역할을 바꾼 뒤에도 세션이 살아 있는 경우를 가려낼 수 있다.
+	private static void logDenied(BusinessException ex, WebRequest request) {
+		Principal principal = request.getUserPrincipal();
+		Object authorities = (principal instanceof Authentication authentication) ? authentication.getAuthorities()
+				: List.of();
+		String target = (request instanceof ServletWebRequest servletRequest)
+				? servletRequest.getRequest().getMethod() + " " + shorten(servletRequest.getRequest().getRequestURI())
+				: request.getDescription(false);
+		log.warn("접근 거부: code={} account={} authorities={} {}", ex.getErrorCode().code(),
+				(principal != null) ? principal.getName() : null, authorities, target);
+	}
+
+	private static String shorten(String uri) {
+		return (uri != null && uri.length() > MAX_LOGGED_URI_LENGTH) ? uri.substring(0, MAX_LOGGED_URI_LENGTH) + "…"
+				: uri;
 	}
 
 	private static List<FieldViolation> violations(Errors errors) {

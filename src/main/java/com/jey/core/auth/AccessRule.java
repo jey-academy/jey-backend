@@ -74,14 +74,17 @@ sealed interface AccessRule {
 	 * 우리 컨트롤러 메서드 전부에 올바른 표시가 있는지 확인한다. 서버를 시작할 때 부른다.
 	 * 표시를 빠뜨린 API가 "로그인한 누구나"로 열린 채 나가는 것을 막는다.
 	 *
+	 * @return 확인한 우리 컨트롤러 메서드의 수
 	 * @throws IllegalStateException 잘못된 것이 하나라도 있을 때. 메시지에 전부 나열한다.
 	 */
-	static void requireAllMarked(Collection<HandlerMethod> handlers) {
+	static int requireAllMarked(Collection<HandlerMethod> handlers) {
 		List<String> problems = new ArrayList<>();
+		int checked = 0;
 		for (HandlerMethod handler : handlers) {
 			if (!appliesTo(handler)) {
 				continue;
 			}
+			checked++;
 			try {
 				of(handler);
 			}
@@ -93,6 +96,7 @@ sealed interface AccessRule {
 			throw new IllegalStateException("접근 규칙이 잘못된 API가 있어 서버를 시작하지 않는다. 컨트롤러 메서드나 클래스에 "
 					+ "@AllowedRoles, @AnyRole, @PublicEndpoint 중 하나만 붙인다. " + problems);
 		}
+		return checked;
 	}
 
 	private static List<AccessRule> declaredOn(AnnotatedElement element) {

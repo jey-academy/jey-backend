@@ -7,7 +7,7 @@ package com.jey.core.auth.api;
  * 조회 조건을 만들 때는 두 경우를 모두 다룬다.
  *
  * <pre>{@code
- * return switch (user.campusScope(requestedCampusId)) {
+ * return switch (user.campusScopeFor(requestedCampusId)) {
  *     case CampusScope.All all -> invoices.findAll(pageable);
  *     case CampusScope.Only only -> invoices.findByCampusId(only.campusId(), pageable);
  * };
