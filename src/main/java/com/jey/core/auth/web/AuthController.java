@@ -25,8 +25,7 @@ class AuthController {
 		this.loginService = loginService;
 	}
 
-	// CSRF 토큰은 누군가 읽을 때 만들어진다. 여기서 한 번 읽어 XSRF-TOKEN 쿠키가 응답에 실리게 한다.
-	// 프론트는 앱을 시작할 때 이 주소를 한 번 호출한다.
+	// CSRF 토큰은 누군가 읽을 때 만들어진다. 여기서 한 번 읽어 XSRF-TOKEN 쿠키가 응답에 실리게 한다(ADR-0019).
 	@GetMapping("/csrf")
 	ResponseEntity<Void> csrf(CsrfToken csrfToken) {
 		csrfToken.getToken();
@@ -39,8 +38,9 @@ class AuthController {
 		return MeResponse.from(loginService.login(body.loginId(), body.password(), request, response));
 	}
 
+	// 로그인 정보가 예상한 타입이 아니면 null로 넘어오지 않고 예외가 난다.
 	@GetMapping("/me")
-	MeResponse me(@AuthenticationPrincipal AuthenticatedUser user) {
+	MeResponse me(@AuthenticationPrincipal(errorOnInvalidType = true) AuthenticatedUser user) {
 		return MeResponse.from(user);
 	}
 

@@ -86,7 +86,7 @@ class SecurityConfigTest {
 				.andExpect(jsonPath("$.code").value("COMMON_UNAUTHENTICATED"));
 	}
 
-	// 인증 없는 요청마다 세션을 만들면 Redis에 빈 세션이 쌓인다.
+	// 인증 없는 요청마다 세션을 만들면 Redis에 세션이 쌓인다.
 	@Test
 	void 인증_없는_요청은_세션을_만들지_않는다() throws Exception {
 		mockMvc.perform(get("/api/v1/anything"))
@@ -101,6 +101,7 @@ class SecurityConfigTest {
 				.andExpect(status().isNoContent())
 				.andExpect(cookie().exists("XSRF-TOKEN"))
 				.andExpect(cookie().httpOnly("XSRF-TOKEN", false))
+				.andExpect(cookie().sameSite("XSRF-TOKEN", "Lax"))
 				.andExpect(cookie().doesNotExist("SESSION"));
 	}
 

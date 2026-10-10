@@ -1,6 +1,7 @@
 package com.jey.core.auth;
 
 import java.io.IOException;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -24,8 +26,10 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.session.ChangeSessionIdAuthenticationStrategy;
 import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.session.web.http.CookieSerializer;
 import org.springframework.session.web.http.DefaultCookieSerializer;
@@ -47,14 +51,14 @@ class SecurityConfig {
 			"/actuator/health/**"
 	};
 
-	// 인증은 서버 세션(Redis)이다. 로그인·로그아웃은 AuthController가 직접 처리하므로 폼 로그인과 기본 로그아웃은 끈다.
+	// 인증은 서버 세션(Redis)이다. 로그인·로그아웃은 LoginService가 직접 처리하므로 폼 로그인은 켜지 않고 기본 로그아웃 필터는 끈다.
 	// 401·403은 필터에서 나므로 MVC 예외 처리기로 넘겨 컨트롤러 예외와 같은 Problem Details 형식으로 응답한다.
 	// HandlerExceptionResolver 빈이 여러 개라 MVC의 합성 리졸버를 이름으로 지정한다.
 	@Bean
 	SecurityFilterChain securityFilterChain(HttpSecurity http,
 			@Qualifier("handlerExceptionResolver") HandlerExceptionResolver exceptionResolver,
 			SecurityContextRepository securityContextRepository, CsrfTokenRepository csrfTokenRepository,
-			CorsConfigurationSource corsConfigurationSource) throws Exception {
+			CorsConfigurationSource corsConfigurationSource, Clock clock) throws Exception {
 		return http
 				.cors(cors -> cors.configurationSource(corsConfigurationSource))
 				// 토큰을 쿠키(XSRF-TOKEN)로 주고 헤더(X-XSRF-TOKEN)로 받는다. CSRF 검사는 인증 검사보다 먼저 돌기 때문에
@@ -63,27 +67,40 @@ class SecurityConfig {
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(PUBLIC_PATHS).permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
+						// 로그인은 인증 없이 열지만 CSRF 토큰은 필요하다.
+						// 다른 사이트가 피해자의 브라우저를 공격자 계정으로 로그인시키는 것을 막는다.
 						.requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
 						.anyRequest().authenticated())
 				.securityContext(context -> context.securityContextRepository(securityContextRepository))
-				// 인증 없는 요청을 기억해 두려고 세션을 만들지 않게 한다. Redis에 빈 세션이 쌓이는 것을 막는다.
+				// 로그인 정보를 읽기 전에, 최대 유지 시간이 지난 세션을 먼저 끊는다.
+				.addFilterBefore(new SessionMaxLifetimeFilter(clock), SecurityContextHolderFilter.class)
+				// 인증 없는 요청을 로그인 후 다시 실행하려고 세션에 저장하는 기능을 끈다.
+				// 켜 두면 인증 없는 GET마다 Redis에 세션이 생긴다.
 				.requestCache(AbstractHttpConfigurer::disable)
 				.logout(AbstractHttpConfigurer::disable)
 				.exceptionHandling(ex -> ex
 						.authenticationEntryPoint((request, response, authException) ->
 								delegate(exceptionResolver, request, response, authException, HttpStatus.UNAUTHORIZED))
-						.accessDeniedHandler((request, response, accessDeniedException) ->
-								delegate(exceptionResolver, request, response, accessDeniedException, HttpStatus.FORBIDDEN)))
+						.accessDeniedHandler((request, response, accessDeniedException) -> {
+							// CSRF 거부는 프론트가 토큰을 싣지 못할 때 나타나는 대표 증상이라 흔적을 남긴다.
+							if (accessDeniedException instanceof CsrfException) {
+								log.warn("CSRF 토큰 거부: {} {} ({})", request.getMethod(), request.getRequestURI(),
+										accessDeniedException.getClass().getSimpleName());
+							}
+							delegate(exceptionResolver, request, response, accessDeniedException, HttpStatus.FORBIDDEN);
+						}))
 				.build();
 	}
 
-	// 로그인한 사용자를 세션에 저장한다. AuthController가 로그인 성공 시 직접 저장할 때도 같은 저장소를 쓴다.
+	// 로그인한 사용자를 세션에 저장한다. LoginService가 로그인 성공 시 직접 저장할 때도 같은 저장소를 쓴다.
 	@Bean
 	SecurityContextRepository securityContextRepository() {
 		return new HttpSessionSecurityContextRepository();
 	}
 
-	// 로그인에 성공하면 세션 ID를 바꾼다. 공격자가 미리 심어 둔 세션 ID로 로그인 상태를 가로채는 것을 막는다.
+	// 이미 세션이 있을 때 로그인하면 세션 ID를 바꾼다(세션이 없으면 새로 만들어진다).
+	// 공격자가 미리 심어 둔 세션 ID로 로그인 상태를 가로채는 것을 막는다.
+	// 이 전략만 쓰므로 로그인·로그아웃 때 CSRF 토큰은 바뀌지 않는다.
 	@Bean
 	SessionAuthenticationStrategy sessionAuthenticationStrategy() {
 		return new ChangeSessionIdAuthenticationStrategy();
@@ -103,9 +120,10 @@ class SecurityConfig {
 		return repository;
 	}
 
-	// 세션 쿠키 속성을 여기서 직접 정한다. Spring Boot의 기본 구성은 실행 환경(내장 서버, 테스트)에 따라
-	// 다른 곳에서 값을 읽어 오므로, 환경과 무관하게 같은 속성이 붙도록 빈으로 고정한다.
-	// JavaScript에서 읽을 수 없고(httpOnly), 다른 사이트에서 온 변경 요청에는 실리지 않는다(SameSite=Lax).
+	// 세션 쿠키 속성을 여기서 직접 정한다. Spring Boot의 기본 구성은 내장 서버에서는 server.servlet.session.cookie.* 설정을,
+	// 그 밖의 환경(MockMvc 테스트 등)에서는 서블릿 컨테이너의 기본값을 읽는다. 환경과 무관하게 같은 속성이 붙도록 빈으로 고정한다.
+	// 이 빈이 있으면 server.servlet.session.cookie.* 설정은 쓰이지 않는다.
+	// JavaScript에서 읽을 수 없고(httpOnly), 다른 사이트에서 온 요청에는 최상위 GET 이동을 빼고 실리지 않는다(SameSite=Lax).
 	@Bean
 	CookieSerializer sessionCookieSerializer(AuthProperties properties) {
 		DefaultCookieSerializer serializer = new DefaultCookieSerializer();
@@ -114,6 +132,12 @@ class SecurityConfig {
 		serializer.setSameSite("Lax");
 		serializer.setUseSecureCookie(properties.secureCookies());
 		return serializer;
+	}
+
+	// Spring Session이 세션 값을 Redis에 넣고 꺼낼 때 쓴다. 빈 이름으로 찾으므로 이름을 바꾸면 안 된다.
+	@Bean
+	RedisSerializer<Object> springSessionDefaultRedisSerializer() {
+		return new TolerantSessionSerializer(getClass().getClassLoader());
 	}
 
 	@Bean
@@ -145,9 +169,11 @@ class SecurityConfig {
 	// 그때는 본문이 없더라도 실패 상태로 응답한다.
 	static void delegate(HandlerExceptionResolver exceptionResolver, HttpServletRequest request,
 			HttpServletResponse response, Exception ex, HttpStatus fallback) throws IOException {
-		if (exceptionResolver.resolveException(request, response, null, ex) == null && !response.isCommitted()) {
+		if (exceptionResolver.resolveException(request, response, null, ex) == null) {
 			log.error("보안 예외를 Problem Details로 변환하지 못했다: {} {}", request.getMethod(), request.getRequestURI(), ex);
-			response.sendError(fallback.value());
+			if (!response.isCommitted()) {
+				response.sendError(fallback.value());
+			}
 		}
 	}
 

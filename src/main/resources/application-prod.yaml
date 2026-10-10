@@ -16,13 +16,17 @@ server:
 
 jey:
   auth:
+    # 프론트 주소. 없거나 형식이 틀리면 서버가 뜨지 않는다.
     allowed-origins: ${AUTH_ALLOWED_ORIGINS}
+    # 프론트와 API의 호스트가 다르면 공통 상위 도메인을 넣는다. 비워 두면 프론트가 CSRF 쿠키를 읽지 못해 변경 요청이 모두 403이 된다.
     cookie-domain: ${AUTH_COOKIE_DOMAIN:}
     secure-cookies: true
     initial-admin:
       login-id: ${INITIAL_ADMIN_LOGIN_ID:}
       password: ${INITIAL_ADMIN_PASSWORD:}
       name: ${INITIAL_ADMIN_NAME:관리자}
+      # 계정이 하나도 없는데 위 값이 없으면 서버가 뜨지 않는다.
+      required: true
 
 springdoc:
   api-docs:

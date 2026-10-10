@@ -12,6 +12,7 @@ import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 class CurrentUserAuditorAwareTest {
 
@@ -34,6 +35,15 @@ class CurrentUserAuditorAwareTest {
 	@Test
 	void 로그인하지_않았으면_작성자가_없다() {
 		assertThat(auditorAware.getCurrentAuditor()).isEmpty();
+	}
+
+	// 로그인한 요청인데 누구인지 알 수 없으면 작성자를 비워 저장하지 않고 멈춘다. 비워 두면 "시스템이 한 일"과 구분되지 않는다.
+	@Test
+	void 로그인했지만_알_수_없는_사용자면_예외다() {
+		SecurityContextHolder.getContext()
+				.setAuthentication(UsernamePasswordAuthenticationToken.authenticated("someone", null, List.of()));
+
+		assertThatIllegalStateException().isThrownBy(auditorAware::getCurrentAuditor);
 	}
 
 	@Test

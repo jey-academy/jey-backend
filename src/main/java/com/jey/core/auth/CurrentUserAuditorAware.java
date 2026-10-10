@@ -4,6 +4,7 @@ import java.util.Optional;
 
 import com.jey.core.auth.api.AuthenticatedUser;
 import org.springframework.data.domain.AuditorAware;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -15,10 +16,16 @@ class CurrentUserAuditorAware implements AuditorAware<Long> {
 	@Override
 	public Optional<Long> getCurrentAuditor() {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-		if (authentication != null && authentication.getPrincipal() instanceof AuthenticatedUser user) {
+		if (authentication == null || !authentication.isAuthenticated()
+				|| authentication instanceof AnonymousAuthenticationToken) {
+			return Optional.empty();
+		}
+		if (authentication.getPrincipal() instanceof AuthenticatedUser user) {
 			return Optional.of(user.id());
 		}
-		return Optional.empty();
+		// 로그인한 요청인데 누구인지 알 수 없는 경우다. 작성자를 비워 저장하면 "시스템이 한 일"과 구분되지 않으므로 멈춘다.
+		throw new IllegalStateException(
+				"작성자를 알 수 없는 로그인 정보: " + authentication.getPrincipal().getClass().getName());
 	}
 
 }

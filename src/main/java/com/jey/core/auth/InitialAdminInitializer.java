@@ -13,8 +13,10 @@ import org.springframework.stereotype.Component;
 
 /**
  * 계정이 하나도 없을 때 설정값({@code jey.auth.initial-admin})으로 첫 관리자를 만든다.
- * 계정을 만드는 API도 로그인이 필요하므로, 맨 처음 한 명은 이렇게 만들 수밖에 없다.
- * 비밀번호를 저장소나 마이그레이션 파일에 두지 않으려고 실행 환경의 설정값으로 받는다.
+ * 계정은 로그인한 관리자만 만들 수 있어야 하므로, 맨 처음 한 명은 로그인 없이 만들 방법이 필요하다.
+ * 운영 비밀번호를 Git 저장소(설정 파일, 마이그레이션)에 두지 않으려고 실행 환경의 설정값으로 받는다.
+ *
+ * <p>설정이 잘못됐으면 예외를 던져 서버 시작을 멈춘다. 아무도 로그인할 수 없는 서버가 정상인 것처럼 뜨는 것을 막는다.
  */
 @Component
 class InitialAdminInitializer implements ApplicationRunner {
@@ -43,18 +45,31 @@ class InitialAdminInitializer implements ApplicationRunner {
 	// 계정이 이미 있으면 아무것도 하지 않는다. 서버를 다시 띄워도 관리자가 또 생기거나 비밀번호가 바뀌지 않는다.
 	void createIfNoAccounts() {
 		if (users.count() > 0) {
+			log.debug("계정이 이미 있어 첫 관리자를 만들지 않는다");
 			return;
 		}
 		InitialAdmin initialAdmin = properties.initialAdmin();
-		if (initialAdmin == null || !initialAdmin.isConfigured()) {
+		if (initialAdmin.isHalfConfigured()) {
+			throw new IllegalStateException(
+					"첫 관리자 설정(jey.auth.initial-admin)에 아이디와 비밀번호 중 하나만 있다. 둘 다 넣어야 한다.");
+		}
+		if (!initialAdmin.isConfigured()) {
+			if (initialAdmin.required()) {
+				throw new IllegalStateException(
+						"계정이 하나도 없는데 첫 관리자 설정(jey.auth.initial-admin)이 없다. 아무도 로그인할 수 없다.");
+			}
 			log.warn("계정이 하나도 없는데 첫 관리자 설정(jey.auth.initial-admin)이 없다. 지금은 아무도 로그인할 수 없다.");
 			return;
+		}
+		if (!initialAdmin.hasAcceptablePassword()) {
+			throw new IllegalStateException(
+					"첫 관리자 비밀번호(jey.auth.initial-admin.password)는 10자 이상, 72바이트 이하여야 한다(한글은 한 글자가 3바이트).");
 		}
 		String name = (initialAdmin.name() == null || initialAdmin.name().isBlank()) ? DEFAULT_NAME
 				: initialAdmin.name();
 		users.save(User.create(initialAdmin.loginId(), passwordEncoder.encode(initialAdmin.password()), name,
 				UserRole.ADMIN, null));
-		log.info("첫 관리자 계정을 만들었다: loginId={}", initialAdmin.loginId());
+		log.info("첫 관리자 계정을 만들었다: loginId={}", User.normalizeLoginId(initialAdmin.loginId()));
 	}
 
 }

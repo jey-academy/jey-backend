@@ -65,4 +65,7 @@ dependencyManagement {
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+	// 테스트 JVM의 시간대를 한국도 UTC도 아닌 곳으로 고정한다.
+	// 시각을 다루는 코드가 JVM 기본 시간대에 기대고 있으면, 개발 PC(한국)와 CI(UTC) 어디서 돌려도 똑같이 드러난다.
+	jvmArgs("-Duser.timezone=America/New_York")
 }

@@ -7,3 +7,4 @@ logging:
 jey:
   auth:
     allowed-origins: http://localhost:5173
+    secure-cookies: false

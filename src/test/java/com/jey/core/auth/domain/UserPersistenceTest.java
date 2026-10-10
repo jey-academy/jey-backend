@@ -21,7 +21,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Import(TestcontainersConfiguration.class)
@@ -83,7 +82,9 @@ class UserPersistenceTest {
 		assertThat(found.getUpdatedAt()).isEqualTo(saved.getUpdatedAt());
 	}
 
-	// DB를 직접 열어 봤을 때 한국 시각으로 읽혀야 한다. 서버나 DB의 시간대 설정과 무관해야 한다.
+	// DB를 직접 열어 봤을 때 한국 시각으로 읽혀야 한다.
+	// 테스트 JVM의 시간대는 한국도 UTC도 아닌 곳으로 고정돼 있어서(build.gradle.kts),
+	// JVM 시간대로 저장되거나 UTC로 저장되면 이 테스트가 실패한다.
 	@Test
 	void DB에는_한국_시각으로_저장된다() {
 		User saved = users.saveAndFlush(newUser(uniqueLoginId()));
@@ -134,16 +135,15 @@ class UserPersistenceTest {
 				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
+	// DB는 대소문자를 구분하지 않는다. 저장할 때 소문자로 맞추므로 대소문자만 다른 아이디는 같은 아이디다.
 	@Test
-	void 필수값이_비면_계정을_만들_수_없다() {
-		assertThatIllegalArgumentException()
-				.isThrownBy(() -> User.create(" ", "{noop}pw", "김직원", UserRole.STAFF, 1L));
-		assertThatIllegalArgumentException()
-				.isThrownBy(() -> User.create("staff", " ", "김직원", UserRole.STAFF, 1L));
-		assertThatIllegalArgumentException()
-				.isThrownBy(() -> User.create("staff", "{noop}pw", " ", UserRole.STAFF, 1L));
-		assertThatIllegalArgumentException()
-				.isThrownBy(() -> User.create("staff", "{noop}pw", "김직원", null, 1L));
+	void 대소문자만_다른_아이디는_같은_아이디로_본다() {
+		String loginId = uniqueLoginId();
+		users.saveAndFlush(newUser(loginId));
+
+		assertThatThrownBy(() -> users.saveAndFlush(newUser(loginId.toUpperCase())))
+				.isInstanceOf(DataIntegrityViolationException.class);
+		assertThat(users.findByLoginId(User.normalizeLoginId(loginId.toUpperCase()))).isPresent();
 	}
 
 	private static User newUser(String loginId) {
