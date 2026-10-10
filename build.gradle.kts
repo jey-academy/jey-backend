@@ -26,6 +26,7 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-data-redis")
 	implementation("org.springframework.boot:spring-boot-starter-flyway")
 	implementation("org.springframework.boot:spring-boot-starter-security")
+	implementation("org.springframework.boot:spring-boot-starter-session-data-redis")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
 	implementation("org.flywaydb:flyway-mysql")
@@ -44,6 +45,7 @@ dependencies {
 	testImplementation("org.springframework.boot:spring-boot-starter-data-redis-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-flyway-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-security-test")
+	testImplementation("org.springframework.boot:spring-boot-starter-session-data-redis-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
 	testImplementation("org.springframework.boot:spring-boot-testcontainers")
@@ -63,4 +65,7 @@ dependencyManagement {
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+	// 테스트 JVM의 시간대를 한국도 UTC도 아닌 곳으로 고정한다.
+	// 시각을 다루는 코드가 JVM 기본 시간대에 기대고 있으면, 개발 PC(한국)와 CI(UTC) 어디서 돌려도 똑같이 드러난다.
+	jvmArgs("-Duser.timezone=America/New_York")
 }

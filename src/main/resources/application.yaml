@@ -5,14 +5,44 @@ spring:
     # 에러 응답 문구(검증 메시지 포함)를 Accept-Language와 무관하게 한국어로 고정한다 (ADR-0014).
     locale: ko_KR
     locale-resolver: fixed
+  data:
+    redis:
+      # Redis가 응답하지 않을 때 요청이 오래 매달리지 않게 한다. 설정하지 않으면 명령 하나가 60초까지 기다린다.
+      timeout: 2s
+      connect-timeout: 2s
+  session:
+    data:
+      redis:
+        # 계정 ID로 그 계정의 세션을 찾을 수 있게 색인을 둔다. 계정을 차단할 때 세션을 끊는 데 쓴다.
+        repository-type: indexed
   jpa:
     open-in-view: false
     hibernate:
       ddl-auto: validate
     properties:
       hibernate:
+        # DB를 직접 열어 봤을 때 한국 시각으로 읽히게 저장한다 (ADR-0017).
+        # Hibernate는 기본적으로 Instant를 UTC로 저장하고 jdbc.time_zone을 적용하지 않는다.
+        # TIMESTAMP 방식으로 바꿔야 아래 시간대가 Instant에도 적용된다.
+        type:
+          preferred_instant_jdbc_type: TIMESTAMP
         jdbc:
           time_zone: Asia/Seoul
+
+jey:
+  auth:
+    # 세션 만료 시간(마지막 요청 기준). 데스크 직원은 화면을 하루 종일 켜 두고,
+    # 권한이 큰 관리자와 외부에서 접속하는 연계 학원은 짧게 둔다.
+    session-timeout:
+      admin: 2h
+      staff: 12h
+      partner: 2h
+    # 세션 최대 유지 시간(로그인 시점 기준). 계속 쓰고 있어도 이 시간이 지나면 다시 로그인해야 한다.
+    # 화면이 주기적으로 요청을 보내면 위 만료 시간만으로는 세션이 끝나지 않기 때문에 둔다.
+    session-max-lifetime:
+      admin: 12h
+      staff: 16h
+      partner: 12h
 
 management:
   endpoints:

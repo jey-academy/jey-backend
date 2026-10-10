@@ -18,6 +18,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -46,6 +47,13 @@ class ErrorTestController {
 	@GetMapping("/unexpected")
 	void unexpected() {
 		throw new IllegalStateException("jdbc:mysql://secret-host:3306/jey");
+	}
+
+	// 로그인 중 DB 오류가 나면 LoginService가 이런 모양의 예외를 던진다. 원인이 인증 예외여도 401이 되면 안 된다.
+	@GetMapping("/unexpected-auth-cause")
+	void unexpectedWithAuthenticationCause() {
+		throw new IllegalStateException("로그인 처리 중 내부 오류",
+				new InternalAuthenticationServiceException("jdbc:mysql://secret-host:3306/jey"));
 	}
 
 	@GetMapping("/denied")

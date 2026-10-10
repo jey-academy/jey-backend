@@ -1,4 +1,5 @@
 # docker-compose.yml의 MySQL(호스트 포트 3307)·Redis(6380)에 붙는다. 로컬 전용 값이라 그대로 커밋한다.
+# DB에 한국 시각으로 저장되는 것은 아래 주소의 serverTimezone 때문이 아니라 application.yaml의 JPA 설정 때문이다 (ADR-0017).
 spring:
   datasource:
     url: jdbc:mysql://localhost:3307/jey?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
@@ -8,6 +9,18 @@ spring:
     redis:
       host: localhost
       port: 6380
+
+# 프론트 개발 서버(Vite)에서 오는 요청을 허용하고, 로컬에서 바로 로그인할 수 있게 첫 관리자를 만든다.
+# 로컬 전용 값이라 그대로 커밋한다. 운영은 환경변수로 받는다(application-prod.yaml).
+jey:
+  auth:
+    allowed-origins: http://localhost:5173
+    # 로컬은 HTTPS가 아니라서 Secure 쿠키를 끈다. 기본값은 켜짐이다.
+    secure-cookies: false
+    initial-admin:
+      login-id: admin
+      password: local-admin-1234
+      name: 로컬 관리자
 
 logging:
   level:
