@@ -17,6 +17,11 @@ public enum UserRole {
 	/** 연계 학원. 패스 발급. */
 	PARTNER;
 
+	/** Spring Security의 권한 이름. 로그인할 때 이 이름으로 넣고, 접근 규칙을 확인할 때 이 이름으로 찾는다. */
+	public String authority() {
+		return "ROLE_" + name();
+	}
+
 	/** 한 지점에 소속되는 역할인지. 직원은 지점이 있어야 하고, 관리자와 연계 학원은 지점이 없다. */
 	public boolean belongsToCampus() {
 		return this == STAFF;

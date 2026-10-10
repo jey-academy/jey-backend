@@ -31,7 +31,7 @@ final class AccountUserDetails implements UserDetails, CredentialsContainer {
 
 	@Override
 	public Collection<? extends GrantedAuthority> getAuthorities() {
-		return List.of(new SimpleGrantedAuthority("ROLE_" + user.role().name()));
+		return List.of(new SimpleGrantedAuthority(user.role().authority()));
 	}
 
 	@Override

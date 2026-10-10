@@ -1,7 +1,9 @@
 package com.jey.core.auth.web;
 
 import com.jey.core.auth.LoginService;
+import com.jey.core.auth.api.AnyRole;
 import com.jey.core.auth.api.AuthenticatedUser;
+import com.jey.core.auth.api.PublicEndpoint;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -26,12 +28,14 @@ class AuthController {
 	}
 
 	// CSRF 토큰은 누군가 읽을 때 만들어진다. 여기서 한 번 읽어 XSRF-TOKEN 쿠키가 응답에 실리게 한다(ADR-0019).
+	@PublicEndpoint
 	@GetMapping("/csrf")
 	ResponseEntity<Void> csrf(CsrfToken csrfToken) {
 		csrfToken.getToken();
 		return ResponseEntity.noContent().build();
 	}
 
+	@PublicEndpoint
 	@PostMapping("/login")
 	MeResponse login(@Valid @RequestBody LoginRequest body, HttpServletRequest request,
 			HttpServletResponse response) {
@@ -39,11 +43,13 @@ class AuthController {
 	}
 
 	// 로그인 정보가 예상한 타입이 아니면 null로 넘어오지 않고 예외가 난다.
+	@AnyRole
 	@GetMapping("/me")
 	MeResponse me(@AuthenticationPrincipal(errorOnInvalidType = true) AuthenticatedUser user) {
 		return MeResponse.from(user);
 	}
 
+	@AnyRole
 	@PostMapping("/logout")
 	ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response,
 			Authentication authentication) {
