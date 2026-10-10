@@ -1,6 +1,10 @@
 spring:
   application:
     name: jey-backend
+  web:
+    # 에러 응답 문구(검증 메시지 포함)를 Accept-Language와 무관하게 한국어로 고정한다 (ADR-0014).
+    locale: ko_KR
+    locale-resolver: fixed
   jpa:
     open-in-view: false
     hibernate:
