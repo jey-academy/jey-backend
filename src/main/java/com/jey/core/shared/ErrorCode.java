@@ -3,7 +3,7 @@ package com.jey.core.shared;
 import org.springframework.http.HttpStatus;
 
 /**
- * API 에러 코드 규약. 각 모듈은 자기 enum으로 구현한다(코드 값 예: {@code GOPASS_PASS_EXPIRED}).
+ * API 에러 코드 규약. 각 모듈은 자기 enum으로 구현한다(코드 값 예: {@code DONGTANPASS_PASS_EXPIRED}).
  * 공통 코드는 {@link CommonErrorCode}.
  */
 public interface ErrorCode {

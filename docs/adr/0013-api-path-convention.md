@@ -22,20 +22,20 @@
 3번을 채택한다.
 
 - 모든 API는 `/api/v1/` 아래에 둔다.
-- **첫 세그먼트는 기능 모듈 이름(`gopass`, `billing`)이거나, `core`가 제공하는 리소스 이름(복수형) 또는 `auth`다.**
-  - 기능 모듈: `/api/v1/gopass/passes/...`, `/api/v1/billing/invoices/...`
+- **첫 세그먼트는 기능 모듈 이름(`dongtanpass`, `billing`)이거나, `core`가 제공하는 리소스 이름(복수형) 또는 `auth`다.**
+  - 기능 모듈: `/api/v1/dongtanpass/passes/...`, `/api/v1/billing/invoices/...`
   - `core`: `/api/v1/auth/...`, `/api/v1/campuses`, `/api/v1/students`, `/api/v1/files`, `/api/v1/audit-logs`, `/api/v1/notifications`
   - `core`의 구체적인 리소스 이름은 해당 기능을 만들 때 정한다. 위 목록은 형태를 보여주는 예시다.
 - 기능 모듈 이름과 겹치는 `core` 리소스 이름은 만들지 않는다. 새 기능 모듈을 추가할 때도 기존 최상위 리소스 이름과 겹치지 않게 한다.
 - 표기: 리소스는 복수형 명사, kebab-case(`audit-logs`). 행위는 하위 경로 동사(`/redeem`, `/confirm`, `/retry`).
-- 인증 없이 열리는 경로는 `SecurityConfig`에 명시한 것으로 한정한다: `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/gopass/holder/**`, `/api/v1/billing/webhooks/**`. (각 엔드포인트를 만들 때 추가한다.)
+- 인증 없이 열리는 경로는 `SecurityConfig`에 명시한 것으로 한정한다: `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/dongtanpass/holder/**`, `/api/v1/billing/webhooks/**`. (각 엔드포인트를 만들 때 추가한다.)
 - 서비스 간 내부 전용 API는 `/internal/v1/...`로 분리하고 Nginx에서 외부 접근을 막는다(2차, notifier).
 
 ## 근거
 - `core`가 모듈 1개인 것은 Modulith 기본 탐지에 맞추다 생긴 포장 결정(ADR-0012)이지 클라이언트가 알아야 할 개념이 아니다. URL은 내부 구조보다 오래 유지돼야 한다.
 - ADR-0012의 재검토 조건에 "core가 커져 하위 패키지를 별도 모듈로 뗄 때"가 있다. 3번은 그때도 경로가 바뀌지 않는다.
 - 프론트가 쓰기로 한 `/api/v1/auth/me`, 2차에 계획한 `/api/v1/notifications/bulk`가 이미 이 형태다. 기존 설계와 프론트 코드 수정이 없다.
-- `gopass`, `billing`의 접두사는 유지할 가치가 있다. `passes`, `invoices`, `payments`가 어느 업무 영역인지 드러나고, 이후 쿠폰 같은 모듈이 추가돼도 리소스 이름이 겹치지 않는다.
+- `dongtanpass`, `billing`의 접두사는 유지할 가치가 있다. `passes`, `invoices`, `payments`가 어느 업무 영역인지 드러나고, 이후 쿠폰 같은 모듈이 추가돼도 리소스 이름이 겹치지 않는다.
 
 ## 포기한 것
 - "첫 세그먼트 = 모듈 이름"이라는 한 줄 규칙. 경로만 보고 어느 Spring 모듈의 컨트롤러인지 바로 알 수 없는 경우가 생긴다(`/api/v1/students` → `core.member`).

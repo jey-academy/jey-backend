@@ -45,7 +45,8 @@ class EventMetadataTest {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = { "billing.payment-completed", "gopass.pass-redeemed", "core.user-created", "billing.paid2" })
+	@ValueSource(strings = { "billing.payment-completed", "dongtanpass.pass-redeemed", "core.user-created",
+			"billing.paid2" })
 	void 이벤트_이름은_모듈_점_사건_형식이다(String eventType) {
 		assertThat(new EventMetadata(ID, eventType, 1, NOW, 1L).eventType()).isEqualTo(eventType);
 	}
