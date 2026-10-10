@@ -2,6 +2,7 @@ package com.jey.core.shared;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -41,16 +42,25 @@ class RoundingPolicyTest {
 	// 중간에 끊지 않으면 두 순서의 값이 같다는 것을 실제 범위의 입력으로 확인한다.
 	@Test
 	void 곱셈을_먼저_해도_나누고_곱한_값과_같다() {
-		List<String> discountRates = List.of("0", "0.05", "0.07", "0.1", "0.15");
+		// 0.075, 0.033은 할인 후 금액부터 소수가 되는 경우를 만들려고 넣었다.
+		List<String> discountRates = List.of("0", "0.05", "0.07", "0.1", "0.15", "0.075", "0.033");
+		List<Long> baseFees = new ArrayList<>(List.of(199_999L, 283_350L, 301_001L));
 		for (long baseFee = 150_000; baseFee <= 450_000; baseFee += 1_000) {
+			baseFees.add(baseFee);
+		}
+		int fractionalCases = 0;
+		for (long baseFee : baseFees) {
 			for (String discountRate : discountRates) {
 				BigDecimal payRate = BigDecimal.ONE.subtract(new BigDecimal(discountRate));
 				for (int lessons = 1; lessons <= 12; lessons++) {
-					// 8로 나눈 값은 항상 유한소수라 정확히 나눌 수 있다.
-					BigDecimal divideThenMultiply = BigDecimal.valueOf(baseFee).multiply(payRate)
+					// 8 = 2³이라 몫이 항상 유한소수다. 그래서 끊는 방식 없이도 정확히 나눌 수 있다.
+					BigDecimal exact = BigDecimal.valueOf(baseFee).multiply(payRate)
 							.divide(BigDecimal.valueOf(8))
-							.multiply(BigDecimal.valueOf(lessons))
-							.setScale(0, RoundingMode.DOWN);
+							.multiply(BigDecimal.valueOf(lessons));
+					BigDecimal divideThenMultiply = exact.setScale(0, RoundingMode.DOWN);
+					if (exact.compareTo(divideThenMultiply) != 0) {
+						fractionalCases++;
+					}
 
 					Money charge = Money.of(baseFee).times(payRate).times(lessons)
 							.dividedBy(8, RoundingPolicy.ONE_WON_DOWN);
@@ -61,6 +71,20 @@ class RoundingPolicyTest {
 				}
 			}
 		}
+		// 버릴 소수가 있는 경우가 빠지면 이 테스트는 아무것도 확인하지 못한다.
+		assertThat(fractionalCases).isGreaterThan(1_000);
+	}
+
+	// 학원 순서를 코드로 그대로 옮기면(나눠서 끊고 → 곱함) 회당 단가에서 버린 금액이 횟수만큼 불어난다.
+	@Test
+	void 나눠서_끊은_뒤에_곱하면_금액이_달라진다() {
+		Money base = Money.of(285000).times(FIVE_PERCENT_OFF);
+
+		Money wrong = base.dividedBy(8, RoundingPolicy.ONE_WON_DOWN).times(9);
+		Money right = base.times(9).dividedBy(8, RoundingPolicy.ONE_WON_DOWN);
+
+		assertThat(wrong).isEqualTo(Money.of(304587));
+		assertThat(right).isEqualTo(Money.of(304593));
 	}
 
 	@Test
@@ -93,10 +117,17 @@ class RoundingPolicyTest {
 		assertThat(Money.of(100).dividedBy(8, new RoundingPolicy(10, RoundingMode.UP))).isEqualTo(Money.of(20));
 	}
 
+	// 몫을 먼저 원 단위로 끊고 다시 10원 단위로 끊으면 144.5 → 145 → 150이 된다. 정확한 몫에서 한 번만 끊으면 140이다.
+	@Test
+	void 단위가_커도_정확한_몫에서_한_번만_끊는다() {
+		assertThat(Money.of(1156).dividedBy(8, new RoundingPolicy(10, RoundingMode.HALF_UP))).isEqualTo(Money.of(140));
+		assertThat(Money.of(2436750).dividedBy(8, new RoundingPolicy(10, RoundingMode.DOWN)))
+				.isEqualTo(Money.of(304590));
+	}
+
 	@Test
 	void 이미_원_단위인_금액은_끊어도_그대로다() {
 		assertThat(Money.of(299250).round(RoundingPolicy.ONE_WON_DOWN)).isEqualTo(Money.of(299250));
-		assertThat(Money.of(304599).round(RoundingPolicy.ONE_WON_DOWN)).isEqualTo(Money.of(304599));
 		assertThat(Money.ZERO.round(RoundingPolicy.ONE_WON_DOWN)).isEqualTo(Money.ZERO);
 	}
 
@@ -122,6 +153,12 @@ class RoundingPolicyTest {
 	void 단위는_양수여야_한다() {
 		assertThatIllegalArgumentException().isThrownBy(() -> new RoundingPolicy(0, RoundingMode.DOWN));
 		assertThatIllegalArgumentException().isThrownBy(() -> new RoundingPolicy(-10, RoundingMode.DOWN));
+	}
+
+	// UNNECESSARY는 나누어떨어지지 않으면 예외를 던진다. 계산 예외로 청구가 막히면 안 되므로 만들 때 거부한다.
+	@Test
+	void 끊지_않는_방향은_쓸_수_없다() {
+		assertThatIllegalArgumentException().isThrownBy(() -> new RoundingPolicy(1, RoundingMode.UNNECESSARY));
 	}
 
 	@Test
