@@ -10,6 +10,20 @@ spring:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
 
+# Nginx가 HTTPS를 받아 넘기므로, 원래 요청의 주소와 프로토콜을 전달 헤더에서 읽는다.
+server:
+  forward-headers-strategy: native
+
+jey:
+  auth:
+    allowed-origins: ${AUTH_ALLOWED_ORIGINS}
+    cookie-domain: ${AUTH_COOKIE_DOMAIN:}
+    secure-cookies: true
+    initial-admin:
+      login-id: ${INITIAL_ADMIN_LOGIN_ID:}
+      password: ${INITIAL_ADMIN_PASSWORD:}
+      name: ${INITIAL_ADMIN_NAME:관리자}
+
 springdoc:
   api-docs:
     enabled: false

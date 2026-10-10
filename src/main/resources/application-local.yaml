@@ -9,6 +9,16 @@ spring:
       host: localhost
       port: 6380
 
+# 프론트 개발 서버(Vite)에서 오는 요청을 허용하고, 로컬에서 바로 로그인할 수 있게 첫 관리자를 만든다.
+# 로컬 전용 값이라 그대로 커밋한다. 운영은 환경변수로 받는다(application-prod.yaml).
+jey:
+  auth:
+    allowed-origins: http://localhost:5173
+    initial-admin:
+      login-id: admin
+      password: local-admin-1234
+      name: 로컬 관리자
+
 logging:
   level:
     org.hibernate.SQL: debug

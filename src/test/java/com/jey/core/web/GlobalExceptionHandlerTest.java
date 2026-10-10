@@ -14,6 +14,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static com.jey.TestCsrf.csrfToken;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
@@ -21,7 +22,6 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -110,7 +110,7 @@ class GlobalExceptionHandlerTest {
 
 	@Test
 	void 본문_검증_실패는_필드별_오류_목록을_담는다() throws Exception {
-		mockMvc.perform(post("/api/v1/test-errors/validated").with(csrf())
+		mockMvc.perform(post("/api/v1/test-errors/validated").with(csrfToken(mockMvc))
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(INVALID_BODY))
 				.andExpect(status().isBadRequest())
@@ -123,7 +123,7 @@ class GlobalExceptionHandlerTest {
 
 	@Test
 	void 검증_문구는_요청_언어와_무관하게_한국어다() throws Exception {
-		mockMvc.perform(post("/api/v1/test-errors/validated").with(csrf())
+		mockMvc.perform(post("/api/v1/test-errors/validated").with(csrfToken(mockMvc))
 						.header("Accept-Language", "en")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(INVALID_BODY))
@@ -144,7 +144,7 @@ class GlobalExceptionHandlerTest {
 
 	@Test
 	void 파라미터_제약과_본문_검증이_함께_있어도_본문_필드명으로_응답한다() throws Exception {
-		mockMvc.perform(post("/api/v1/test-errors/validated-mixed").with(csrf())
+		mockMvc.perform(post("/api/v1/test-errors/validated-mixed").with(csrfToken(mockMvc))
 						.param("size", "1")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(INVALID_BODY))
@@ -169,7 +169,7 @@ class GlobalExceptionHandlerTest {
 	// 특정 필드에 묶이지 않는 오류는 field가 null이다.
 	@Test
 	void 객체_수준_검증_실패도_오류_목록에_담긴다() throws Exception {
-		mockMvc.perform(post("/api/v1/test-errors/range").with(csrf())
+		mockMvc.perform(post("/api/v1/test-errors/range").with(csrfToken(mockMvc))
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"min\":5,\"max\":1}"))
 				.andExpect(status().isBadRequest())
@@ -196,7 +196,7 @@ class GlobalExceptionHandlerTest {
 
 	@Test
 	void 깨진_JSON_본문은_400() throws Exception {
-		mockMvc.perform(post("/api/v1/test-errors/validated").with(csrf())
+		mockMvc.perform(post("/api/v1/test-errors/validated").with(csrfToken(mockMvc))
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"name\":"))
 				.andExpect(status().isBadRequest())
@@ -216,7 +216,7 @@ class GlobalExceptionHandlerTest {
 
 	@Test
 	void 지원하지_않는_메서드는_405() throws Exception {
-		mockMvc.perform(delete("/api/v1/test-errors/business").with(csrf()))
+		mockMvc.perform(delete("/api/v1/test-errors/business").with(csrfToken(mockMvc)))
 				.andExpect(status().isMethodNotAllowed())
 				.andExpect(jsonPath("$.code").value("COMMON_METHOD_NOT_ALLOWED"));
 	}
