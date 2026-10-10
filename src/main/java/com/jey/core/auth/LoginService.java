@@ -1,16 +1,20 @@
 package com.jey.core.auth;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.util.Locale;
 
 import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.domain.User;
 import com.jey.core.auth.domain.UserRepository;
 import com.jey.core.shared.BusinessException;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.AccountStatusException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -33,6 +37,11 @@ public class LoginService {
 
 	private static final Logger log = LoggerFactory.getLogger(LoginService.class);
 
+	/** 로그인 시도 수. 태그 result는 success·failure·blocked, scope는 차단일 때 걸린 기준(그 밖에는 none) */
+	static final String ATTEMPTS_METRIC = "jey.auth.login.attempts";
+
+	private static final String NO_SCOPE = "none";
+
 	private final AuthenticationManager authenticationManager;
 
 	private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
@@ -41,7 +50,11 @@ public class LoginService {
 
 	private final UserRepository users;
 
+	private final LoginAttemptLimiter attemptLimiter;
+
 	private final AuthProperties properties;
+
+	private final MeterRegistry meterRegistry;
 
 	private final Clock clock;
 
@@ -49,25 +62,44 @@ public class LoginService {
 
 	LoginService(AuthenticationManager authenticationManager,
 			SessionAuthenticationStrategy sessionAuthenticationStrategy,
-			SecurityContextRepository securityContextRepository, UserRepository users, AuthProperties properties,
+			SecurityContextRepository securityContextRepository, UserRepository users,
+			LoginAttemptLimiter attemptLimiter, AuthProperties properties, MeterRegistry meterRegistry,
 			Clock clock) {
 		this.authenticationManager = authenticationManager;
 		this.sessionAuthenticationStrategy = sessionAuthenticationStrategy;
 		this.securityContextRepository = securityContextRepository;
 		this.users = users;
+		this.attemptLimiter = attemptLimiter;
 		this.properties = properties;
+		this.meterRegistry = meterRegistry;
 		this.clock = clock;
 	}
 
 	/**
 	 * @throws BusinessException 아이디가 없거나, 비밀번호가 틀렸거나, 비활성 계정일 때. 응답에서는 셋을 구분하지 않는다.
+	 * 시도 한도를 넘었을 때는 {@code TOO_MANY_ATTEMPTS}이고 응답에 {@code Retry-After} 헤더를 싣는다.
 	 * @throws IllegalStateException 계정을 조회하지 못하는 등 내부 문제로 로그인을 처리하지 못했을 때
 	 */
 	public AuthenticatedUser login(String loginId, String password, HttpServletRequest request,
 			HttpServletResponse response) {
+		// 운영에서는 프록시가 넘겨준 주소다(server.forward-headers-strategy).
+		String clientIp = request.getRemoteAddr();
+		// 비밀번호를 검증하기 전에 센다. 한도를 넘었으면 맞는 비밀번호여도 검증하지 않는다.
+		attemptLimiter.countAttempt(loginId, clientIp).ifPresent(blocked -> {
+			long retryAfterSeconds = secondsRoundedUp(blocked.retryAfter());
+			response.setHeader(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfterSeconds));
+			// 기준이 IP면 그 IP의 모두가 막힌 것이고, LOGIN_ID_AND_IP면 한 계정만 막힌 것이다.
+			log.warn("로그인 시도 제한 초과: ip={} scope={} retryAfter={}s", clientIp, blocked.scope(),
+					retryAfterSeconds);
+			countAttempt("blocked", blocked.scope().name().toLowerCase(Locale.ROOT));
+			throw new BusinessException(AuthErrorCode.TOO_MANY_ATTEMPTS);
+		});
 		AccountUserDetails account = authenticate(loginId, password);
 		AuthenticatedUser user = account.toAuthenticatedUser();
 		requireStillActive(user);
+		// 여기까지 오지 못한 시도(틀린 비밀번호, 없는 아이디, 비활성 계정)는 실패로 남는다.
+		attemptLimiter.loginSucceeded(loginId, clientIp);
+		countAttempt("success", NO_SCOPE);
 		// 인증 관리자가 돌려준 토큰의 principal은 AccountUserDetails다. 세션에는 그 대신 AuthenticatedUser만 저장한다.
 		Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(user, null,
 				account.getAuthorities());
@@ -94,6 +126,17 @@ public class LoginService {
 		log.info("로그아웃: userId={}", (authentication != null) ? authentication.getName() : null);
 	}
 
+	// 로그인 시도 수를 결과별로 센다. 실패와 차단이 갑자기 늘면 누군가 비밀번호를 대입하고 있다는 신호다.
+	// 태그에는 정해진 값만 넣는다. 아이디나 IP를 넣으면 값의 종류가 끝없이 늘어난다.
+	private void countAttempt(String result, String scope) {
+		this.meterRegistry.counter(ATTEMPTS_METRIC, "result", result, "scope", scope).increment();
+	}
+
+	// 0초로 답하면 프론트가 바로 다시 시도한다. 올림해서 최소 1초가 되게 한다.
+	private static long secondsRoundedUp(Duration duration) {
+		return Math.max(1, (duration.toMillis() + 999) / 1000);
+	}
+
 	private AccountUserDetails authenticate(String loginId, String password) {
 		try {
 			Authentication authenticated = authenticationManager
@@ -104,6 +147,7 @@ public class LoginService {
 			// 응답에는 이유를 구분하지 않는다. 로그에는 예외 종류만 남기며, 없는 아이디와 틀린 비밀번호는 둘 다
 			// BadCredentialsException으로 보인다. 입력한 아이디는 남기지 않는다. 아이디 칸에 비밀번호를 잘못 넣는 일이 흔하다.
 			log.info("로그인 실패: {}", ex.getClass().getSimpleName());
+			countAttempt("failure", NO_SCOPE);
 			throw new BusinessException(AuthErrorCode.INVALID_CREDENTIALS, null, ex);
 		}
 		catch (AuthenticationException ex) {
@@ -123,6 +167,7 @@ public class LoginService {
 		boolean active = users.findById(user.id()).map(User::isActive).orElse(false);
 		if (!active) {
 			log.info("로그인 실패: 비활성 계정 userId={}", user.id());
+			countAttempt("failure", NO_SCOPE);
 			throw new BusinessException(AuthErrorCode.INVALID_CREDENTIALS);
 		}
 	}

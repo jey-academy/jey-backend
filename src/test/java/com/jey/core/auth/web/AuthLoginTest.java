@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.jey.TestcontainersConfiguration;
 import com.jey.core.auth.AccountService;
@@ -36,12 +37,14 @@ import org.springframework.test.web.servlet.ResultActions;
 import static com.jey.TestCsrf.csrfToken;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -62,6 +65,10 @@ class AuthLoginTest {
 
 	// Spring Session이 세션 값을 저장하는 것과 같은 방식(Java 직렬화)이다.
 	private static final JdkSerializationRedisSerializer SESSION_VALUE_SERIALIZER = new JdkSerializationRedisSerializer();
+
+	private static final String LOGIN_ATTEMPT_KEYS = "jey:auth:login-attempts:*";
+
+	private static final AtomicInteger IP_SEQUENCE = new AtomicInteger();
 
 	// 비밀번호 해시는 계산이 느리다. 테스트마다 다시 만들지 않고 한 번 만든 것을 같이 쓴다.
 	private static String passwordHash;
@@ -92,6 +99,12 @@ class AuthLoginTest {
 	private User admin;
 
 	private User disabled;
+
+	// 이 클래스의 요청은 따로 정하지 않으면 모두 127.0.0.1에서 온다. 앞 테스트의 실패 횟수가 남으면 뒤 테스트가 429를 받는다.
+	@BeforeEach
+	void clearLoginAttempts() {
+		redis.delete(redis.keys(LOGIN_ATTEMPT_KEYS));
+	}
 
 	@BeforeEach
 	void createAccounts() {
@@ -423,6 +436,138 @@ class AuthLoginTest {
 				.noneMatch(line -> line.contains(staff.getLoginId()) || line.contains("김직원"));
 	}
 
+	@Test
+	void 비밀번호를_다섯_번_틀리면_여섯_번째는_429다(CapturedOutput output) throws Exception {
+		String ip = newIp();
+		for (int i = 0; i < 5; i++) {
+			loginFrom(ip, staff.getLoginId(), "wrong-password").andExpect(status().isUnauthorized());
+		}
+
+		MvcResult blocked = loginFrom(ip, staff.getLoginId(), "wrong-password")
+				.andExpect(status().isTooManyRequests())
+				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+				.andExpect(jsonPath("$.status").value(429))
+				.andExpect(jsonPath("$.code").value("AUTH_TOO_MANY_ATTEMPTS"))
+				.andExpect(jsonPath("$.detail").value("로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요."))
+				.andExpect(header().string("Retry-After", matchesPattern("[1-9][0-9]*")))
+				.andExpect(cookie().doesNotExist(SESSION))
+				.andReturn();
+
+		// 기본 설정의 기간은 15분이다.
+		assertThat(Long.parseLong(blocked.getResponse().getHeader("Retry-After"))).isBetween(14 * 60L, 15 * 60L);
+		// 키 이름이 바뀌면 clearLoginAttempts가 아무것도 지우지 못하게 되고, 원인과 먼 테스트가 429로 깨진다. 여기서 드러나게 한다.
+		assertThat(redis.keys(LOGIN_ATTEMPT_KEYS)).isNotEmpty();
+		assertThat(output).contains("로그인 시도 제한 초과: ip=" + ip + " scope=LOGIN_ID_AND_IP")
+				.doesNotContain(staff.getLoginId());
+	}
+
+	// 한도를 넘은 뒤에 비밀번호가 맞는지 알려 주면, 막힌 동안에도 비밀번호를 계속 확인할 수 있다.
+	@Test
+	void 한도를_넘으면_맞는_비밀번호도_거부한다() throws Exception {
+		String ip = newIp();
+		for (int i = 0; i < 5; i++) {
+			loginFrom(ip, staff.getLoginId(), "wrong-password").andExpect(status().isUnauthorized());
+		}
+
+		loginFrom(ip, staff.getLoginId(), PASSWORD)
+				.andExpect(status().isTooManyRequests())
+				.andExpect(cookie().doesNotExist(SESSION));
+	}
+
+	// 없는 아이디만 한도 없이 통과하면 그 차이로 어떤 아이디가 존재하는지 알 수 있다.
+	@Test
+	void 없는_아이디와_형식이_틀린_아이디도_같은_횟수에서_429다() throws Exception {
+		String ip = newIp();
+		for (String loginId : List.of("no-such-user", "\u00e1dmin")) {
+			for (int i = 0; i < 5; i++) {
+				loginFrom(ip, loginId, PASSWORD).andExpect(status().isUnauthorized());
+			}
+			loginFrom(ip, loginId, PASSWORD).andExpect(status().isTooManyRequests());
+		}
+	}
+
+	@Test
+	void 로그인에_성공하면_실패_횟수가_지워진다() throws Exception {
+		String ip = newIp();
+		for (int i = 0; i < 4; i++) {
+			loginFrom(ip, staff.getLoginId(), "wrong-password").andExpect(status().isUnauthorized());
+		}
+		loginFrom(ip, staff.getLoginId(), PASSWORD).andExpect(status().isOk());
+
+		for (int i = 0; i < 5; i++) {
+			loginFrom(ip, staff.getLoginId(), "wrong-password").andExpect(status().isUnauthorized());
+		}
+	}
+
+	// 비활성 계정에 맞는 비밀번호를 넣는 것도 실패다. 성공으로 치면 횟수가 지워져 한도가 없어진다.
+	@Test
+	void 비활성_계정에_맞는_비밀번호를_넣어도_실패로_센다() throws Exception {
+		String ip = newIp();
+		for (int i = 0; i < 5; i++) {
+			loginFrom(ip, disabled.getLoginId(), PASSWORD).andExpect(status().isUnauthorized());
+		}
+
+		loginFrom(ip, disabled.getLoginId(), PASSWORD).andExpect(status().isTooManyRequests());
+	}
+
+	// 누군가 밖에서 일부러 틀려도 학원 PC에서 쓰는 계정은 잠기지 않는다.
+	@Test
+	void 다른_IP에서_틀려도_이_IP에서는_로그인된다() throws Exception {
+		String attackerIp = newIp();
+		for (int i = 0; i < 6; i++) {
+			loginFrom(attackerIp, staff.getLoginId(), "wrong-password");
+		}
+		loginFrom(attackerIp, staff.getLoginId(), PASSWORD).andExpect(status().isTooManyRequests());
+
+		loginFrom(newIp(), staff.getLoginId(), PASSWORD).andExpect(status().isOk());
+	}
+
+	// 한 곳에서 아이디를 바꿔 가며 시도하는 경우다. 아이디별 한도에는 걸리지 않지만 IP 한도에 걸린다.
+	@Test
+	void 한_IP에서_아이디를_바꿔_가며_서른_번_틀리면_그_IP는_막힌다() throws Exception {
+		String ip = newIp();
+		for (int i = 0; i < 30; i++) {
+			loginFrom(ip, "guess-" + i, "wrong-password").andExpect(status().isUnauthorized());
+		}
+
+		loginFrom(ip, staff.getLoginId(), PASSWORD).andExpect(status().isTooManyRequests());
+	}
+
+	// 잠긴 계정으로 로그인 버튼을 계속 눌러도 같은 공유기를 쓰는 다른 사람까지 막히면 안 된다.
+	@Test
+	void 막힌_계정으로_계속_시도해도_같은_IP의_다른_계정은_로그인된다() throws Exception {
+		String ip = newIp();
+		for (int i = 0; i < 5; i++) {
+			loginFrom(ip, staff.getLoginId(), "wrong-password").andExpect(status().isUnauthorized());
+		}
+		for (int i = 0; i < 40; i++) {
+			loginFrom(ip, staff.getLoginId(), "wrong-password").andExpect(status().isTooManyRequests());
+		}
+
+		loginFrom(ip, admin.getLoginId(), PASSWORD).andExpect(status().isOk());
+	}
+
+	// 로그인에 성공한 시도는 IP 횟수에 남지 않는다. 남으면 정상적으로 로그인한 사람들만으로 그 IP가 막힌다.
+	@Test
+	void 성공한_로그인은_IP_한도를_쓰지_않는다() throws Exception {
+		String ip = newIp();
+		for (int i = 0; i < 31; i++) {
+			loginFrom(ip, staff.getLoginId(), PASSWORD).andExpect(status().isOk());
+		}
+	}
+
+	// 다른 출처의 응답 헤더는 서버가 노출한다고 밝혀야 프론트의 JavaScript가 읽을 수 있다.
+	@Test
+	void Retry_After_헤더는_다른_출처의_프론트가_읽을_수_있다() throws Exception {
+		mockMvc.perform(post("/api/v1/auth/login").with(csrfToken(mockMvc))
+				.header("Origin", "http://localhost:5173")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(loginJson(staff.getLoginId(), "wrong-password")))
+				.andExpect(status().isUnauthorized())
+				.andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+				.andExpect(header().string("Access-Control-Expose-Headers", containsString("Retry-After")));
+	}
+
 	private User newUser(String prefix, String name, UserRole role, Long campusId) {
 		String loginId = prefix + "-" + UUID.randomUUID().toString().substring(0, 8);
 		return User.create(loginId, passwordHash, name, role, campusId);
@@ -436,6 +581,22 @@ class AuthLoginTest {
 			request.cookie(cookies);
 		}
 		return mockMvc.perform(request);
+	}
+
+	// 요청이 온 주소를 지정해서 로그인한다. 시도 횟수는 주소별로 센다.
+	private ResultActions loginFrom(String ip, String loginId, String password) throws Exception {
+		return mockMvc.perform(post("/api/v1/auth/login").with(csrfToken(mockMvc))
+				.with(request -> {
+					request.setRemoteAddr(ip);
+					return request;
+				})
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(loginJson(loginId, password)));
+	}
+
+	// 문서용으로 예약된 대역(203.0.113.0/24)에서 테스트마다 다른 주소를 쓴다.
+	private static String newIp() {
+		return "203.0.113." + IP_SEQUENCE.incrementAndGet();
 	}
 
 	private Cookie loginAndGetSession(String loginId) throws Exception {

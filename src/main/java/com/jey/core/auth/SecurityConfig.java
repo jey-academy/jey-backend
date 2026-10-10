@@ -5,14 +5,17 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -36,10 +39,11 @@ import org.springframework.session.web.http.DefaultCookieSerializer;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(AuthProperties.class)
+@EnableConfigurationProperties({ AuthProperties.class, LoginAttemptProperties.class })
 class SecurityConfig {
 
 	private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
@@ -60,11 +64,15 @@ class SecurityConfig {
 			SecurityContextRepository securityContextRepository, CsrfTokenRepository csrfTokenRepository,
 			CorsConfigurationSource corsConfigurationSource, Clock clock) throws Exception {
 		return http
+				// 같은 설정으로 아래 earlyCorsFilter가 먼저 돈다. 여기서는 이미 붙은 헤더를 보고 넘어간다.
 				.cors(cors -> cors.configurationSource(corsConfigurationSource))
 				// 토큰을 쿠키(XSRF-TOKEN)로 주고 헤더(X-XSRF-TOKEN)로 받는다. CSRF 검사는 인증 검사보다 먼저 돌기 때문에
 				// 토큰 없는 변경 요청은 로그인 여부와 무관하게 403이다.
 				.csrf(csrf -> csrf.spa().csrfTokenRepository(csrfTokenRepository))
 				.authorizeHttpRequests(auth -> auth
+						// 필터가 sendError로 끝낸 요청을 서블릿 컨테이너가 오류 경로(/error)로 다시 보내는 경우다.
+						// 여기에 인증을 요구하면 원래 오류(400 등)가 401로 바뀐다. 밖에서 /error를 직접 부르는 요청은 해당하지 않는다.
+						.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
 						.requestMatchers(PUBLIC_PATHS).permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
 						// 로그인은 인증 없이 열지만 CSRF 토큰은 필요하다.
@@ -148,10 +156,23 @@ class SecurityConfig {
 		configuration.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN", "Idempotency-Key"));
 		// 세션 쿠키를 실은 요청을 받아야 한다. 이 경우 허용 출처에 *를 쓸 수 없어 목록으로 받는다.
 		configuration.setAllowCredentials(true);
+		// 다른 출처의 응답 헤더는 여기에 적어야 프론트가 읽을 수 있다. 로그인 시도 제한(429)의 남은 시간이다.
+		configuration.setExposedHeaders(List.of("Retry-After"));
 		configuration.setMaxAge(Duration.ofHours(1));
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/api/**", configuration);
 		return source;
+	}
+
+	// CORS 헤더를 세션 필터보다 먼저 붙인다. 보안 필터 안에서만 붙이면, 그보다 앞에서 난 오류(세션 저장소 장애 등)의 응답에는
+	// 헤더가 없어서 다른 출처의 프론트가 그 응답을 읽지 못하고 네트워크 오류로 본다.
+	// 순서는 오류를 잡는 맨 앞 필터(core.web.FilterExceptionFilter) 바로 다음이다.
+	@Bean
+	FilterRegistrationBean<CorsFilter> earlyCorsFilter(CorsConfigurationSource corsConfigurationSource) {
+		FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(
+				new CorsFilter(corsConfigurationSource));
+		registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
+		return registration;
 	}
 
 	@Bean

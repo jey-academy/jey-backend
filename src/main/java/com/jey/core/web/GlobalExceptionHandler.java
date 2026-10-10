@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.Errors;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -42,6 +43,13 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	@ExceptionHandler(AuthenticationException.class)
 	ResponseEntity<Object> handleAuthentication(AuthenticationException ex, WebRequest request) {
 		return respond(ex, CommonErrorCode.UNAUTHENTICATED, null, request);
+	}
+
+	// 인증 예외 중에서도 이것은 "누구인지 모른다"가 아니라 "확인하다 실패했다"(계정 조회 중 DB 오류 등)이다.
+	// 401로 응답하면 장애가 로그아웃처럼 보이고 원인도 로그에 남지 않는다.
+	@ExceptionHandler(AuthenticationServiceException.class)
+	ResponseEntity<Object> handleAuthenticationServiceFailure(AuthenticationServiceException ex, WebRequest request) {
+		return respond(ex, CommonErrorCode.INTERNAL_ERROR, null, request);
 	}
 
 	@ExceptionHandler(AccessDeniedException.class)

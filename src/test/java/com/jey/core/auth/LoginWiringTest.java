@@ -9,6 +9,7 @@ import com.jey.core.auth.api.UserRole;
 import com.jey.core.auth.domain.User;
 import com.jey.core.auth.domain.UserRepository;
 import com.jey.core.shared.BusinessException;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -88,8 +89,9 @@ class LoginWiringTest {
 		var provider = new DaoAuthenticationProvider(new AccountUserDetailsService(users));
 		provider.setPasswordEncoder(passwordEncoder);
 		return new LoginService(new ProviderManager(provider), mock(SessionAuthenticationStrategy.class),
-				mock(SecurityContextRepository.class), users,
-				new AuthProperties(List.of(), false, null, false, null, null, null), Clock.systemUTC());
+				mock(SecurityContextRepository.class), users, mock(LoginAttemptLimiter.class),
+				new AuthProperties(List.of(), false, null, false, null, null, null),
+				new SimpleMeterRegistry(), Clock.systemUTC());
 	}
 
 	private User savedUser() {

@@ -103,6 +103,26 @@ class GlobalExceptionHandlerTest {
 		assertThat(output).contains("InternalAuthenticationServiceException").contains("secret-host");
 	}
 
+	// 인증 예외라는 이유로 401이 되면 장애가 "로그인이 풀렸다"로 보이고 원인도 남지 않는다.
+	@Test
+	void 인증을_확인하다_난_내부_오류는_401이_아니라_500이고_원인은_로그에_남는다(CapturedOutput output) throws Exception {
+		mockMvc.perform(get("/api/v1/test-errors/auth-service-failure"))
+				.andExpect(status().isInternalServerError())
+				.andExpect(jsonPath("$.code").value("COMMON_INTERNAL_ERROR"))
+				.andExpect(content().string(not(containsString("secret-host"))));
+
+		assertThat(output).contains("InternalAuthenticationServiceException").contains("secret-host");
+	}
+
+	// 오류 경로는 컨테이너가 넘겨준 오류 상태로 답한다. 직접 부르면 오류 상태가 없으므로 없는 주소로 답한다.
+	@Test
+	void 로그인한_채_오류_경로를_직접_부르면_404다() throws Exception {
+		mockMvc.perform(get("/error"))
+				.andExpect(status().isNotFound())
+				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+				.andExpect(jsonPath("$.code").value("COMMON_NOT_FOUND"));
+	}
+
 	@Test
 	void 처리되지_않은_예외의_원인은_로그에_남는다(CapturedOutput output) throws Exception {
 		mockMvc.perform(get("/api/v1/test-errors/unexpected")).andExpect(status().isInternalServerError());
