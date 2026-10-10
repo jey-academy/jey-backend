@@ -14,7 +14,7 @@
 3. URN(`urn:jey:error:{code}`) — 문서 없이도 고유함 / `code`와 정보가 중복되고 얻는 것이 없음
 
 **에러 코드 이름**
-1. `{모듈}_{사유}` 대문자 스네이크(`GOPASS_PASS_EXPIRED`) — 읽기 쉽고 모듈끼리 겹치지 않음 / 이름이 길어짐
+1. `{모듈}_{사유}` 대문자 스네이크(`DONGTANPASS_PASS_EXPIRED`) — 읽기 쉽고 모듈끼리 겹치지 않음 / 이름이 길어짐
 2. 숫자 코드(`4001`) — 짧음 / 뜻을 알려면 표를 봐야 하고, 번호대를 모듈별로 나눠 관리해야 함
 3. 접두사 없는 이름(`PASS_EXPIRED`) — 짧음 / 모듈이 늘면 이름이 겹칠 수 있음
 
@@ -47,7 +47,7 @@
   "title": "Bad Request",
   "status": 400,
   "detail": "입력값이 올바르지 않습니다.",
-  "instance": "/api/v1/gopass/passes",
+  "instance": "/api/v1/dongtanpass/passes",
   "code": "COMMON_VALIDATION_FAILED",
   "errors": [{ "field": "name", "message": "공백일 수 없습니다" }]
 }

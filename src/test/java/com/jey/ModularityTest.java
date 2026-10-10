@@ -19,9 +19,9 @@ class ModularityTest {
 	}
 
 	@Test
-	void core_gopass_billing이_모듈로_인식된다() {
+	void core_dongtanpass_billing이_모듈로_인식된다() {
 		assertThat(modules.stream().map(module -> module.getIdentifier().toString()))
-				.containsExactlyInAnyOrder("core", "gopass", "billing");
+				.containsExactlyInAnyOrder("core", "dongtanpass", "billing");
 	}
 
 	// Modulith는 모듈 사이만 검사한다. core 안의 하위 패키지끼리 순환은 여기서 막는다.

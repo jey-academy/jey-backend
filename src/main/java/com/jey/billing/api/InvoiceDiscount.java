@@ -3,7 +3,7 @@ package com.jey.billing.api;
 import java.math.BigDecimal;
 
 /**
- * 청구 생성 요청에 실어 보내는 할인 1건. 할인 출처(동탄고패스, 쿠폰 등)와 무관한 범용 형태다.
+ * 청구 생성 요청에 실어 보내는 할인 1건. 할인 출처(동탄고 패스, 쿠폰 등)와 무관한 범용 형태다.
  *
  * @param discountType 할인 유형 코드
  * @param discountRate 할인율 (5%는 0.05)
