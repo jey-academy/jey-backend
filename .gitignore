@@ -27,4 +27,6 @@ HELP.md
 prototype/
 CLAUDE.md
 .claude/
-docs/
+
+# 내부 문서 (공개 문서는 docs/)
+docs-internal/
