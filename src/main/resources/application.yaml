@@ -11,8 +11,22 @@ spring:
       ddl-auto: validate
     properties:
       hibernate:
+        # DB를 직접 열어 봤을 때 한국 시각으로 읽히게 저장한다 (ADR-0017).
+        # Hibernate는 기본적으로 Instant를 UTC로 저장하고 jdbc.time_zone을 적용하지 않는다.
+        # TIMESTAMP 방식으로 바꿔야 아래 시간대가 Instant에도 적용된다.
+        type:
+          preferred_instant_jdbc_type: TIMESTAMP
         jdbc:
           time_zone: Asia/Seoul
+
+jey:
+  auth:
+    # 세션 만료 시간(마지막 요청 기준). 데스크 직원은 화면을 하루 종일 켜 두고,
+    # 권한이 큰 관리자와 외부에서 접속하는 연계 학원은 짧게 둔다.
+    session-timeout:
+      admin: 2h
+      staff: 12h
+      partner: 2h
 
 management:
   endpoints:
