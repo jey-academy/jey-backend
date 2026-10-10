@@ -48,7 +48,7 @@ class AccountServiceTest {
 	@Test
 	void 차단을_DB에_반영한_뒤에_세션을_끊는다() {
 		when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
-		User user = User.create("desk", "{noop}not-a-real-hash", "김직원", UserRole.STAFF, 1L);
+		User user = User.create("desk", "{noop}not-a-real-hash", "김직원", UserRole.STAFF, 1L, null);
 		when(users.findById(USER_ID)).thenReturn(Optional.of(user));
 
 		accountService.disable(USER_ID);

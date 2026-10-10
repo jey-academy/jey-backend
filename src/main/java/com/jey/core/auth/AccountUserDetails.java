@@ -21,7 +21,7 @@ final class AccountUserDetails implements UserDetails, CredentialsContainer {
 
 	AccountUserDetails(User user) {
 		this.user = new AuthenticatedUser(user.getId(), user.getLoginId(), user.getName(), user.getRole(),
-				user.getCampusId());
+				user.getCampusId(), user.getPartnerId());
 		this.passwordHash = user.getPasswordHash();
 	}
 

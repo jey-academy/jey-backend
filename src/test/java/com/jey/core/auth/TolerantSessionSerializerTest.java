@@ -28,7 +28,7 @@ class TolerantSessionSerializerTest {
 
 	@Test
 	void 읽을_수_있는_값은_그대로_되살린다() {
-		var user = new AuthenticatedUser(42L, "desk", "김직원", UserRole.STAFF, 1L);
+		var user = new AuthenticatedUser(42L, "desk", "김직원", UserRole.STAFF, 1L, null);
 
 		assertThat(serializer.deserialize(serializer.serialize(user))).isEqualTo(user);
 		assertThat(serializer.deserialize(serializer.serialize(1_700_000_000_000L))).isEqualTo(1_700_000_000_000L);
@@ -44,7 +44,7 @@ class TolerantSessionSerializerTest {
 	// 배포 뒤에 클래스가 없어졌거나 이름이 바뀐 경우다.
 	@Test
 	void 클래스를_찾을_수_없는_값은_없는_값으로_취급한다(CapturedOutput output) {
-		byte[] bytes = serializer.serialize(new AuthenticatedUser(42L, "desk", "김직원", UserRole.STAFF, 1L));
+		byte[] bytes = serializer.serialize(new AuthenticatedUser(42L, "desk", "김직원", UserRole.STAFF, 1L, null));
 		var withoutClass = new TolerantSessionSerializer(new HidingClassLoader(AuthenticatedUser.class.getName()));
 
 		assertThat(withoutClass.deserialize(bytes)).isNull();
@@ -66,7 +66,7 @@ class TolerantSessionSerializerTest {
 	// 메모리 부족이나 클래스 누락 같은 JVM 오류는 세션의 문제가 아니라 서버의 문제다. 삼키지 않는다.
 	@Test
 	void JVM_오류는_삼키지_않는다() {
-		byte[] bytes = serializer.serialize(new AuthenticatedUser(42L, "desk", "김직원", UserRole.STAFF, 1L));
+		byte[] bytes = serializer.serialize(new AuthenticatedUser(42L, "desk", "김직원", UserRole.STAFF, 1L, null));
 		var broken = new TolerantSessionSerializer(new FailingClassLoader(AuthenticatedUser.class.getName()));
 
 		assertThatThrownBy(() -> broken.deserialize(bytes))

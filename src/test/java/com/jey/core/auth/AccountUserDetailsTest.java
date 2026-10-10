@@ -49,7 +49,7 @@ class AccountUserDetailsTest {
 
 	// DB에서 읽은 계정처럼 ID가 채워진 계정을 만든다.
 	private static User savedUser(String loginId) {
-		User user = User.create(loginId, HASH, "김직원", UserRole.STAFF, 1L);
+		User user = User.create(loginId, HASH, "김직원", UserRole.STAFF, 1L, null);
 		ReflectionTestUtils.setField(user, "id", 7L);
 		return user;
 	}
@@ -67,6 +67,14 @@ class AccountUserDetailsTest {
 		try (var in = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()))) {
 			assertThat(((AccountUserDetails) in.readObject()).getPassword()).isNull();
 		}
+	}
+
+	@Test
+	void 연계_학원_식별자가_로그인_정보로_넘어간다() {
+		User partner = User.create("partner", HASH, "연계학원", UserRole.PARTNER, null, 7L);
+		ReflectionTestUtils.setField(partner, "id", 8L);
+
+		assertThat(new AccountUserDetails(partner).toAuthenticatedUser().partnerId()).isEqualTo(7L);
 	}
 
 }

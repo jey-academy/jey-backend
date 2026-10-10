@@ -15,9 +15,10 @@ import java.util.Objects;
  *
  * @param displayName 화면에 보일 이름
  * @param campusId 소속 지점. 직원만 가진다. 관리자와 연계 학원은 {@code null}
+ * @param partnerId 연계 학원 식별자. 연계 학원만 가진다. 그 밖의 역할은 {@code null}
  */
-public record AuthenticatedUser(Long id, String loginId, String displayName, UserRole role, Long campusId)
-		implements Principal, Serializable {
+public record AuthenticatedUser(Long id, String loginId, String displayName, UserRole role, Long campusId,
+		Long partnerId) implements Principal, Serializable {
 
 	public AuthenticatedUser {
 		Objects.requireNonNull(id, "id");
@@ -25,6 +26,7 @@ public record AuthenticatedUser(Long id, String loginId, String displayName, Use
 		Objects.requireNonNull(displayName, "displayName");
 		Objects.requireNonNull(role, "role");
 		role.validateCampus(campusId);
+		role.validatePartner(partnerId);
 	}
 
 	/**

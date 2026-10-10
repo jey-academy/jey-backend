@@ -25,7 +25,7 @@ class CurrentUserAuditorAwareTest {
 
 	@Test
 	void 로그인한_계정의_ID를_작성자로_준다() {
-		var user = new AuthenticatedUser(7L, "staff", "김직원", UserRole.STAFF, 1L);
+		var user = new AuthenticatedUser(7L, "staff", "김직원", UserRole.STAFF, 1L, null);
 		SecurityContextHolder.getContext()
 				.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(user, null, List.of()));
 

@@ -57,7 +57,7 @@ class UserPersistenceTest {
 
 	@Test
 	void 로그인한_사용자가_저장하면_그_계정이_작성자로_남는다() {
-		var loggedIn = new AuthenticatedUser(42L, "admin", "박원장", UserRole.ADMIN, null);
+		var loggedIn = new AuthenticatedUser(42L, "admin", "박원장", UserRole.ADMIN, null, null);
 		SecurityContextHolder.getContext()
 				.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(loggedIn, null, List.of()));
 		try {
@@ -148,11 +148,23 @@ class UserPersistenceTest {
 	}
 
 	private static User newUser(String loginId) {
-		return User.create(loginId, "{noop}not-a-real-hash", "김직원", UserRole.STAFF, 1L);
+		return User.create(loginId, "{noop}not-a-real-hash", "김직원", UserRole.STAFF, 1L, null);
 	}
 
 	private static String uniqueLoginId() {
 		return "staff-" + UUID.randomUUID().toString().substring(0, 8);
+	}
+
+	@Test
+	void 연계_학원_식별자를_저장하고_다시_읽는다() {
+		String loginId = "partner-" + UUID.randomUUID().toString().substring(0, 8);
+		User saved = users.saveAndFlush(
+				User.create(loginId, "{noop}not-a-real-hash", "연계학원", UserRole.PARTNER, null, 7L));
+
+		User found = users.findById(saved.getId()).orElseThrow();
+
+		assertThat(found.getPartnerId()).isEqualTo(7L);
+		assertThat(found.getCampusId()).isNull();
 	}
 
 }

@@ -37,4 +37,24 @@ public enum UserRole {
 		}
 	}
 
+	/** 연계 학원에 속하는 역할인지. 연계 학원 계정은 식별자가 있어야 하고, 그 밖의 역할은 없어야 한다. */
+	public boolean belongsToPartner() {
+		return this == PARTNER;
+	}
+
+	/**
+	 * 역할과 연계 학원 식별자의 조합이 맞는지 확인한다.
+	 * 식별자 없는 연계 학원 계정을 허용하면 "자기 발급분" 조건을 걸 수 없다.
+	 *
+	 * @throws IllegalArgumentException 연계 학원인데 식별자가 없거나, 연계 학원이 아닌데 식별자가 있을 때
+	 */
+	public void validatePartner(Long partnerId) {
+		if (belongsToPartner() && partnerId == null) {
+			throw new IllegalArgumentException(this + " 계정은 연계 학원 식별자가 있어야 한다");
+		}
+		if (!belongsToPartner() && partnerId != null) {
+			throw new IllegalArgumentException(this + " 계정은 연계 학원 식별자를 가질 수 없다");
+		}
+	}
+
 }

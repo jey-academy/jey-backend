@@ -69,7 +69,7 @@ class InitialAdminInitializer implements ApplicationRunner {
 		String name = (initialAdmin.name() == null || initialAdmin.name().isBlank()) ? DEFAULT_NAME
 				: initialAdmin.name();
 		users.save(User.create(initialAdmin.loginId(), passwordEncoder.encode(initialAdmin.password()), name,
-				UserRole.ADMIN, null));
+				UserRole.ADMIN, null, null));
 		log.info("첫 관리자 계정을 만들었다: loginId={}", User.normalizeLoginId(initialAdmin.loginId()));
 	}
 

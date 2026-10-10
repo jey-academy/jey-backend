@@ -283,7 +283,7 @@ class LoginServiceTest {
 
 	// DB에서 읽은 계정처럼 ID가 채워진 계정을 만든다.
 	private static User savedUser() {
-		User user = User.create("desk", "{noop}not-a-real-hash", "김직원", UserRole.STAFF, 1L);
+		User user = User.create("desk", "{noop}not-a-real-hash", "김직원", UserRole.STAFF, 1L, null);
 		ReflectionTestUtils.setField(user, "id", USER_ID);
 		return user;
 	}

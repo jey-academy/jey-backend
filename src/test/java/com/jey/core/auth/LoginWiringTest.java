@@ -95,7 +95,7 @@ class LoginWiringTest {
 	}
 
 	private User savedUser() {
-		User user = User.create("desk", passwordEncoder.encode(PASSWORD), "김직원", UserRole.STAFF, 1L);
+		User user = User.create("desk", passwordEncoder.encode(PASSWORD), "김직원", UserRole.STAFF, 1L, null);
 		ReflectionTestUtils.setField(user, "id", 7L);
 		return user;
 	}

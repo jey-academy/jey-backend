@@ -570,7 +570,7 @@ class AuthLoginTest {
 
 	private User newUser(String prefix, String name, UserRole role, Long campusId) {
 		String loginId = prefix + "-" + UUID.randomUUID().toString().substring(0, 8);
-		return User.create(loginId, passwordHash, name, role, campusId);
+		return User.create(loginId, passwordHash, name, role, campusId, null);
 	}
 
 	private ResultActions login(String loginId, String password, Cookie... cookies) throws Exception {
