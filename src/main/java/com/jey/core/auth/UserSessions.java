@@ -30,10 +30,21 @@ public class UserSessions {
 	 * @return 끊은 세션 수
 	 */
 	public int terminateAll(long userId) {
-		Map<String, ? extends Session> found = sessions.findByPrincipalName(String.valueOf(userId));
-		found.keySet().forEach(sessions::deleteById);
-		log.info("세션 강제 종료: userId={} count={}", userId, found.size());
-		return found.size();
+		int terminated = 0;
+		try {
+			Map<String, ? extends Session> found = sessions.findByPrincipalName(String.valueOf(userId));
+			for (String sessionId : found.keySet()) {
+				sessions.deleteById(sessionId);
+				terminated++;
+			}
+		}
+		catch (RuntimeException ex) {
+			// 계정 상태는 이미 바뀌었는데 세션이 남아 있을 수 있다. 여러 번 실행해도 안전하므로 다시 시도하면 된다.
+			log.error("세션 강제 종료 실패: userId={} 끊은 수={}. 남은 세션이 있을 수 있으니 다시 시도해야 한다", userId, terminated, ex);
+			throw ex;
+		}
+		log.info("세션 강제 종료: userId={} count={}", userId, terminated);
+		return terminated;
 	}
 
 }

@@ -12,8 +12,9 @@ import org.springframework.session.web.http.CookieSerializer.CookieValue;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// 운영 설정(Secure 쿠키, 쿠키 도메인)은 운영 프로필에서만 켜진다.
-// 통합 테스트는 그 값으로 돌지 않으므로, 설정값이 쿠키에 반영되는지를 여기서 직접 확인한다.
+// Secure 쿠키는 기본값이 켜짐이고 로컬·테스트 프로필에서만 끈다. 쿠키 도메인은 운영에서만 넣는다.
+// 대부분의 통합 테스트는 그 값으로 돌지 않으므로, 설정값이 쿠키에 반영되는지를 여기서 직접 확인한다.
+// 실제로 뜬 서버가 이 설정을 쓰는지는 InitialAdminLoginTest가 확인한다.
 class SecurityConfigCookieTest {
 
 	private final SecurityConfig config = new SecurityConfig();
@@ -76,7 +77,7 @@ class SecurityConfigCookieTest {
 	}
 
 	private static AuthProperties properties(boolean secureCookies, String cookieDomain) {
-		return new AuthProperties(List.of(), cookieDomain, secureCookies, null, null, null);
+		return new AuthProperties(List.of(), false, cookieDomain, secureCookies, null, null, null);
 	}
 
 }

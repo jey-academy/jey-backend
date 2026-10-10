@@ -102,10 +102,12 @@ class InitialAdminInitializerTest {
 
 		assertThatIllegalStateException()
 				.isThrownBy(() -> initializer(new InitialAdmin("owner", " ", "박원장", false)).createIfNoAccounts())
-				.withMessageContaining("하나만");
+				.withMessageContaining("하나만").withMessageContaining("password가 빠졌다");
 		assertThatIllegalStateException()
 				.isThrownBy(() -> initializer(new InitialAdmin(null, PASSWORD, "박원장", false)).createIfNoAccounts())
-				.withMessageContaining("하나만");
+				.withMessageContaining("login-id가 빠졌다")
+				// 어느 쪽이 빠졌는지는 알리되 비밀번호 값은 싣지 않는다.
+				.withMessageNotContaining(PASSWORD);
 		verify(users, never()).save(any());
 	}
 
@@ -125,7 +127,7 @@ class InitialAdminInitializerTest {
 	}
 
 	private InitialAdminInitializer initializer(InitialAdmin initialAdmin) {
-		var properties = new AuthProperties(List.of(), null, false, Map.of(), Map.of(), initialAdmin);
+		var properties = new AuthProperties(List.of(), false, null, false, Map.of(), Map.of(), initialAdmin);
 		return new InitialAdminInitializer(users, passwordEncoder, properties);
 	}
 

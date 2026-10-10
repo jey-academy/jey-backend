@@ -16,7 +16,8 @@ import org.springframework.stereotype.Component;
  * 계정은 로그인한 관리자만 만들 수 있어야 하므로, 맨 처음 한 명은 로그인 없이 만들 방법이 필요하다.
  * 운영 비밀번호를 Git 저장소(설정 파일, 마이그레이션)에 두지 않으려고 실행 환경의 설정값으로 받는다.
  *
- * <p>설정이 잘못됐으면 예외를 던져 서버 시작을 멈춘다. 아무도 로그인할 수 없는 서버가 정상인 것처럼 뜨는 것을 막는다.
+ * <p>계정이 하나도 없는데 설정이 잘못됐으면 예외를 던져 서버 시작을 멈춘다. 아무도 로그인할 수 없는 서버가 정상인 것처럼 뜨는 것을 막는다.
+ * 계정이 이미 있으면 설정값을 읽지 않으므로 검사도 하지 않는다.
  */
 @Component
 class InitialAdminInitializer implements ApplicationRunner {
@@ -50,8 +51,8 @@ class InitialAdminInitializer implements ApplicationRunner {
 		}
 		InitialAdmin initialAdmin = properties.initialAdmin();
 		if (initialAdmin.isHalfConfigured()) {
-			throw new IllegalStateException(
-					"첫 관리자 설정(jey.auth.initial-admin)에 아이디와 비밀번호 중 하나만 있다. 둘 다 넣어야 한다.");
+			throw new IllegalStateException("첫 관리자 설정(jey.auth.initial-admin)에 아이디와 비밀번호 중 하나만 있다. "
+					+ (initialAdmin.hasLoginId() ? "password" : "login-id") + "가 빠졌다.");
 		}
 		if (!initialAdmin.isConfigured()) {
 			if (initialAdmin.required()) {

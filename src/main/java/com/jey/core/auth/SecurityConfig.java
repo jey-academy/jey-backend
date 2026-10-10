@@ -84,7 +84,7 @@ class SecurityConfig {
 						.accessDeniedHandler((request, response, accessDeniedException) -> {
 							// CSRF 거부는 프론트가 토큰을 싣지 못할 때 나타나는 대표 증상이라 흔적을 남긴다.
 							if (accessDeniedException instanceof CsrfException) {
-								log.warn("CSRF 토큰 거부: {} {} ({})", request.getMethod(), request.getRequestURI(),
+								log.warn("CSRF 토큰 거부: {} {} ({})", request.getMethod(), shorten(request.getRequestURI()),
 										accessDeniedException.getClass().getSimpleName());
 							}
 							delegate(exceptionResolver, request, response, accessDeniedException, HttpStatus.FORBIDDEN);
@@ -167,10 +167,16 @@ class SecurityConfig {
 
 	// 변환기가 응답을 쓰지 못하면(처리기 안에서 오류가 난 경우 등) 상태가 200으로 남아 인증 실패가 성공처럼 보인다.
 	// 그때는 본문이 없더라도 실패 상태로 응답한다.
+	// 로그에 남기는 주소가 지나치게 길지 않게 자른다.
+	private static String shorten(String uri) {
+		return (uri != null && uri.length() > 200) ? uri.substring(0, 200) + "…" : uri;
+	}
+
 	static void delegate(HandlerExceptionResolver exceptionResolver, HttpServletRequest request,
 			HttpServletResponse response, Exception ex, HttpStatus fallback) throws IOException {
 		if (exceptionResolver.resolveException(request, response, null, ex) == null) {
-			log.error("보안 예외를 Problem Details로 변환하지 못했다: {} {}", request.getMethod(), request.getRequestURI(), ex);
+			log.error("보안 예외를 Problem Details로 변환하지 못했다: {} {}", request.getMethod(),
+					shorten(request.getRequestURI()), ex);
 			if (!response.isCommitted()) {
 				response.sendError(fallback.value());
 			}

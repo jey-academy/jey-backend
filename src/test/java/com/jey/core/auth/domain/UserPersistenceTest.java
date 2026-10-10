@@ -85,6 +85,7 @@ class UserPersistenceTest {
 	// DB를 직접 열어 봤을 때 한국 시각으로 읽혀야 한다.
 	// 테스트 JVM의 시간대는 한국도 UTC도 아닌 곳으로 고정돼 있어서(build.gradle.kts),
 	// JVM 시간대로 저장되거나 UTC로 저장되면 이 테스트가 실패한다.
+	// (Gradle로 돌릴 때 그렇다. IDE에서 직접 돌리면 JVM 시간대가 한국이라 JVM 시간대로 저장되는 경우는 가려내지 못한다.)
 	@Test
 	void DB에는_한국_시각으로_저장된다() {
 		User saved = users.saveAndFlush(newUser(uniqueLoginId()));

@@ -9,6 +9,7 @@ import java.util.UUID;
 
 import com.jey.TestcontainersConfiguration;
 import com.jey.core.auth.AccountService;
+import com.jey.core.auth.UserSessions;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.auth.domain.User;
 import com.jey.core.auth.domain.UserRepository;
@@ -22,7 +23,9 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.serializer.JdkSerializationRedisSerializer;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
@@ -55,6 +58,11 @@ class AuthLoginTest {
 
 	private static final String SECURITY_CONTEXT_FIELD = "sessionAttr:SPRING_SECURITY_CONTEXT";
 
+	private static final String EXPIRES_AT_FIELD = "sessionAttr:jey.auth.sessionExpiresAt";
+
+	// Spring Session이 세션 값을 저장하는 것과 같은 방식(Java 직렬화)이다.
+	private static final JdkSerializationRedisSerializer SESSION_VALUE_SERIALIZER = new JdkSerializationRedisSerializer();
+
 	// 비밀번호 해시는 계산이 느리다. 테스트마다 다시 만들지 않고 한 번 만든 것을 같이 쓴다.
 	private static String passwordHash;
 
@@ -72,6 +80,9 @@ class AuthLoginTest {
 
 	@Autowired
 	AccountService accountService;
+
+	@Autowired
+	UserSessions userSessions;
 
 	@Autowired
 	Clock clock;
@@ -255,17 +266,89 @@ class AuthLoginTest {
 				.isBetween(Duration.ofHours(2).minusMinutes(1).toSeconds(), Duration.ofHours(2).plusMinutes(6).toSeconds());
 	}
 
-	// 계속 쓰면 세션 만료가 끝없이 연장되므로, 로그인 시점부터의 상한을 세션에 적어 둔다(SessionMaxLifetimeFilter가 확인한다).
+	// 계속 쓰면 세션 만료가 끝없이 연장되므로, 로그인 시점부터의 상한을 세션에 적어 둔다.
+	// 직원 16시간, 그 밖의 역할 12시간(application.yaml의 jey.auth.session-max-lifetime).
 	@Test
-	void 로그인하면_세션에_최대_유지_시각이_기록된다() throws Exception {
+	void 로그인하면_역할별_최대_유지_시각이_세션에_기록된다() throws Exception {
 		long before = clock.millis();
+		Cookie staffSession = loginAndGetSession(staff.getLoginId());
+		Cookie adminSession = loginAndGetSession(admin.getLoginId());
+		long after = clock.millis();
 
+		assertThat(readExpiresAt(staffSession)).isBetween(before + Duration.ofHours(16).toMillis(),
+				after + Duration.ofHours(16).toMillis());
+		assertThat(readExpiresAt(adminSession)).isBetween(before + Duration.ofHours(12).toMillis(),
+				after + Duration.ofHours(12).toMillis());
+	}
+
+	// 필터가 실제 요청 흐름에 연결돼 있고, 끊긴 세션이 Spring Session에서도 정말 사라지는지 확인한다.
+	@Test
+	void 최대_유지_시각이_지난_세션은_401이고_다시_로그인할_수_있다(CapturedOutput output) throws Exception {
 		Cookie session = loginAndGetSession(staff.getLoginId());
+		writeExpiresAt(session, clock.millis() - 1);
 
-		assertThat(redis.opsForHash().hasKey(redisKey(session), "sessionAttr:jey.auth.sessionExpiresAt")).isTrue();
-		// 값 자체는 직렬화돼 있어 필터 단위 테스트에서 확인하고, 여기서는 로그인 직후에는 끊기지 않는 것만 본다.
-		mockMvc.perform(get("/api/v1/auth/me").cookie(session)).andExpect(status().isOk());
-		assertThat(clock.millis()).isGreaterThanOrEqualTo(before);
+		mockMvc.perform(get("/api/v1/auth/me").cookie(session))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("COMMON_UNAUTHENTICATED"));
+		assertThat(output).contains("최대 유지 시간이 지난 세션을 끊는다");
+		mockMvc.perform(get("/api/v1/auth/me").cookie(session)).andExpect(status().isUnauthorized());
+
+		Cookie relogin = login(staff.getLoginId(), PASSWORD, session).andExpect(status().isOk())
+				.andReturn().getResponse().getCookie(SESSION);
+		assertThat(relogin.getValue()).isNotEqualTo(session.getValue());
+		mockMvc.perform(get("/api/v1/auth/me").cookie(relogin)).andExpect(status().isOk());
+	}
+
+	// 최대 유지 시각을 읽지 못한다고 상한 없이 통과시키면 안 된다. 로그인된 세션에 그 값이 없으면 끊는다.
+	@Test
+	void 최대_유지_시각이_없거나_읽을_수_없는_세션은_끊는다(CapturedOutput output) throws Exception {
+		Cookie missing = loginAndGetSession(staff.getLoginId());
+		redis.opsForHash().delete(redisKey(missing), EXPIRES_AT_FIELD);
+		Cookie unreadable = loginAndGetSession(admin.getLoginId());
+		writeRawField(unreadable, EXPIRES_AT_FIELD, "not-a-java-object".getBytes(StandardCharsets.UTF_8));
+
+		mockMvc.perform(get("/api/v1/auth/me").cookie(missing)).andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/api/v1/auth/me").cookie(unreadable)).andExpect(status().isUnauthorized());
+
+		assertThat(output).contains("최대 유지 시각이 없는 세션을 끊는다");
+	}
+
+	// DB는 악센트나 전각 문자를 같은 글자로 본다. 그런 변형으로 다른 사람의 계정에 닿으면,
+	// 입력한 아이디 기준으로 로그인 시도를 세는 장치를 변형을 돌려 가며 피할 수 있다.
+	@Test
+	void 악센트나_전각_문자를_섞은_아이디로는_로그인할_수_없다() throws Exception {
+		String loginId = staff.getLoginId();
+		String accented = loginId.replaceFirst("s", "ś");
+		String fullWidth = loginId.replaceFirst("s", "ｓ");
+
+		login(accented, PASSWORD).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
+		login(fullWidth, PASSWORD).andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
+		login(loginId, PASSWORD).andExpect(status().isOk());
+	}
+
+	@Test
+	void 세션을_끊으면_끊은_개수를_돌려주고_다시_끊으면_0이다() throws Exception {
+		loginAndGetSession(staff.getLoginId());
+		loginAndGetSession(staff.getLoginId());
+
+		assertThat(userSessions.terminateAll(staff.getId())).isEqualTo(2);
+		assertThat(userSessions.terminateAll(staff.getId())).isZero();
+	}
+
+	// 같은 브라우저에서 다른 계정으로 다시 로그인하면 세션 ID가 바뀐다. 색인도 새 계정으로 옮겨져야 한다.
+	@Test
+	void 다른_계정으로_다시_로그인한_세션은_새_계정의_세션으로_찾아진다() throws Exception {
+		Cookie staffSession = loginAndGetSession(staff.getLoginId());
+		Cookie adminSession = login(admin.getLoginId(), PASSWORD, staffSession).andExpect(status().isOk())
+				.andReturn().getResponse().getCookie(SESSION);
+
+		assertThat(userSessions.terminateAll(staff.getId())).isZero();
+		mockMvc.perform(get("/api/v1/auth/me").cookie(adminSession)).andExpect(status().isOk());
+
+		assertThat(userSessions.terminateAll(admin.getId())).isEqualTo(1);
+		mockMvc.perform(get("/api/v1/auth/me").cookie(adminSession)).andExpect(status().isUnauthorized());
 	}
 
 	// 세션을 고른 가장 큰 이유다. 퇴사한 직원이나 계약이 끝난 연계 학원의 계정은 로그인돼 있더라도 바로 막혀야 한다.
@@ -372,10 +455,25 @@ class AuthLoginTest {
 
 	// Redis에 저장된 로그인 정보를 Java 객체로 읽을 수 없는 바이트로 바꾼다.
 	private void corruptSecurityContext(Cookie session) {
-		redis.execute((org.springframework.data.redis.core.RedisCallback<Object>) connection -> {
+		writeRawField(session, SECURITY_CONTEXT_FIELD, "not-a-java-object".getBytes(StandardCharsets.UTF_8));
+	}
+
+	// 세션에 적힌 최대 유지 시각을 바꾼다. 시계를 바꾸지 않고도 "시간이 지난 세션"을 만들 수 있다.
+	private void writeExpiresAt(Cookie session, long epochMillis) {
+		writeRawField(session, EXPIRES_AT_FIELD, SESSION_VALUE_SERIALIZER.serialize(epochMillis));
+	}
+
+	// 값이 Long이 아니면 여기서 실패한다. 필터는 Long일 때만 시각으로 읽는다.
+	private Long readExpiresAt(Cookie session) {
+		byte[] raw = redis.execute((RedisCallback<byte[]>) connection -> connection.hashCommands().hGet(
+				redisKey(session).getBytes(StandardCharsets.UTF_8), EXPIRES_AT_FIELD.getBytes(StandardCharsets.UTF_8)));
+		return (Long) SESSION_VALUE_SERIALIZER.deserialize(raw);
+	}
+
+	private void writeRawField(Cookie session, String field, byte[] value) {
+		redis.execute((RedisCallback<Object>) connection -> {
 			connection.hashCommands().hSet(redisKey(session).getBytes(StandardCharsets.UTF_8),
-					SECURITY_CONTEXT_FIELD.getBytes(StandardCharsets.UTF_8),
-					"not-a-java-object".getBytes(StandardCharsets.UTF_8));
+					field.getBytes(StandardCharsets.UTF_8), value);
 			return null;
 		});
 	}

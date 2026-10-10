@@ -1,7 +1,11 @@
 package com.jey.core.auth.domain;
 
+import java.util.Locale;
+
 import com.jey.core.auth.api.UserRole;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
@@ -16,6 +20,36 @@ class UserTest {
 
 		assertThat(user.getLoginId()).isEqualTo("desk-staff");
 		assertThat(User.normalizeLoginId(" ADMIN ")).isEqualTo("admin");
+	}
+
+	// DB는 악센트가 붙은 글자나 전각 문자를 같은 글자로 본다. 그런 문자를 허용하면 서로 다른 입력이 한 계정에 닿는다.
+	@ParameterizedTest
+	@ValueSource(strings = { "ádmin", "ａdmin", "관리자", "desk staff", "desk　staff", "ab", "-desk", ".desk",
+			"desk@jey", "DESK İ" })
+	void 아이디에는_영문_소문자와_숫자와_일부_기호만_쓸_수_있다(String loginId) {
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> User.create(loginId, HASH, "김직원", UserRole.STAFF, 1L))
+				.withMessageContaining("loginId");
+		assertThat(User.isValidLoginId(User.normalizeLoginId(loginId))).isFalse();
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "abc", "desk-staff", "desk_staff", "desk.staff", "staff01", "1desk" })
+	void 허용하는_아이디_형식(String loginId) {
+		assertThat(User.create(loginId, HASH, "김직원", UserRole.STAFF, 1L).getLoginId()).isEqualTo(loginId);
+	}
+
+	// 기본 로케일이 터키어여도 대문자 I가 영문 소문자 i가 돼야 한다(터키어에서는 점 없는 ı가 된다).
+	@Test
+	void 소문자로_바꿀_때_실행_환경의_언어_설정에_영향받지_않는다() {
+		Locale original = Locale.getDefault();
+		Locale.setDefault(Locale.forLanguageTag("tr"));
+		try {
+			assertThat(User.normalizeLoginId("ADMIN")).isEqualTo("admin");
+		}
+		finally {
+			Locale.setDefault(original);
+		}
 	}
 
 	// 지점 없는 직원을 허용하면 "지점이 없으면 전 지점"으로 해석하는 곳에서 전 지점 권한이 된다.

@@ -3,6 +3,8 @@ package com.jey.core.auth;
 import java.time.Clock;
 
 import com.jey.core.auth.api.AuthenticatedUser;
+import com.jey.core.auth.domain.User;
+import com.jey.core.auth.domain.UserRepository;
 import com.jey.core.shared.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -37,6 +39,8 @@ public class LoginService {
 
 	private final SecurityContextRepository securityContextRepository;
 
+	private final UserRepository users;
+
 	private final AuthProperties properties;
 
 	private final Clock clock;
@@ -45,10 +49,12 @@ public class LoginService {
 
 	LoginService(AuthenticationManager authenticationManager,
 			SessionAuthenticationStrategy sessionAuthenticationStrategy,
-			SecurityContextRepository securityContextRepository, AuthProperties properties, Clock clock) {
+			SecurityContextRepository securityContextRepository, UserRepository users, AuthProperties properties,
+			Clock clock) {
 		this.authenticationManager = authenticationManager;
 		this.sessionAuthenticationStrategy = sessionAuthenticationStrategy;
 		this.securityContextRepository = securityContextRepository;
+		this.users = users;
 		this.properties = properties;
 		this.clock = clock;
 	}
@@ -61,29 +67,24 @@ public class LoginService {
 			HttpServletResponse response) {
 		AccountUserDetails account = authenticate(loginId, password);
 		AuthenticatedUser user = account.toAuthenticatedUser();
-		// 비활성 여부는 비밀번호가 맞은 뒤에 확인한다. 먼저 확인하면 비활성 계정만 해시 계산 없이 빨리 실패해서,
-		// 응답 시간으로 "존재하지만 비활성인 아이디"를 가려낼 수 있다.
-		if (!account.isActive()) {
-			log.info("로그인 실패: 비활성 계정 userId={}", user.id());
-			throw new BusinessException(AuthErrorCode.INVALID_CREDENTIALS);
-		}
+		requireStillActive(user);
 		// 인증 관리자가 돌려준 토큰의 principal은 AccountUserDetails다. 세션에는 그 대신 AuthenticatedUser만 저장한다.
 		Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(user, null,
 				account.getAuthorities());
 
 		// 기존 세션이 있으면 세션 ID를 바꾼 뒤에 로그인 상태를 저장한다(세션 고정 공격 방지).
 		sessionAuthenticationStrategy.onAuthentication(authentication, request, response);
+		HttpSession session = request.getSession();
+		// 만료 시간과 최대 유지 시각을 로그인 정보보다 먼저 넣는다. 로그인 정보만 있고 상한이 없는 세션이 생기지 않게 한다.
+		// 만료 시간은 마지막 요청 기준이라 쓰는 동안 계속 연장된다.
+		session.setMaxInactiveInterval((int) properties.sessionTimeoutFor(user.role()).toSeconds());
+		// 최대 유지 시각은 로그인 시점 기준이다. 계속 쓰고 있어도 이 시각이 지나면 SessionMaxLifetimeFilter가 끊는다.
+		session.setAttribute(SessionMaxLifetimeFilter.EXPIRES_AT_ATTRIBUTE,
+				clock.instant().plus(properties.sessionMaxLifetimeFor(user.role())).toEpochMilli());
 		SecurityContext context = SecurityContextHolder.createEmptyContext();
 		context.setAuthentication(authentication);
 		SecurityContextHolder.setContext(context);
 		securityContextRepository.saveContext(context, request, response);
-
-		HttpSession session = request.getSession();
-		// 마지막 요청으로부터의 만료 시간. 쓰는 동안에는 계속 연장된다.
-		session.setMaxInactiveInterval((int) properties.sessionTimeoutFor(user.role()).toSeconds());
-		// 로그인 시점으로부터의 최대 유지 시간. 계속 쓰고 있어도 이 시각이 지나면 SessionMaxLifetimeFilter가 끊는다.
-		session.setAttribute(SessionMaxLifetimeFilter.EXPIRES_AT_ATTRIBUTE,
-				clock.instant().plus(properties.sessionMaxLifetimeFor(user.role())).toEpochMilli());
 		log.info("로그인: userId={} role={}", user.id(), user.role());
 		return user;
 	}
@@ -110,6 +111,19 @@ public class LoginService {
 			// 이것을 "비밀번호가 틀렸다"로 응답하면 장애가 로그인 실패로 보이고 원인도 남지 않는다.
 			// AuthenticationException인 채로 던지면 401로 바뀌므로 다른 예외로 감싸 500과 원인 로그가 남게 한다.
 			throw new IllegalStateException("로그인 처리 중 내부 오류", ex);
+		}
+	}
+
+	// 비활성 여부는 비밀번호가 맞은 뒤에 확인한다. 먼저 확인하면 비활성 계정만 해시 계산 없이 빨리 실패해서,
+	// 응답 시간으로 "존재하지만 비활성인 아이디"를 가려낼 수 있다.
+	// 비밀번호 검증 전에 읽어 둔 값을 쓰지 않고 지금 DB에서 다시 읽는다. 해시를 계산하는 동안 계정이 차단됐을 수 있고,
+	// 그 경우 차단 쪽이 세션을 끊은 뒤에 이 로그인의 세션이 저장되어 살아남기 때문이다.
+	// 다시 읽은 직후부터 세션이 저장될 때까지의 짧은 틈은 남는다(ADR-0019).
+	private void requireStillActive(AuthenticatedUser user) {
+		boolean active = users.findById(user.id()).map(User::isActive).orElse(false);
+		if (!active) {
+			log.info("로그인 실패: 비활성 계정 userId={}", user.id());
+			throw new BusinessException(AuthErrorCode.INVALID_CREDENTIALS);
 		}
 	}
 

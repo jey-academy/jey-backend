@@ -1,6 +1,7 @@
 package com.jey.core.auth.domain;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.shared.BaseEntity;
@@ -24,6 +25,9 @@ public class User extends BaseEntity {
 
 	private static final int MAX_NAME_LENGTH = 50;
 
+	// 영문 소문자, 숫자, 점, 밑줄, 하이픈만. 3~50자, 첫 글자는 영문이나 숫자.
+	private static final Pattern LOGIN_ID = Pattern.compile("[a-z0-9][a-z0-9._-]{2,49}");
+
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
@@ -41,7 +45,7 @@ public class User extends BaseEntity {
 	@Column(nullable = false, length = 20)
 	private UserRole role;
 
-	// 직원만 가진다. 전 지점을 보는 관리자와 연계 학원은 지점이 없다.
+	// 직원만 가진다. 관리자(전 지점)와 연계 학원은 지점이 없다.
 	@Column(name = "campus_id")
 	private Long campusId;
 
@@ -74,7 +78,9 @@ public class User extends BaseEntity {
 			throw new IllegalArgumentException("role은 비울 수 없다");
 		}
 		String normalizedLoginId = normalizeLoginId(loginId);
-		requireMaxLength(normalizedLoginId, MAX_LOGIN_ID_LENGTH, "loginId");
+		if (!isValidLoginId(normalizedLoginId)) {
+			throw new IllegalArgumentException("loginId는 영문 소문자, 숫자, '.', '_', '-'로 3~50자여야 한다");
+		}
 		requireMaxLength(name, MAX_NAME_LENGTH, "name");
 		// 인코더가 만든 해시는 {bcrypt}처럼 알고리즘 이름으로 시작한다. 원문 비밀번호를 그대로 넘기는 실수를 여기서 막는다.
 		if (!passwordHash.startsWith("{")) {
@@ -90,6 +96,15 @@ public class User extends BaseEntity {
 	 */
 	public static String normalizeLoginId(String loginId) {
 		return loginId.trim().toLowerCase(Locale.ROOT);
+	}
+
+	/**
+	 * 맞춘 아이디가 허용하는 형식인지. 영문 소문자, 숫자, 점, 밑줄, 하이픈으로 3~50자다.
+	 * DB는 악센트가 붙은 글자나 전각 문자를 같은 글자로 본다. 그런 문자를 허용하면 서로 다른 입력이 한 계정에 닿아서,
+	 * 입력한 아이디 기준으로 로그인 시도를 세는 장치를 피할 수 있게 된다.
+	 */
+	public static boolean isValidLoginId(String normalizedLoginId) {
+		return LOGIN_ID.matcher(normalizedLoginId).matches();
 	}
 
 	/**

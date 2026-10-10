@@ -35,8 +35,14 @@ final class TolerantSessionSerializer implements RedisSerializer<Object> {
 			return delegate.deserialize(bytes);
 		}
 		catch (SerializationException ex) {
-			// 세션 내용은 남기지 않고 원인만 남긴다.
-			log.warn("세션 값을 읽지 못해 없는 것으로 취급한다: {}", String.valueOf(NestedExceptionUtils.getMostSpecificCause(ex)));
+			Throwable cause = NestedExceptionUtils.getMostSpecificCause(ex);
+			// 메모리 부족이나 클래스 누락 같은 JVM 오류는 세션의 문제가 아니라 서버의 문제다.
+			// 이것까지 "로그인 안 한 것"으로 바꾸면 배포가 깨졌는데 전원이 로그아웃된 것처럼만 보인다.
+			if (cause instanceof Error) {
+				throw ex;
+			}
+			// 세션 내용은 남기지 않고 원인만 남긴다. 이런 세션은 SessionMaxLifetimeFilter가 곧 끊으므로 로그가 반복되지 않는다.
+			log.warn("세션 값을 읽지 못해 없는 것으로 취급한다: {}", String.valueOf(cause));
 			return null;
 		}
 	}

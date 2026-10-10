@@ -89,6 +89,20 @@ class GlobalExceptionHandlerTest {
 				.andExpect(content().string(not(containsString("IllegalStateException"))));
 	}
 
+	// 로그인 중 DB 오류가 났을 때의 모양이다. 원인이 인증 예외라는 이유로 401 "로그인이 필요합니다"나
+	// "비밀번호가 틀렸습니다"가 되면 장애가 로그인 실패로 보인다.
+	@Test
+	void 원인이_인증_예외인_내부_오류도_500이고_원인은_로그에만_남는다(CapturedOutput output) throws Exception {
+		mockMvc.perform(get("/api/v1/test-errors/unexpected-auth-cause"))
+				.andExpect(status().isInternalServerError())
+				.andExpect(jsonPath("$.code").value("COMMON_INTERNAL_ERROR"))
+				.andExpect(content().string(not(containsString("secret-host"))))
+				.andExpect(content().string(not(containsString("AUTH_INVALID_CREDENTIALS"))))
+				.andExpect(content().string(not(containsString("COMMON_UNAUTHENTICATED"))));
+
+		assertThat(output).contains("InternalAuthenticationServiceException").contains("secret-host");
+	}
+
 	@Test
 	void 처리되지_않은_예외의_원인은_로그에_남는다(CapturedOutput output) throws Exception {
 		mockMvc.perform(get("/api/v1/test-errors/unexpected")).andExpect(status().isInternalServerError());

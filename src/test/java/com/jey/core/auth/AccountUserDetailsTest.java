@@ -27,7 +27,7 @@ class AccountUserDetailsTest {
 	}
 
 	// Spring Security는 isEnabled를 비밀번호보다 먼저 확인한다. 여기서 false를 주면 비활성 계정만 해시 계산 없이 빨리 실패해서
-	// 응답 시간으로 가려낼 수 있다. 비활성 여부는 isActive로 따로 알리고, 비밀번호가 맞은 뒤에 LoginService가 확인한다.
+	// 응답 시간으로 가려낼 수 있다. 비활성 여부는 비밀번호가 맞은 뒤에 LoginService가 DB에서 다시 읽어 확인한다.
 	@Test
 	void 비활성_계정도_비밀번호_검증까지는_간다() {
 		User disabled = savedUser("left");
@@ -36,7 +36,6 @@ class AccountUserDetailsTest {
 		var details = new AccountUserDetails(disabled);
 
 		assertThat(details.isEnabled()).isTrue();
-		assertThat(details.isActive()).isFalse();
 	}
 
 	@Test
