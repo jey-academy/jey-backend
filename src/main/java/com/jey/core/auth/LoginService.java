@@ -1,6 +1,7 @@
 package com.jey.core.auth;
 
 import java.time.Clock;
+import java.time.Duration;
 
 import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.domain.User;
@@ -11,6 +12,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.AccountStatusException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -41,6 +43,8 @@ public class LoginService {
 
 	private final UserRepository users;
 
+	private final LoginAttemptLimiter attemptLimiter;
+
 	private final AuthProperties properties;
 
 	private final Clock clock;
@@ -49,25 +53,37 @@ public class LoginService {
 
 	LoginService(AuthenticationManager authenticationManager,
 			SessionAuthenticationStrategy sessionAuthenticationStrategy,
-			SecurityContextRepository securityContextRepository, UserRepository users, AuthProperties properties,
-			Clock clock) {
+			SecurityContextRepository securityContextRepository, UserRepository users,
+			LoginAttemptLimiter attemptLimiter, AuthProperties properties, Clock clock) {
 		this.authenticationManager = authenticationManager;
 		this.sessionAuthenticationStrategy = sessionAuthenticationStrategy;
 		this.securityContextRepository = securityContextRepository;
 		this.users = users;
+		this.attemptLimiter = attemptLimiter;
 		this.properties = properties;
 		this.clock = clock;
 	}
 
 	/**
 	 * @throws BusinessException 아이디가 없거나, 비밀번호가 틀렸거나, 비활성 계정일 때. 응답에서는 셋을 구분하지 않는다.
+	 * 시도 한도를 넘었을 때는 {@code TOO_MANY_ATTEMPTS}이고 응답에 {@code Retry-After} 헤더를 싣는다.
 	 * @throws IllegalStateException 계정을 조회하지 못하는 등 내부 문제로 로그인을 처리하지 못했을 때
 	 */
 	public AuthenticatedUser login(String loginId, String password, HttpServletRequest request,
 			HttpServletResponse response) {
+		// 운영에서는 프록시가 넘겨준 주소다(server.forward-headers-strategy).
+		String clientIp = request.getRemoteAddr();
+		// 비밀번호를 검증하기 전에 센다. 한도를 넘었으면 맞는 비밀번호여도 검증하지 않는다.
+		attemptLimiter.countAttempt(loginId, clientIp).ifPresent(retryAfter -> {
+			response.setHeader(HttpHeaders.RETRY_AFTER, String.valueOf(secondsRoundedUp(retryAfter)));
+			log.warn("로그인 시도 제한 초과: ip={}", clientIp);
+			throw new BusinessException(AuthErrorCode.TOO_MANY_ATTEMPTS);
+		});
 		AccountUserDetails account = authenticate(loginId, password);
 		AuthenticatedUser user = account.toAuthenticatedUser();
 		requireStillActive(user);
+		// 여기까지 오지 못한 시도(틀린 비밀번호, 없는 아이디, 비활성 계정)는 실패로 남는다.
+		attemptLimiter.loginSucceeded(loginId, clientIp);
 		// 인증 관리자가 돌려준 토큰의 principal은 AccountUserDetails다. 세션에는 그 대신 AuthenticatedUser만 저장한다.
 		Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(user, null,
 				account.getAuthorities());
@@ -92,6 +108,11 @@ public class LoginService {
 	public void logout(HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
 		logoutHandler.logout(request, response, authentication);
 		log.info("로그아웃: userId={}", (authentication != null) ? authentication.getName() : null);
+	}
+
+	// 0초로 답하면 프론트가 바로 다시 시도한다. 올림해서 최소 1초가 되게 한다.
+	private static long secondsRoundedUp(Duration duration) {
+		return Math.max(1, (duration.toMillis() + 999) / 1000);
 	}
 
 	private AccountUserDetails authenticate(String loginId, String password) {

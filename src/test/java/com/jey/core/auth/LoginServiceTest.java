@@ -1,6 +1,7 @@
 package com.jey.core.auth;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -29,6 +31,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -46,8 +50,11 @@ class LoginServiceTest {
 
 	private final UserRepository users = mock(UserRepository.class);
 
+	// 따로 정하지 않으면 "한도를 넘지 않았다"(빈 값)로 답한다.
+	private final LoginAttemptLimiter attemptLimiter = mock(LoginAttemptLimiter.class);
+
 	private final LoginService loginService = new LoginService(authenticationManager, sessionStrategy,
-			contextRepository, users, new AuthProperties(List.of(), false, null, false, null, null, null),
+			contextRepository, users, attemptLimiter, new AuthProperties(List.of(), false, null, false, null, null, null),
 			Clock.systemUTC());
 
 	@Test
@@ -123,6 +130,69 @@ class LoginServiceTest {
 
 		assertThat(output).contains("로그인 실패: BadCredentialsException")
 				.doesNotContain("typed-id").doesNotContain("typed-password");
+	}
+
+	// 한도를 넘은 뒤에는 비밀번호가 맞는지조차 알려 주지 않는다. 해시 계산도 하지 않는다.
+	@Test
+	void 시도_한도를_넘으면_비밀번호를_검증하지_않고_거부한다(CapturedOutput output) {
+		when(attemptLimiter.countAttempt("typed-id", "127.0.0.1")).thenReturn(Optional.of(Duration.ofMillis(89_001)));
+		var response = new MockHttpServletResponse();
+
+		assertThatThrownBy(() -> loginService.login("typed-id", "typed-password", new MockHttpServletRequest(),
+				response))
+				.isInstanceOfSatisfying(BusinessException.class,
+						ex -> assertThat(ex.getErrorCode()).isEqualTo(AuthErrorCode.TOO_MANY_ATTEMPTS));
+
+		verifyNoInteractions(authenticationManager, sessionStrategy, contextRepository);
+		// 89.001초는 90초로 올린다. 내림하면 프론트가 아직 막혀 있을 때 다시 시도한다.
+		assertThat(response.getHeader(HttpHeaders.RETRY_AFTER)).isEqualTo("90");
+		assertThat(output).contains("로그인 시도 제한 초과: ip=127.0.0.1").doesNotContain("typed-id");
+	}
+
+	@Test
+	void 남은_시간이_1초보다_짧아도_Retry_After는_1초다() {
+		when(attemptLimiter.countAttempt(any(), any())).thenReturn(Optional.of(Duration.ofMillis(1)));
+		var response = new MockHttpServletResponse();
+
+		assertThatThrownBy(() -> loginService.login("typed-id", "typed-password", new MockHttpServletRequest(),
+				response)).isInstanceOf(BusinessException.class);
+
+		assertThat(response.getHeader(HttpHeaders.RETRY_AFTER)).isEqualTo("1");
+	}
+
+	@Test
+	void 로그인에_성공하면_시도_횟수를_지운다() {
+		User user = savedUser();
+		authenticationSucceedsWith(user);
+		when(users.findById(USER_ID)).thenReturn(Optional.of(user));
+
+		login();
+
+		verify(attemptLimiter).countAttempt("typed-id", "127.0.0.1");
+		verify(attemptLimiter).loginSucceeded("typed-id", "127.0.0.1");
+	}
+
+	@Test
+	void 비밀번호가_틀리면_시도_횟수가_남는다() {
+		when(authenticationManager.authenticate(any())).thenThrow(new BadCredentialsException("bad"));
+
+		assertThatThrownBy(this::login).isInstanceOf(BusinessException.class);
+
+		verify(attemptLimiter).countAttempt("typed-id", "127.0.0.1");
+		verify(attemptLimiter, never()).loginSucceeded(any(), any());
+	}
+
+	// 비밀번호가 맞아도 비활성 계정이면 실패다. 횟수를 지우면 차단된 계정의 비밀번호를 한도 없이 확인할 수 있다.
+	@Test
+	void 비활성_계정은_비밀번호가_맞아도_시도_횟수가_남는다() {
+		authenticationSucceedsWith(savedUser());
+		User nowDisabled = savedUser();
+		nowDisabled.disable();
+		when(users.findById(USER_ID)).thenReturn(Optional.of(nowDisabled));
+
+		assertThatThrownBy(this::login).isInstanceOf(BusinessException.class);
+
+		verify(attemptLimiter, never()).loginSucceeded(any(), any());
 	}
 
 	private void authenticationSucceedsWith(User user) {

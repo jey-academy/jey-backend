@@ -43,6 +43,13 @@ jey:
       admin: 12h
       staff: 16h
       partner: 12h
+    # 로그인 시도 제한 (ADR-0020). window 동안의 실패를 세고, 한도를 넘으면 429로 응답한다.
+    login-attempt-limit:
+      window: 15m
+      # 한 IP에서 한 아이디로 실패할 수 있는 횟수
+      max-failures-per-login-id-and-ip: 5
+      # 한 IP에서 아이디와 무관하게 실패할 수 있는 횟수. 같은 공유기를 쓰는 사람끼리 나눠 쓴다.
+      max-failures-per-ip: 30
 
 management:
   endpoints:

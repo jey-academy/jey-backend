@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
@@ -39,7 +40,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(AuthProperties.class)
+@EnableConfigurationProperties({ AuthProperties.class, LoginAttemptProperties.class })
 class SecurityConfig {
 
 	private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
@@ -65,6 +66,9 @@ class SecurityConfig {
 				// 토큰 없는 변경 요청은 로그인 여부와 무관하게 403이다.
 				.csrf(csrf -> csrf.spa().csrfTokenRepository(csrfTokenRepository))
 				.authorizeHttpRequests(auth -> auth
+						// 필터가 sendError로 끝낸 요청을 서블릿 컨테이너가 오류 경로(/error)로 다시 보내는 경우다.
+						// 여기에 인증을 요구하면 원래 오류(400 등)가 401로 바뀐다. 밖에서 /error를 직접 부르는 요청은 해당하지 않는다.
+						.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
 						.requestMatchers(PUBLIC_PATHS).permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
 						// 로그인은 인증 없이 열지만 CSRF 토큰은 필요하다.
@@ -148,6 +152,8 @@ class SecurityConfig {
 		configuration.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN", "Idempotency-Key"));
 		// 세션 쿠키를 실은 요청을 받아야 한다. 이 경우 허용 출처에 *를 쓸 수 없어 목록으로 받는다.
 		configuration.setAllowCredentials(true);
+		// 다른 출처의 응답 헤더는 여기에 적어야 프론트가 읽을 수 있다. 로그인 시도 제한(429)의 남은 시간이다.
+		configuration.setExposedHeaders(List.of("Retry-After"));
 		configuration.setMaxAge(Duration.ofHours(1));
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/api/**", configuration);

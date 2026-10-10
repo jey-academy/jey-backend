@@ -88,7 +88,7 @@ class LoginWiringTest {
 		var provider = new DaoAuthenticationProvider(new AccountUserDetailsService(users));
 		provider.setPasswordEncoder(passwordEncoder);
 		return new LoginService(new ProviderManager(provider), mock(SessionAuthenticationStrategy.class),
-				mock(SecurityContextRepository.class), users,
+				mock(SecurityContextRepository.class), users, mock(LoginAttemptLimiter.class),
 				new AuthProperties(List.of(), false, null, false, null, null, null), Clock.systemUTC());
 	}
 
