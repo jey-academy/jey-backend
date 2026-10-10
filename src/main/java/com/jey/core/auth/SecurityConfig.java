@@ -12,8 +12,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -37,6 +39,7 @@ import org.springframework.session.web.http.DefaultCookieSerializer;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 @Configuration(proxyBeanMethods = false)
@@ -61,6 +64,7 @@ class SecurityConfig {
 			SecurityContextRepository securityContextRepository, CsrfTokenRepository csrfTokenRepository,
 			CorsConfigurationSource corsConfigurationSource, Clock clock) throws Exception {
 		return http
+				// 같은 설정으로 아래 earlyCorsFilter가 먼저 돈다. 여기서는 이미 붙은 헤더를 보고 넘어간다.
 				.cors(cors -> cors.configurationSource(corsConfigurationSource))
 				// 토큰을 쿠키(XSRF-TOKEN)로 주고 헤더(X-XSRF-TOKEN)로 받는다. CSRF 검사는 인증 검사보다 먼저 돌기 때문에
 				// 토큰 없는 변경 요청은 로그인 여부와 무관하게 403이다.
@@ -158,6 +162,17 @@ class SecurityConfig {
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/api/**", configuration);
 		return source;
+	}
+
+	// CORS 헤더를 세션 필터보다 먼저 붙인다. 보안 필터 안에서만 붙이면, 그보다 앞에서 난 오류(세션 저장소 장애 등)의 응답에는
+	// 헤더가 없어서 다른 출처의 프론트가 그 응답을 읽지 못하고 네트워크 오류로 본다.
+	// 순서는 오류를 잡는 맨 앞 필터(core.web.FilterExceptionFilter) 바로 다음이다.
+	@Bean
+	FilterRegistrationBean<CorsFilter> earlyCorsFilter(CorsConfigurationSource corsConfigurationSource) {
+		FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(
+				new CorsFilter(corsConfigurationSource));
+		registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
+		return registration;
 	}
 
 	@Bean

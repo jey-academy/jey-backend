@@ -56,6 +56,12 @@ class ErrorTestController {
 				new InternalAuthenticationServiceException("jdbc:mysql://secret-host:3306/jey"));
 	}
 
+	// 필터 단계에서 계정을 확인하다 DB 오류가 나면 Spring Security가 이 예외로 감싸 던진다.
+	@GetMapping("/auth-service-failure")
+	void authenticationServiceFailure() {
+		throw new InternalAuthenticationServiceException("jdbc:mysql://secret-host:3306/jey");
+	}
+
 	@GetMapping("/denied")
 	void denied() {
 		throw new AccessDeniedException("내부 사유");

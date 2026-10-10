@@ -6,6 +6,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 import com.jey.TestcontainersConfiguration;
 import jakarta.servlet.FilterChain;
@@ -37,7 +38,8 @@ class FilterStageErrorTest {
 	@Value("${local.server.port}")
 	int port;
 
-	private final HttpClient client = HttpClient.newHttpClient();
+	// 서버가 응답하지 않을 때 테스트가 끝없이 기다리지 않게 한다.
+	private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
 	// 세션 저장소(Redis)가 응답하지 않을 때 세션 필터에서 이런 예외가 난다.
 	// 401로 응답하면 프론트가 장애를 "로그인이 풀렸다"로 보고 로그인 화면으로 보낸다.
@@ -46,6 +48,20 @@ class FilterStageErrorTest {
 		HttpResponse<String> response = get("/api/v1/test-filter/exception");
 
 		assertInternalError(response);
+	}
+
+	// 오류가 보안 필터보다 앞에서 나도 CORS 헤더가 있어야 한다. 없으면 다른 출처의 프론트는 이 응답을 읽지 못하고
+	// 네트워크 오류로 본다.
+	@Test
+	void 필터에서_난_오류의_응답도_다른_출처의_프론트가_읽을_수_있다() throws Exception {
+		HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/v1/test-filter/exception"))
+				.timeout(Duration.ofSeconds(30)).header("Origin", "http://localhost:5173").GET().build();
+
+		HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+		assertInternalError(response);
+		assertThat(response.headers().firstValue("Access-Control-Allow-Origin")).contains("http://localhost:5173");
+		assertThat(response.headers().firstValue("Access-Control-Allow-Credentials")).contains("true");
 	}
 
 	// 읽을 수 없는 세션의 원인이 JVM 오류면 TolerantSessionSerializer가 Error를 그대로 던진다.
@@ -63,7 +79,8 @@ class FilterStageErrorTest {
 
 		assertThat(response.statusCode()).isEqualTo(400);
 		assertThat(response.headers().firstValue("Content-Type").orElse("")).startsWith("application/problem+json");
-		assertThat(response.body()).contains("\"code\":\"COMMON_BAD_REQUEST\"").contains("\"status\":400");
+		assertThat(response.body()).contains("\"code\":\"COMMON_BAD_REQUEST\"").contains("\"status\":400")
+				.contains("\"instance\":\"/api/v1/auth//me\"");
 	}
 
 	// 오류 경로의 인증을 풀어 준 것은 컨테이너가 다시 보낸 요청뿐이다. 밖에서 직접 부르면 다른 주소와 똑같이 인증을 요구한다.
@@ -83,7 +100,8 @@ class FilterStageErrorTest {
 	}
 
 	private HttpResponse<String> get(String path) throws Exception {
-		HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path)).GET().build();
+		HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+				.timeout(Duration.ofSeconds(30)).GET().build();
 		return client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 	}
 

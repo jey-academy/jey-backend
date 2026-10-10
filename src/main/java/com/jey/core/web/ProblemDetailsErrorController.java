@@ -3,8 +3,11 @@ package com.jey.core.web;
 import java.net.URI;
 
 import com.jey.core.shared.CommonErrorCode;
+import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.webmvc.error.ErrorController;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -20,14 +23,25 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>이 타입의 빈이 있으면 Spring Boot의 기본 오류 컨트롤러는 등록되지 않는다.
  */
+// API가 아니므로 OpenAPI 명세에 싣지 않는다. 실으면 프론트의 API 클라이언트 생성에 /error가 섞인다.
+@Hidden
 @RestController
 class ProblemDetailsErrorController implements ErrorController {
+
+	private static final Logger log = LoggerFactory.getLogger(ProblemDetailsErrorController.class);
 
 	@RequestMapping("${server.error.path:/error}")
 	ResponseEntity<ProblemDetail> error(HttpServletRequest request) {
 		// 컨테이너가 넘긴 것이 아니라 누군가 이 주소를 직접 부른 경우에는 오류 상태가 없다. 없는 주소로 답한다.
 		HttpStatusCode status = (request.getAttribute(RequestDispatcher.ERROR_STATUS_CODE) instanceof Integer code)
 				? HttpStatusCode.valueOf(code) : HttpStatus.NOT_FOUND;
+		// 여기는 마지막 경로다. 보낸 쪽이 로그를 남기지 않았으면 5xx의 흔적이 어디에도 없게 된다.
+		if (status.is5xxServerError()) {
+			log.error("오류 경로로 온 서버 오류: status={} uri={} message={}", status.value(),
+					request.getAttribute(RequestDispatcher.ERROR_REQUEST_URI),
+					request.getAttribute(RequestDispatcher.ERROR_MESSAGE),
+					(request.getAttribute(RequestDispatcher.ERROR_EXCEPTION) instanceof Throwable cause) ? cause : null);
+		}
 		// 원래 사유 문구에는 내부 정보가 섞일 수 있어 상태에 맞는 공통 문구만 내보낸다.
 		CommonErrorCode errorCode = CommonErrorCode.fromStatus(status);
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, errorCode.message());
