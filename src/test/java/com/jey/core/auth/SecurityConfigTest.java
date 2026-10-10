@@ -6,10 +6,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Import(TestcontainersConfiguration.class)
@@ -32,8 +36,25 @@ class SecurityConfigTest {
 	}
 
 	@Test
-	void 그_외_경로는_인증이_없으면_401() throws Exception {
-		mockMvc.perform(get("/api/v1/anything")).andExpect(status().isUnauthorized());
+	void 그_외_경로는_인증이_없으면_401_Problem_Details() throws Exception {
+		mockMvc.perform(get("/api/v1/anything"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+				.andExpect(jsonPath("$.title").value("Unauthorized"))
+				.andExpect(jsonPath("$.status").value(401))
+				.andExpect(jsonPath("$.detail").value("로그인이 필요합니다."))
+				.andExpect(jsonPath("$.code").value("COMMON_UNAUTHENTICATED"));
+	}
+
+	@Test
+	@WithMockUser
+	void CSRF_토큰_없는_변경_요청은_403_Problem_Details() throws Exception {
+		mockMvc.perform(post("/api/v1/anything"))
+				.andExpect(status().isForbidden())
+				.andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+				.andExpect(jsonPath("$.status").value(403))
+				.andExpect(jsonPath("$.detail").value("권한이 없습니다."))
+				.andExpect(jsonPath("$.code").value("COMMON_FORBIDDEN"));
 	}
 
 }
