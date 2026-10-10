@@ -2,6 +2,7 @@ package com.jey.core.web;
 
 import java.net.URI;
 
+import com.jey.core.auth.api.PublicEndpoint;
 import com.jey.core.shared.CommonErrorCode;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.RequestDispatcher;
@@ -25,6 +26,8 @@ import org.springframework.web.bind.annotation.RestController;
  */
 // API가 아니므로 OpenAPI 명세에 싣지 않는다. 실으면 프론트의 API 클라이언트 생성에 /error가 섞인다.
 @Hidden
+// 오류 경로는 로그인 여부와 무관하게 답해야 한다. 로그인을 요구하면 원래 오류가 401로 바뀐다.
+@PublicEndpoint
 @RestController
 class ProblemDetailsErrorController implements ErrorController {
 

@@ -21,7 +21,7 @@ final class AccountUserDetails implements UserDetails, CredentialsContainer {
 
 	AccountUserDetails(User user) {
 		this.user = new AuthenticatedUser(user.getId(), user.getLoginId(), user.getName(), user.getRole(),
-				user.getCampusId());
+				user.getCampusId(), user.getPartnerId());
 		this.passwordHash = user.getPasswordHash();
 	}
 
@@ -31,7 +31,7 @@ final class AccountUserDetails implements UserDetails, CredentialsContainer {
 
 	@Override
 	public Collection<? extends GrantedAuthority> getAuthorities() {
-		return List.of(new SimpleGrantedAuthority("ROLE_" + user.role().name()));
+		return List.of(new SimpleGrantedAuthority(user.role().authority()));
 	}
 
 	@Override

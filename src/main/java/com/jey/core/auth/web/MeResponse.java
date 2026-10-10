@@ -6,6 +6,7 @@ import com.jey.core.auth.api.UserRole;
 /**
  * @param campusId 소속 지점. 지점이 없는 계정(관리자, 연계 학원)은 {@code null}이다.
  * 필드를 빼지 않고 null로 내보내서 응답의 모양이 항상 같게 한다.
+ * 연계 학원 식별자는 화면이 쓸 곳이 없어 내보내지 않는다.
  */
 record MeResponse(Long id, String loginId, String name, UserRole role, Long campusId) {
 

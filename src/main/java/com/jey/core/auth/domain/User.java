@@ -49,6 +49,10 @@ public class User extends BaseEntity {
 	@Column(name = "campus_id")
 	private Long campusId;
 
+	// 연계 학원 계정만 가진다. 연계 학원 테이블은 동탄고 패스 모듈에 있어 외래 키는 없다.
+	@Column(name = "partner_id")
+	private Long partnerId;
+
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, length = 20)
 	private UserStatus status;
@@ -56,21 +60,23 @@ public class User extends BaseEntity {
 	protected User() {
 	}
 
-	private User(String loginId, String passwordHash, String name, UserRole role, Long campusId) {
+	private User(String loginId, String passwordHash, String name, UserRole role, Long campusId, Long partnerId) {
 		this.loginId = loginId;
 		this.passwordHash = passwordHash;
 		this.name = name;
 		this.role = role;
 		this.campusId = campusId;
+		this.partnerId = partnerId;
 		this.status = UserStatus.ACTIVE;
 	}
 
 	/**
 	 * @param loginId 앞뒤 공백을 떼고 소문자로 바꿔 저장한다({@link #normalizeLoginId})
 	 * @param passwordHash 해시된 비밀번호. 원문을 넘기지 않는다.
-	 * @throws IllegalArgumentException 필수값이 비었거나, 길이가 넘거나, 해시가 아니거나, 역할과 지점의 조합이 맞지 않을 때
+	 * @throws IllegalArgumentException 필수값이 비었거나, 길이가 넘거나, 해시가 아니거나, 역할과 지점·연계 학원 식별자의 조합이 맞지 않을 때
 	 */
-	public static User create(String loginId, String passwordHash, String name, UserRole role, Long campusId) {
+	public static User create(String loginId, String passwordHash, String name, UserRole role, Long campusId,
+			Long partnerId) {
 		requireText(loginId, "loginId");
 		requireText(passwordHash, "passwordHash");
 		requireText(name, "name");
@@ -86,8 +92,8 @@ public class User extends BaseEntity {
 		if (!passwordHash.startsWith("{")) {
 			throw new IllegalArgumentException("passwordHash는 해시된 값이어야 한다");
 		}
-		role.validateCampus(campusId);
-		return new User(normalizedLoginId, passwordHash, name, role, campusId);
+		role.validateAffiliation(campusId, partnerId);
+		return new User(normalizedLoginId, passwordHash, name, role, campusId, partnerId);
 	}
 
 	/**
@@ -141,6 +147,10 @@ public class User extends BaseEntity {
 
 	public Long getCampusId() {
 		return campusId;
+	}
+
+	public Long getPartnerId() {
+		return partnerId;
 	}
 
 	private static void requireText(String value, String field) {

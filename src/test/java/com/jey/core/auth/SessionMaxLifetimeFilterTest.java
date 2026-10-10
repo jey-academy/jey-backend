@@ -96,7 +96,7 @@ class SessionMaxLifetimeFilterTest {
 	}
 
 	private static MockHttpSession loggedInSession(Object expiresAt) {
-		var user = new AuthenticatedUser(42L, "desk", "김직원", UserRole.STAFF, 1L);
+		var user = new AuthenticatedUser(42L, "desk", "김직원", UserRole.STAFF, 1L, null);
 		var session = new MockHttpSession();
 		session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
 				new SecurityContextImpl(UsernamePasswordAuthenticationToken.authenticated(user, null, List.of())));

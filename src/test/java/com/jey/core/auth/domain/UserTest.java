@@ -16,7 +16,7 @@ class UserTest {
 
 	@Test
 	void 아이디는_앞뒤_공백을_떼고_소문자로_저장한다() {
-		User user = User.create("  Desk-Staff ", HASH, "김직원", UserRole.STAFF, 1L);
+		User user = User.create("  Desk-Staff ", HASH, "김직원", UserRole.STAFF, 1L, null);
 
 		assertThat(user.getLoginId()).isEqualTo("desk-staff");
 		assertThat(User.normalizeLoginId(" ADMIN ")).isEqualTo("admin");
@@ -28,7 +28,7 @@ class UserTest {
 			"desk@jey", "DESK İ" })
 	void 아이디에는_영문_소문자와_숫자와_일부_기호만_쓸_수_있다(String loginId) {
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> User.create(loginId, HASH, "김직원", UserRole.STAFF, 1L))
+				.isThrownBy(() -> User.create(loginId, HASH, "김직원", UserRole.STAFF, 1L, null))
 				.withMessageContaining("loginId");
 		assertThat(User.isValidLoginId(User.normalizeLoginId(loginId))).isFalse();
 	}
@@ -36,7 +36,7 @@ class UserTest {
 	@ParameterizedTest
 	@ValueSource(strings = { "abc", "desk-staff", "desk_staff", "desk.staff", "staff01", "1desk" })
 	void 허용하는_아이디_형식(String loginId) {
-		assertThat(User.create(loginId, HASH, "김직원", UserRole.STAFF, 1L).getLoginId()).isEqualTo(loginId);
+		assertThat(User.create(loginId, HASH, "김직원", UserRole.STAFF, 1L, null).getLoginId()).isEqualTo(loginId);
 	}
 
 	// 기본 로케일이 터키어여도 대문자 I가 영문 소문자 i가 돼야 한다(터키어에서는 점 없는 ı가 된다).
@@ -56,52 +56,70 @@ class UserTest {
 	@Test
 	void 직원은_소속_지점이_있어야_한다() {
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> User.create("staff", HASH, "김직원", UserRole.STAFF, null));
+				.isThrownBy(() -> User.create("staff", HASH, "김직원", UserRole.STAFF, null, null));
 	}
 
 	@Test
 	void 관리자와_연계_학원은_소속_지점을_가질_수_없다() {
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> User.create("admin", HASH, "박원장", UserRole.ADMIN, 1L));
+				.isThrownBy(() -> User.create("admin", HASH, "박원장", UserRole.ADMIN, 1L, null));
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> User.create("partner", HASH, "연계학원", UserRole.PARTNER, 1L));
-		assertThat(User.create("admin", HASH, "박원장", UserRole.ADMIN, null).getCampusId()).isNull();
+				.isThrownBy(() -> User.create("partner", HASH, "연계학원", UserRole.PARTNER, 1L, 7L));
+		assertThat(User.create("admin", HASH, "박원장", UserRole.ADMIN, null, null).getCampusId()).isNull();
 	}
 
 	// 인코더가 만든 해시는 {bcrypt}처럼 알고리즘 이름으로 시작한다. 원문 비밀번호를 그대로 넘기는 실수를 막는다.
 	@Test
 	void 해시되지_않은_비밀번호로는_만들_수_없다() {
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> User.create("staff", "plain-password", "김직원", UserRole.STAFF, 1L))
+				.isThrownBy(() -> User.create("staff", "plain-password", "김직원", UserRole.STAFF, 1L, null))
 				.withMessageContaining("passwordHash");
 	}
 
 	// DB 컬럼 길이를 넘는 값이 DB 오류(500)로 드러나지 않게 미리 막는다.
 	@Test
 	void 아이디와_이름은_50자를_넘을_수_없다() {
-		assertThat(User.create("a".repeat(50), HASH, "가".repeat(50), UserRole.STAFF, 1L).getLoginId()).hasSize(50);
+		assertThat(User.create("a".repeat(50), HASH, "가".repeat(50), UserRole.STAFF, 1L, null).getLoginId()).hasSize(50);
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> User.create("a".repeat(51), HASH, "김직원", UserRole.STAFF, 1L));
+				.isThrownBy(() -> User.create("a".repeat(51), HASH, "김직원", UserRole.STAFF, 1L, null));
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> User.create("staff", HASH, "가".repeat(51), UserRole.STAFF, 1L));
+				.isThrownBy(() -> User.create("staff", HASH, "가".repeat(51), UserRole.STAFF, 1L, null));
 	}
 
 	@Test
 	void 필수값이_비면_계정을_만들_수_없다() {
-		assertThatIllegalArgumentException().isThrownBy(() -> User.create(" ", HASH, "김직원", UserRole.STAFF, 1L));
-		assertThatIllegalArgumentException().isThrownBy(() -> User.create("staff", " ", "김직원", UserRole.STAFF, 1L));
-		assertThatIllegalArgumentException().isThrownBy(() -> User.create("staff", HASH, " ", UserRole.STAFF, 1L));
-		assertThatIllegalArgumentException().isThrownBy(() -> User.create("staff", HASH, "김직원", null, 1L));
+		assertThatIllegalArgumentException().isThrownBy(() -> User.create(" ", HASH, "김직원", UserRole.STAFF, 1L, null));
+		assertThatIllegalArgumentException().isThrownBy(() -> User.create("staff", " ", "김직원", UserRole.STAFF, 1L, null));
+		assertThatIllegalArgumentException().isThrownBy(() -> User.create("staff", HASH, " ", UserRole.STAFF, 1L, null));
+		assertThatIllegalArgumentException().isThrownBy(() -> User.create("staff", HASH, "김직원", null, 1L, null));
 	}
 
 	@Test
 	void 차단하면_비활성이_된다() {
-		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L);
+		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
 		assertThat(user.isActive()).isTrue();
 
 		user.disable();
 
 		assertThat(user.isActive()).isFalse();
+	}
+
+	// 식별자가 빈 연계 학원 계정은 "자기 발급분" 조건을 걸 수 없다.
+	@Test
+	void 연계_학원_계정은_연계_학원_식별자가_있어야_한다() {
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> User.create("partner", HASH, "연계학원", UserRole.PARTNER, null, null))
+				.withMessageContaining("연계 학원 식별자");
+		assertThat(User.create("partner", HASH, "연계학원", UserRole.PARTNER, null, 7L).getPartnerId()).isEqualTo(7L);
+	}
+
+	@Test
+	void 관리자와_직원은_연계_학원_식별자를_가질_수_없다() {
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> User.create("admin", HASH, "박원장", UserRole.ADMIN, null, 7L));
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, 7L));
+		assertThat(User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null).getPartnerId()).isNull();
 	}
 
 }
