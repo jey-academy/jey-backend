@@ -28,7 +28,7 @@
   - `core`의 구체적인 리소스 이름은 해당 기능을 만들 때 정한다. 위 목록은 형태를 보여주는 예시다.
 - 기능 모듈 이름과 겹치는 `core` 리소스 이름은 만들지 않는다. 새 기능 모듈을 추가할 때도 기존 최상위 리소스 이름과 겹치지 않게 한다.
 - 표기: 리소스는 복수형 명사, kebab-case(`audit-logs`). 행위는 하위 경로 동사(`/redeem`, `/confirm`, `/retry`).
-- 인증 없이 열리는 경로는 `SecurityConfig`에 명시한 것으로 한정한다: `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/dongtanpass/holder/**`, `/api/v1/billing/webhooks/**`. (각 엔드포인트를 만들 때 추가한다.)
+- 인증 없이 열리는 경로는 `SecurityConfig`에 명시한 것으로 한정한다: `/api/v1/auth/login`, `/api/v1/auth/csrf`, `/api/v1/dongtanpass/holder/**`, `/api/v1/billing/webhooks/**`. (각 엔드포인트를 만들 때 추가한다.)
 - 서비스 간 내부 전용 API는 `/internal/v1/...`로 분리하고 Nginx에서 외부 접근을 막는다(2차, notifier).
 
 ## 근거
