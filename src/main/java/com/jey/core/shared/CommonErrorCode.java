@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatusCode;
 
 /**
  * 모듈과 무관한 공통 에러 코드.
+ * {@code VALIDATION_FAILED}는 필드별 오류 목록이 붙는 검증 실패, {@code BAD_REQUEST}는 그 밖의 요청 형식 오류다.
  */
 public enum CommonErrorCode implements ErrorCode {
 
@@ -26,7 +27,10 @@ public enum CommonErrorCode implements ErrorCode {
 		this.message = message;
 	}
 
-	/** Spring MVC 표준 예외처럼 에러 코드 없이 HTTP 상태만 있는 경우에 쓴다. */
+	/**
+	 * Spring MVC 표준 예외처럼 에러 코드 없이 HTTP 상태만 있는 경우에 쓴다.
+	 * 매핑이 없는 4xx는 {@code BAD_REQUEST}, 그 외는 {@code INTERNAL_ERROR}로 묶으므로 반환값의 {@code status()}가 입력과 다를 수 있다.
+	 */
 	public static CommonErrorCode fromStatus(HttpStatusCode status) {
 		return switch (status.value()) {
 			case 401 -> UNAUTHENTICATED;
