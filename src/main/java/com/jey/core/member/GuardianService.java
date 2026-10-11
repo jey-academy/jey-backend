@@ -2,6 +2,7 @@ package com.jey.core.member;
 
 import com.jey.core.audit.api.AuditEntry;
 import com.jey.core.audit.api.AuditLog;
+import com.jey.core.audit.api.DeniedAttempts;
 import com.jey.core.member.api.MemberRefs;
 import com.jey.core.member.domain.Guardian;
 import com.jey.core.member.domain.GuardianRepository;

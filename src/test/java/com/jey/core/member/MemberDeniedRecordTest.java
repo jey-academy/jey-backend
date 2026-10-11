@@ -8,6 +8,7 @@ import com.jey.core.audit.AuditLogService;
 import com.jey.core.audit.api.AuditEntry;
 import com.jey.core.audit.api.AuditLog;
 import com.jey.core.audit.api.AuditOutcome;
+import com.jey.core.audit.api.DeniedAttempts;
 import com.jey.core.auth.api.CurrentActor;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.campus.api.CampusCatalog;
