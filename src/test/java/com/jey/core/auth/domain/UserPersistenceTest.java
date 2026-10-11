@@ -167,4 +167,12 @@ class UserPersistenceTest {
 		assertThat(found.getCampusId()).isNull();
 	}
 
+	// 없는 지점에 소속된 직원 계정이 생기면 그 계정은 어느 지점의 자료도 다루지 못한 채 남는다. DB가 막는다.
+	@Test
+	void 없는_지점의_직원_계정은_저장되지_않는다() {
+		User user = User.create(uniqueLoginId(), "{noop}not-a-real-hash", "김직원", UserRole.STAFF, 999_999L, null);
+
+		assertThatThrownBy(() -> users.saveAndFlush(user)).isInstanceOf(DataIntegrityViolationException.class);
+	}
+
 }
