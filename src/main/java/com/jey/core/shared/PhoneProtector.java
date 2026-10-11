@@ -3,6 +3,7 @@ package com.jey.core.shared;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HashMap;
@@ -72,12 +73,21 @@ public class PhoneProtector {
 	/**
 	 * 원래 번호로 되돌린다. 원문이 필요한 곳(알림 발송, 전체 번호 보기)에서만 부른다.
 	 *
-	 * @throws IllegalStateException 그 버전의 키가 없거나, 키가 다르거나, 저장된 값이 바뀌었을 때.
-	 * 값을 읽지 못한 것을 빈 값으로 넘기지 않는다
+	 * @throws IllegalStateException 그 버전의 키가 없거나, 키가 다르거나, 저장된 값이 바뀌었거나,
+	 * 되돌린 번호가 함께 저장된 인덱스와 맞지 않을 때. 값을 읽지 못한 것을 빈 값으로 넘기지 않는다
 	 */
 	public PhoneNumber reveal(ProtectedPhone phone) {
 		Objects.requireNonNull(phone, "phone");
-		return PhoneNumber.of(decrypt(phone.getCiphertext(), phone.getKeyVersion()));
+		PhoneNumber revealed = PhoneNumber.of(decrypt(phone.getCiphertext(), phone.getKeyVersion()));
+		// 암호문에 묶인 것은 키 버전뿐이라, 같은 버전인 다른 행의 암호문도 복호화는 된다.
+		// 되돌린 번호로 인덱스를 다시 계산해 이 행의 것과 맞는지 본다.
+		// 네 값을 통째로 옮긴 경우는 여기서 잡지 못한다(ADR-0009).
+		if (!sameIndex(fullIndex(revealed), phone.getFullIndex())
+				|| !sameIndex(last4Index(revealed.last4()), phone.getLast4Index())) {
+			throw new IllegalStateException(
+					"전화번호의 암호문과 인덱스가 맞지 않는다(키 버전 " + phone.getKeyVersion() + ")");
+		}
+		return revealed;
 	}
 
 	/** 전체 번호로 찾을 때 쓰는 인덱스. {@code phone_bidx}와 비교한다. */
@@ -151,6 +161,11 @@ public class PhoneProtector {
 	// 암호문에 묶어 두는 값. 암호문을 다른 키 버전의 행에 옮겨 붙이면 되돌릴 때 실패한다.
 	private static byte[] associatedData(int keyVersion) {
 		return ("phone:v" + keyVersion).getBytes(StandardCharsets.UTF_8);
+	}
+
+	private static boolean sameIndex(String computed, String stored) {
+		return stored != null && MessageDigest.isEqual(computed.getBytes(StandardCharsets.UTF_8),
+				stored.getBytes(StandardCharsets.UTF_8));
 	}
 
 	private String hmac(String value) {

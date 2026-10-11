@@ -132,6 +132,33 @@ class PhoneProtectorTest {
 		assertThatIllegalStateException().isThrownBy(() -> sameKeyTwice.reveal(relabeled));
 	}
 
+	// 암호문에 묶인 것은 키 버전뿐이라, 같은 버전인 다른 행의 암호문은 복호화 자체는 된다.
+	// 그대로 두면 알림이 남의 번호로 간다. 되돌린 번호가 그 행의 인덱스와 맞는지로 잡는다.
+	@Test
+	void 다른_행의_암호문을_옮겨_붙이면_되돌리지_못한다() {
+		ProtectedPhone mine = protector.protect(PHONE);
+		ProtectedPhone others = protector.protect(PhoneNumber.of("010-9999-0000"));
+		ProtectedPhone swapped = new ProtectedPhone(others.getCiphertext(), mine.getFullIndex(),
+				mine.getLast4Index(), mine.getKeyVersion());
+
+		assertThatIllegalStateException().isThrownBy(() -> protector.reveal(swapped))
+				.withMessageNotContaining("9999")
+				.withMessageNotContaining("1234")
+				.withMessageNotContaining(mine.getFullIndex());
+	}
+
+	// 뒷자리가 같은 다른 사람의 암호문과 전체 인덱스를 옮겨도, 남은 인덱스 하나가 어긋나면 실패한다.
+	@Test
+	void 인덱스_하나만_어긋나도_되돌리지_못한다() {
+		ProtectedPhone mine = protector.protect(PHONE);
+		ProtectedPhone others = protector.protect(PhoneNumber.of("010-9999-0000"));
+
+		assertThatIllegalStateException().isThrownBy(() -> protector.reveal(new ProtectedPhone(
+				mine.getCiphertext(), others.getFullIndex(), mine.getLast4Index(), mine.getKeyVersion())));
+		assertThatIllegalStateException().isThrownBy(() -> protector.reveal(new ProtectedPhone(
+				mine.getCiphertext(), mine.getFullIndex(), others.getLast4Index(), mine.getKeyVersion())));
+	}
+
 	// 저장할 때와 찾을 때 적는 방식이 달라도 같은 번호면 같은 인덱스여야 찾아진다.
 	@Test
 	void 같은_번호는_적는_방식이_달라도_인덱스가_같다() {
