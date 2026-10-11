@@ -12,7 +12,11 @@ public enum CampusErrorCode implements ErrorCode {
 
 	CLASS_NAME_DUPLICATED(HttpStatus.CONFLICT, "같은 지점에 같은 이름의 반이 이미 있습니다."),
 
-	INVALID_FEE(HttpStatus.BAD_REQUEST, "수강료는 0원보다 커야 하고, 수강료와 교재비는 1원 단위여야 합니다.");
+	INVALID_FEE(HttpStatus.BAD_REQUEST, "수강료는 0원보다 커야 하고, 수강료와 교재비는 1원 단위여야 합니다."),
+
+	DISCOUNT_TYPE_NOT_FOUND(HttpStatus.NOT_FOUND, "할인 유형을 찾을 수 없습니다."),
+
+	DISCOUNT_CODE_DUPLICATED(HttpStatus.CONFLICT, "같은 코드의 할인 유형이 이미 있습니다.");
 
 	private final HttpStatus status;
 
