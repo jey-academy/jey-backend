@@ -1,18 +1,18 @@
 package com.jey.core.audit;
 
-import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.EnumSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 import com.jey.core.audit.api.AuditAction;
 import com.jey.core.audit.api.AuditEntry;
 import com.jey.core.audit.api.AuditLog;
 import com.jey.core.audit.api.AuditOutcome;
+import com.jey.core.audit.api.DetailMarker;
 import com.jey.core.audit.domain.AuditRecord;
 import com.jey.core.audit.domain.AuditRecordRepository;
 import com.jey.core.auth.api.CurrentActor;
@@ -43,28 +43,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class AuditLogService implements AuditLog {
 
-	/** 내용을 싣지 못했을 때 상세 대신 넣는 표시. 이벤트가 같은 이름의 필드를 쓰지 않게 한다. */
-	static final String TRUNCATED = "{\"truncated\":true}";
-
-	static final String REDACTED = "{\"redacted\":true}";
-
-	static final String UNREADABLE = "{\"unreadable\":true}";
-
 	private static final Logger log = LoggerFactory.getLogger(AuditLogService.class);
-
-	// 이벤트 이름과 같은 형식이다. 이벤트로 들어온 기록은 이벤트 이름이 그대로 행위 이름이 된다.
-	private static final Pattern ACTION = Pattern.compile("[a-z][a-z0-9]*\\.[a-z][a-z0-9]*(-[a-z0-9]+)*");
-
-	// 번호 사이에 흔히 넣는 기호. 떼고 나서 숫자가 이어지는지 본다.
-	private static final Pattern PHONE_SEPARATORS = Pattern.compile("[\\s.\\-()/_+·]");
-
-	// 기호를 뗀 뒤, 영숫자에 붙어 있지 않은 휴대전화 번호 모양을 찾는다. 국가 번호(82)가 붙은 것도 본다.
-	// 영숫자에 붙은 숫자열은 보지 않는다. UUID나 주문번호 같은 식별자 안의 숫자 구간이 걸리지 않게 하기 위해서다.
-	private static final Pattern PHONE_LIKE = Pattern
-			.compile("(?<![0-9A-Za-z])(?:82)?0?1[016789]\\d{7,8}(?![0-9A-Za-z])");
-
-	// 가린 번호(010-****-5678)도 싣지 않는다. 뒷자리가 남는다.
-	private static final Pattern MASKED_PHONE = Pattern.compile("(?<![0-9A-Za-z])0?1[016789]\\*{3,4}\\d{4}(?![0-9A-Za-z])");
 
 	private static final Sort NEWEST_FIRST = Sort.by(Sort.Order.desc("occurredAt"), Sort.Order.desc("id"));
 
@@ -96,8 +75,9 @@ public class AuditLogService implements AuditLog {
 	@Override
 	public void record(AuditEntry entry) {
 		AuditAction action = entry.action();
-		AuditRecord record = AuditRecord.direct(toStored(clock.instant()), currentActor.get().idOrNull(),
-				validCode(action), action.outcome(), entry.target(), entry.campusId(), directDetail(entry));
+		Long actorId = currentActor.get().idOrNull();
+		AuditRecord record = AuditRecord.direct(toStored(clock.instant()), actorId, validCode(action),
+				action.outcome(), entry.target(), entry.campusId(), directDetail(entry));
 		boolean inTransaction = TransactionSynchronizationManager.isActualTransactionActive();
 		if (action.outcome() == AuditOutcome.DONE) {
 			// 한 일은 그 일과 같은 트랜잭션에 적는다. 트랜잭션 밖에서 적으면 그 일이 롤백돼도 기록만 남는다.
@@ -111,27 +91,35 @@ public class AuditLogService implements AuditLog {
 		if (inTransaction) {
 			throw new IllegalStateException("거부된 시도의 기록은 트랜잭션이 끝난 뒤에 남겨야 한다: " + action.code());
 		}
+		// 거부 기록은 "누가 받았는지"를 남기려는 것이다. 요청을 다른 스레드로 넘긴 코드에서 부르면 로그인 정보가 따라오지 않는다.
+		if (actorId == null) {
+			log.warn("행위자 없이 거부된 시도를 기록한다. 요청 스레드 밖에서 불렀는지 확인한다: action={}", action.code());
+		}
 		transaction.executeWithoutResult(status -> records.save(record));
 	}
 
 	/**
 	 * 도메인 이벤트를 한 줄로 적는다. 같은 이벤트가 다시 와도 한 줄만 남는다.
 	 *
-	 * <p>리스너가 실패하면 그 이벤트는 다시 보내진다. 저장한 뒤 완료 표시 전에 죽으면 같은 이벤트가 또 온다.
+	 * <p>리스너가 실패하면 그 이벤트는 다시 보내진다(ADR-0025). 저장한 뒤 완료 표시 전에 죽으면 같은 이벤트가 또 온다.
 	 * 이미 적힌 이벤트는 아무것도 하지 않고 성공으로 끝낸다. 리스너의 트랜잭션에 같이 적으므로 DB 연결을 더 쓰지 않는다.
 	 *
-	 * <p>이벤트의 내용이 규칙에 안 맞아도(너무 크다, 전화번호처럼 보이는 값이 있다, 읽을 수 없다) 예외를 던지지 않는다.
-	 * 던지면 그 이벤트는 몇 번을 다시 보내도 같은 자리에서 실패한다. 내용 없이 적고 표시와 로그를 남긴다.
+	 * <p>이벤트의 내용이나 대상이 규칙에 안 맞아도(너무 크다, 전화번호처럼 보이는 값이 있다, 읽을 수 없다, 대상을 만들다 실패한다)
+	 * 예외를 던지지 않는다. 던지면 그 이벤트는 몇 번을 다시 보내도 같은 자리에서 실패한다. 그 부분 없이 적고 표시와 로그를 남긴다.
+	 * 던지는 것은 봉투가 없을 때와 저장에 실패했을 때뿐이다. 저장 실패는 다시 보내면 될 수 있다.
+	 *
+	 * @throws NullPointerException 이벤트에 봉투가 없을 때. 누가 언제 무엇을 했는지 알 수 없어 적을 수 없다
 	 */
 	void recordEvent(DomainEvent event) {
-		EventMetadata metadata = event.metadata();
-		EntityRef subject = event.subject();
-		String detail = eventDetail(event);
+		EventMetadata metadata = Objects.requireNonNull(event.metadata(),
+				() -> event.getClass().getName() + "의 metadata가 없다");
+		EntityRef subject = subjectOf(event, metadata);
+		String detail = eventDetail(event, metadata);
 		// 리스너의 트랜잭션이 있으면 거기에 합류하고, 없으면 여기서 연다.
 		transaction.executeWithoutResult(status -> records.insertEventIfAbsent(metadata.eventId().toString(),
 				toStored(metadata.occurredAt()), metadata.actorId(), metadata.eventType(),
-				(subject != null) ? subject.type() : null, (subject != null) ? subject.id() : null,
-				metadata.campusId(), detail, toStored(clock.instant())));
+				AuditOutcome.DONE.name(), (subject != null) ? subject.type() : null,
+				(subject != null) ? subject.id() : null, metadata.campusId(), detail, toStored(clock.instant())));
 	}
 
 	/**
@@ -161,7 +149,7 @@ public class AuditLogService implements AuditLog {
 	}
 
 	/**
-	 * 저장된 상세를 읽는다. 값이 깨져 있으면(DB를 직접 고친 경우 등) 그 줄만 읽을 수 없다는 표시로 돌려준다.
+	 * 저장된 상세를 읽는다. 값이 깨져 있으면(DB를 직접 고친 경우 등) 그 줄만 {@link DetailMarker#CORRUPTED}로 돌려준다.
 	 * 한 줄 때문에 목록 전체가 실패하면, 기록이 고쳐졌는지 살펴야 할 때 조회가 막힌다.
 	 *
 	 * @return 상세가 없으면 {@code null}
@@ -171,17 +159,23 @@ public class AuditLogService implements AuditLog {
 			return null;
 		}
 		try {
-			return jsonMapper.readValue(record.getDetailJson(), DETAIL);
+			Map<String, Object> detail = jsonMapper.readValue(record.getDetailJson(), DETAIL);
+			if (detail != null) {
+				return detail;
+			}
+			// 저장된 값이 JSON의 null이다. 코드가 그렇게 적는 일은 없다.
+			log.error("감사 로그의 상세가 깨져 있다: id={} 원인=null 값", record.getId());
 		}
 		catch (JacksonException ex) {
-			log.error("감사 로그의 상세를 읽을 수 없다: id={}", record.getId(), ex);
-			return Map.of("unreadable", true);
+			// 예외 문구에는 깨진 내용의 일부가 들어 있을 수 있어 종류만 남긴다. 조회할 때마다 찍히므로 스택도 남기지 않는다.
+			log.error("감사 로그의 상세가 깨져 있다: id={} 원인={}", record.getId(), ex.getClass().getSimpleName());
 		}
+		return DetailMarker.CORRUPTED.asMap();
 	}
 
 	private static String validCode(AuditAction action) {
 		String code = action.code();
-		if (code == null || code.length() > AuditAction.MAX_CODE_LENGTH || !ACTION.matcher(code).matches()) {
+		if (!EventMetadata.isValidName(code)) {
 			throw new IllegalArgumentException("행위 이름은 {모듈}.{사건} 형식의 소문자 kebab-case여야 한다: " + code);
 		}
 		if (action.outcome() == null) {
@@ -198,7 +192,7 @@ public class AuditLogService implements AuditLog {
 			return null;
 		}
 		detail.forEach((key, value) -> {
-			if (value instanceof String text && looksLikePhone(text)) {
+			if (value instanceof String text && PhoneLikeText.found(text)) {
 				throw new IllegalArgumentException("감사 로그에 전화번호처럼 보이는 값을 실을 수 없다: " + key);
 			}
 		});
@@ -209,9 +203,20 @@ public class AuditLogService implements AuditLog {
 		return json;
 	}
 
+	// 이벤트가 대상을 만들다 실패해도(예: 0 이하의 ID) 그 이벤트의 기록 자체는 남긴다.
+	private static EntityRef subjectOf(DomainEvent event, EventMetadata metadata) {
+		try {
+			return event.subject().orElse(null);
+		}
+		catch (RuntimeException ex) {
+			log.error("이벤트의 대상을 알 수 없어 대상 없이 기록한다: eventType={} eventId={} 원인={}", metadata.eventType(),
+					metadata.eventId(), ex.getClass().getSimpleName());
+			return null;
+		}
+	}
+
 	// 이벤트의 내용(봉투 제외)을 그대로 싣는다. 싣지 못하면 표시만 남긴다. 원문은 이벤트 발행 기록에 이벤트 ID로 남아 있다.
-	private String eventDetail(DomainEvent event) {
-		EventMetadata metadata = event.metadata();
+	private String eventDetail(DomainEvent event, EventMetadata metadata) {
 		try {
 			JsonNode tree = jsonMapper.valueToTree(event);
 			if (!(tree instanceof ObjectNode body)) {
@@ -223,24 +228,26 @@ public class AuditLogService implements AuditLog {
 			if (body.isEmpty()) {
 				return null;
 			}
+			String json = jsonMapper.writeValueAsString(body);
+			// 크기를 먼저 본다. 큰 내용은 어차피 싣지 않으므로 전화번호를 찾느라 훑지 않는다.
+			if (json.length() > AuditRecord.MAX_DETAIL_LENGTH) {
+				log.warn("내용이 큰 이벤트라 내용 없이 기록한다: eventType={} eventId={} length={}", metadata.eventType(),
+						metadata.eventId(), json.length());
+				return DetailMarker.TRUNCATED.json();
+			}
 			String phoneField = phoneLikeField(body, "");
 			if (phoneField != null) {
 				log.error("전화번호처럼 보이는 값이 든 이벤트라 내용 없이 기록한다: eventType={} eventId={} field={}",
 						metadata.eventType(), metadata.eventId(), phoneField);
-				return REDACTED;
-			}
-			String json = jsonMapper.writeValueAsString(body);
-			if (json.length() > AuditRecord.MAX_DETAIL_LENGTH) {
-				log.warn("내용이 큰 이벤트라 내용 없이 기록한다: eventType={} eventId={} length={}", metadata.eventType(),
-						metadata.eventId(), json.length());
-				return TRUNCATED;
+				return DetailMarker.REDACTED.json();
 			}
 			return json;
 		}
 		catch (JacksonException ex) {
-			log.error("이벤트의 내용을 읽을 수 없어 내용 없이 기록한다: eventType={} eventId={}", metadata.eventType(),
-					metadata.eventId(), ex);
-			return UNREADABLE;
+			// 예외 문구에는 이벤트의 값이 섞여 있을 수 있어 종류만 남긴다.
+			log.error("이벤트의 내용을 읽을 수 없어 내용 없이 기록한다: eventType={} eventId={} 원인={}", metadata.eventType(),
+					metadata.eventId(), ex.getClass().getSimpleName());
+			return DetailMarker.UNREADABLE.json();
 		}
 	}
 
@@ -248,7 +255,7 @@ public class AuditLogService implements AuditLog {
 	// 걸린 필드의 경로를 돌려준다(값은 돌려주지 않는다). 없으면 null.
 	private static String phoneLikeField(JsonNode node, String path) {
 		if (node.isString()) {
-			return looksLikePhone(node.asString()) ? path : null;
+			return PhoneLikeText.found(node.asString()) ? path : null;
 		}
 		if (node.isObject()) {
 			for (Map.Entry<String, JsonNode> property : node.properties()) {
@@ -268,12 +275,6 @@ public class AuditLogService implements AuditLog {
 			}
 		}
 		return null;
-	}
-
-	static boolean looksLikePhone(String text) {
-		// 전각 숫자와 기호를 반각으로 바꾼 뒤 본다.
-		String compact = PHONE_SEPARATORS.matcher(Normalizer.normalize(text, Normalizer.Form.NFKC)).replaceAll("");
-		return PHONE_LIKE.matcher(compact).find() || MASKED_PHONE.matcher(compact).find();
 	}
 
 	// DB(DATETIME(6))는 마이크로초까지만 저장한다. 저장한 값과 다시 읽은 값이 같도록 미리 맞춘다.

@@ -17,6 +17,8 @@ import com.jey.core.shared.EntityRef;
  *
  * <p>덧붙이는 값은 숫자, 참·거짓, enum, 짧은 문자열만 된다. ID와 표시만 싣고 이름·전화번호 같은 개인정보는 싣지 않는다.
  * ID는 숫자로 싣는다. 문자열에 전화번호처럼 보이는 값이 있으면 기록할 때 거부된다.
+ *
+ * <p>한 번 쓰고 버린다. 필드에 두거나 여러 요청이 같이 쓰지 않는다.
  */
 public final class AuditEntry {
 
@@ -39,10 +41,17 @@ public final class AuditEntry {
 		return new AuditEntry(action);
 	}
 
-	/** 무엇에 대한 일인지. 특정 대상이 없으면 부르지 않는다. */
-	public AuditEntry target(String type, long id) {
-		this.target = EntityRef.of(type, id);
+	/**
+	 * 무엇에 대한 일인지. 특정 대상이 없으면 부르지 않는다.
+	 * 대상은 그 대상을 가진 모듈이 만들어 준다(예: {@code MemberRefs.student(id)}). 종류 이름을 여러 곳에서 따로 적지 않기 위해서다.
+	 */
+	public AuditEntry target(EntityRef target) {
+		this.target = Objects.requireNonNull(target, "target");
 		return this;
+	}
+
+	public AuditEntry target(String type, long id) {
+		return target(EntityRef.of(type, id));
 	}
 
 	/** 그 일이 속한 지점. 지점과 무관한 일이면 부르지 않는다. */
@@ -98,6 +107,10 @@ public final class AuditEntry {
 	private AuditEntry put(String key, Object value) {
 		if (key == null || key.isBlank()) {
 			throw new IllegalArgumentException("감사 로그에 싣는 값의 이름은 비울 수 없다");
+		}
+		// 표시 전용 이름이다. 같은 이름의 값이 실리면 "내용을 싣지 못했다"는 표시와 구분되지 않는다.
+		if (DetailMarker.isReserved(key)) {
+			throw new IllegalArgumentException("감사 로그의 표시에 쓰는 이름이라 값의 이름으로 쓸 수 없다: " + key);
 		}
 		detail.put(key, value);
 		return this;

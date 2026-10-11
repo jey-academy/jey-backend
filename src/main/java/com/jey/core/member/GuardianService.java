@@ -2,6 +2,7 @@ package com.jey.core.member;
 
 import com.jey.core.audit.api.AuditEntry;
 import com.jey.core.audit.api.AuditLog;
+import com.jey.core.member.api.MemberRefs;
 import com.jey.core.member.domain.Guardian;
 import com.jey.core.member.domain.GuardianRepository;
 import com.jey.core.shared.BusinessException;
@@ -87,8 +88,8 @@ public class GuardianService {
 		}
 		catch (BusinessException ex) {
 			if (ex.getErrorCode() == MemberErrorCode.GUARDIAN_PHONE_DUPLICATED) {
-				DeniedAttempts.record(auditLog, AuditEntry.of(MemberAuditAction.GUARDIAN_PHONE_DUPLICATED)
-						.target(MemberAuditAction.GUARDIAN, id), ex);
+				DeniedAttempts.record(auditLog, () -> AuditEntry.of(MemberAuditAction.GUARDIAN_PHONE_DUPLICATED)
+						.target(MemberRefs.guardian(id)), ex);
 			}
 			throw ex;
 		}
@@ -122,7 +123,7 @@ public class GuardianService {
 			throw ex;
 		}
 		auditLog.record(AuditEntry.of(MemberAuditAction.GUARDIAN_UPDATED)
-				.target(MemberAuditAction.GUARDIAN, id)
+				.target(MemberRefs.guardian(id))
 				.with("phoneChanged", phoneChanged));
 		return new GuardianProfile(found.getId(), found.getName(), protector.reveal(found.getPhone()));
 	}

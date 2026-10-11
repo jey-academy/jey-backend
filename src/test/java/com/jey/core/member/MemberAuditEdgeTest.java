@@ -16,6 +16,7 @@ import com.jey.core.member.api.StudentRegistered;
 import com.jey.core.member.domain.GuardianRepository;
 import com.jey.core.member.domain.StudentGuardianRepository;
 import com.jey.core.member.domain.StudentRepository;
+import com.jey.core.member.api.MemberRefs;
 import com.jey.core.shared.PhoneNumber;
 import com.jey.core.shared.PhoneProtector;
 import org.junit.jupiter.api.Test;
@@ -118,8 +119,8 @@ class MemberAuditEdgeTest {
 		assertThat(MemberAuditAction.values()).filteredOn(each -> each.outcome() == AuditOutcome.DENIED)
 				.containsExactlyInAnyOrder(MemberAuditAction.GUARDIAN_PHONE_DUPLICATED,
 						MemberAuditAction.GUARDIAN_ALREADY_LINKED, MemberAuditAction.STUDENT_DUPLICATED);
-		assertThat(MemberAuditAction.STUDENT).isEqualTo("student");
-		assertThat(MemberAuditAction.GUARDIAN).isEqualTo("guardian");
+		assertThat(MemberRefs.STUDENT).isEqualTo("student");
+		assertThat(MemberRefs.GUARDIAN).isEqualTo("guardian");
 	}
 
 	// 두 요청이 서로 다른 학부모를 같은 새 번호로 바꾸면 둘 다 "쓰는 사람 없음"을 본다. 뒤쪽은 유니크 키에 막힌다.
@@ -171,9 +172,11 @@ class MemberAuditEdgeTest {
 	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = FAILING_STAFF)
 	void 저장하다_실패한_등록은_학생도_기록도_이벤트도_남기지_않는다() {
 		String name = uniqueName();
-		StudentGuardianRepository flushFails = mock(StudentGuardianRepository.class, delegatesTo(links));
-		doThrow(new IllegalStateException("연결 저장 실패")).when(flushFails).flush();
-		StudentService failing = new StudentService(students, guardians, flushFails, guardianService, catalog,
+		// 학생, 연결, 감사 기록, 이벤트 발행이 모두 끝난 뒤(응답을 만들 때)에 실패하게 한다.
+		// 앞에서 실패하면 기록과 이벤트는 되돌려진 것이 아니라 애초에 불리지 않은 것이라 확인하는 뜻이 없다.
+		StudentGuardianRepository readFails = mock(StudentGuardianRepository.class, delegatesTo(links));
+		doThrow(new IllegalStateException("연결 저장 실패")).when(readFails).findByStudentIdOrderByIdAsc(any());
+		StudentService failing = new StudentService(students, guardians, readFails, guardianService, catalog,
 				protector, transaction, clock, auditLog, currentActor, events);
 
 		assertThatIllegalStateException()
@@ -228,11 +231,11 @@ class MemberAuditEdgeTest {
 	}
 
 	private List<AuditRecord> ofStudent(long studentId, String action) {
-		return auditLogService.search(null, action, null, MemberAuditAction.STUDENT, studentId, null, null, 0, 100).getContent();
+		return auditLogService.search(null, action, null, MemberRefs.STUDENT, studentId, null, null, 0, 100).getContent();
 	}
 
 	private List<AuditRecord> ofGuardian(long guardianId, String action) {
-		return auditLogService.search(null, action, null, MemberAuditAction.GUARDIAN, guardianId, null, null, 0, 100)
+		return auditLogService.search(null, action, null, MemberRefs.GUARDIAN, guardianId, null, null, 0, 100)
 				.getContent();
 	}
 

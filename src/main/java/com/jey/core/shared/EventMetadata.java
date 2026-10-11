@@ -33,7 +33,7 @@ public record EventMetadata(UUID eventId, String eventType, int version, Instant
 		if (eventType.length() > MAX_EVENT_TYPE_LENGTH) {
 			throw new IllegalArgumentException("eventType은 " + MAX_EVENT_TYPE_LENGTH + "자를 넘을 수 없다: " + eventType);
 		}
-		if (!EVENT_TYPE.matcher(eventType).matches()) {
+		if (!isValidName(eventType)) {
 			throw new IllegalArgumentException("eventType은 {모듈}.{사건} 형식의 소문자 kebab-case여야 한다: " + eventType);
 		}
 		if (version < 1) {
@@ -45,6 +45,14 @@ public record EventMetadata(UUID eventId, String eventType, int version, Instant
 		if (actorId != null && actorId <= 0) {
 			throw new IllegalArgumentException("actorId는 양수여야 한다: " + actorId);
 		}
+	}
+
+	/**
+	 * {@code {모듈}.{사건}} 형식의 소문자 kebab-case이고 {@value #MAX_EVENT_TYPE_LENGTH}자 이하인지.
+	 * 이벤트 이름과 감사 로그의 행위 이름이 같은 규칙을 쓴다. 둘은 같은 컬럼에 저장된다.
+	 */
+	public static boolean isValidName(String name) {
+		return name != null && name.length() <= MAX_EVENT_TYPE_LENGTH && EVENT_TYPE.matcher(name).matches();
 	}
 
 	/**

@@ -109,8 +109,8 @@ class AuditLogApiEdgeTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.items[*].targetId", contains(3, 2, 1)))
 				.andExpect(jsonPath("$.items[0].detail").value(nullValue()))
-				.andExpect(jsonPath("$.items[1].detail.unreadable").value(true))
-				.andExpect(jsonPath("$.items[2].detail.unreadable").value(true));
+				.andExpect(jsonPath("$.items[1].detail.corrupted").value(true))
+				.andExpect(jsonPath("$.items[2].detail.corrupted").value(true));
 	}
 
 	// 빈 조건은 조건을 주지 않은 것과 같다. 앞뒤 공백은 뗀다.

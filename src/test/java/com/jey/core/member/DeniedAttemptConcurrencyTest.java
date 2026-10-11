@@ -9,12 +9,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import javax.sql.DataSource;
+
 import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
 import com.jey.core.audit.AuditLogService;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.shared.BusinessException;
+import com.jey.core.member.api.MemberRefs;
 import com.jey.core.shared.PhoneNumber;
+import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -53,6 +57,15 @@ class DeniedAttemptConcurrencyTest {
 	@Autowired
 	AuditLogService auditLogService;
 
+	@Autowired
+	DataSource dataSource;
+
+	// 스레드가 연결 풀보다 적으면 이 테스트는 아무것도 막지 못한다. 풀을 키우면 여기서 알게 된다.
+	@Test
+	void 동시에_보내는_요청이_연결_풀보다_많다() throws Exception {
+		assertThat(dataSource.unwrap(HikariDataSource.class).getMaximumPoolSize()).isLessThan(THREADS);
+	}
+
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = STAFF)
 	void 다른_학부모의_번호로_바꾸려는_요청이_한꺼번에_와도_멈추지_않고_모두_기록된다() throws Exception {
@@ -66,7 +79,7 @@ class DeniedAttemptConcurrencyTest {
 		List<Object> results = runTogether(() -> guardianService.update(guardianId, "김어머니", othersPhone));
 
 		assertAllRejected(results, MemberErrorCode.GUARDIAN_PHONE_DUPLICATED);
-		assertThat(auditLogService.search(STAFF, MemberAuditAction.GUARDIAN_PHONE_DUPLICATED.code(), null, MemberAuditAction.GUARDIAN,
+		assertThat(auditLogService.search(STAFF, MemberAuditAction.GUARDIAN_PHONE_DUPLICATED.code(), null, MemberRefs.GUARDIAN,
 				guardianId, null, null, 0, 100).getTotalElements()).isEqualTo(THREADS);
 	}
 
@@ -80,7 +93,7 @@ class DeniedAttemptConcurrencyTest {
 		List<Object> results = runTogether(() -> studentService.addGuardian(student.id(), father(phone)));
 
 		assertAllRejected(results, MemberErrorCode.GUARDIAN_ALREADY_LINKED);
-		assertThat(auditLogService.search(STAFF, MemberAuditAction.GUARDIAN_ALREADY_LINKED.code(), null, MemberAuditAction.STUDENT,
+		assertThat(auditLogService.search(STAFF, MemberAuditAction.GUARDIAN_ALREADY_LINKED.code(), null, MemberRefs.STUDENT,
 				student.id(), null, null, 0, 100).getTotalElements()).isEqualTo(THREADS);
 	}
 

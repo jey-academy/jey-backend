@@ -1,5 +1,6 @@
 package com.jey.core.audit;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.time.Clock;
@@ -7,7 +8,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.List;
-import java.util.UUID;
 
 import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
@@ -16,6 +16,7 @@ import com.jey.core.audit.api.AuditLog;
 import com.jey.core.audit.api.AuditOutcome;
 import com.jey.core.audit.domain.AuditRecord;
 import com.jey.core.auth.api.UserRole;
+import jakarta.persistence.Column;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
@@ -159,37 +160,47 @@ class AuditLogTest {
 	}
 
 	// 기록은 오래 남고 여러 사람이 본다. 전화번호가 한 번 들어가면 지울 방법이 없다.
+	// 어떤 표기를 번호로 보는지는 PhoneLikeTextTest가 고정한다.
 	@ParameterizedTest
-	@ValueSource(strings = { "010-1234-5678", "01012345678", "010 1234 5678", "+82 10-1234-5678", "011-234-5678",
-			"연락처 010.1234.5678 로 변경", "010/1234/5678", "010_1234_5678", "(010)1234-5678", "010)1234-5678",
-			"+82 (10) 1234-5678", "０１０－１２３４－５６７８", "010·1234·5678", "010-****-5678", "011-***-5678" })
+	@ValueSource(strings = { "010-1234-5678", "연락처 +82 10 1234 5678", "010-****-5678" })
 	void 전화번호처럼_보이는_문자열은_싣지_못한다(String value) {
-		TestAuditAction action = TestAuditAction.denied();
+		TestAuditAction denied = TestAuditAction.denied();
+		TestAuditAction done = TestAuditAction.done();
 
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> auditLog.record(AuditEntry.of(action).with("memo", value)))
+				.isThrownBy(() -> auditLog.record(AuditEntry.of(denied).with("memo", value)))
 				.withMessageContaining("memo")
 				.withMessageNotContaining("1234")
 				.withMessageNotContaining("5678");
+		// 한 일의 기록이 거부되면 그 일도 같이 되돌려진다.
+		assertThatIllegalArgumentException().isThrownBy(() -> transaction.executeWithoutResult(status -> {
+			auditLog.record(AuditEntry.of(TestAuditAction.done()));
+			auditLog.record(AuditEntry.of(done).with("memo", value));
+		}));
 
-		assertThat(find(action)).isEmpty();
+		assertThat(find(denied)).isEmpty();
+		assertThat(find(done)).isEmpty();
 	}
 
-	// 식별자 안의 숫자 구간을 전화번호로 보면 정상 기록이 가끔 실패한다. 결제 키나 멱등 키가 이런 모양이다.
-	@ParameterizedTest
-	@ValueSource(strings = { "SIBLING_5", "2026-11", "2026-10-11", "2026-10-11T01:02:03.012345Z", "ORD-2026-1011-0001",
-			"a01012345678b", "pay_01012345678", "20261101123456", "0101234567890", "3fa85f64-0101-2345-6780-10123456789a",
-			"0192f8a4-0101-7234-8567-801012345678" })
-	void 전화번호가_아닌_문자열은_실린다(String value) {
-		assertThat(AuditLogService.looksLikePhone(value)).isFalse();
-	}
-
+	// IP 주소나 기간처럼 숫자가 많은 값은 번호가 아니다. 이런 값을 싣는 기록이 실패하면 안 된다.
 	@Test
-	void 무작위_UUID는_전화번호로_보이지_않는다() {
-		for (int i = 0; i < 20_000; i++) {
-			String uuid = UUID.randomUUID().toString();
-			assertThat(AuditLogService.looksLikePhone(uuid)).as(uuid).isFalse();
-		}
+	void 전화번호가_아닌_문자열은_실린다() {
+		TestAuditAction action = TestAuditAction.denied();
+
+		auditLog.record(AuditEntry.of(action)
+				.with("ip", "192.168.10.11")
+				.with("period", "2026-11-01/2026-11-30")
+				.with("key", "3fa85f64-0101-2345-6780-10123456789a"));
+
+		assertThat(only(action).getDetailJson()).contains("192.168.10.11").contains("2026-11-01/2026-11-30");
+	}
+
+	// 표시에 쓰는 이름으로 값을 실으면 "내용을 싣지 못했다"는 표시와 구분되지 않는다.
+	@ParameterizedTest
+	@ValueSource(strings = { "truncated", "redacted", "unreadable", "corrupted" })
+	void 표시에_쓰는_이름으로는_값을_실을_수_없다(String key) {
+		assertThatIllegalArgumentException().isThrownBy(() -> AuditEntry.of(TestAuditAction.done()).with(key, true))
+				.withMessageContaining(key);
 	}
 
 	// ID는 숫자로 싣는다. 숫자는 전화번호 모양이어도 검사하지 않는다.
@@ -262,18 +273,21 @@ class AuditLogTest {
 				.isThrownBy(() -> auditLog.record(AuditEntry.of(new TestAuditAction(TestAuditAction.newCode(), null))));
 	}
 
-	// 기록은 추가만 한다. 값을 바꾸는 메서드가 생기면 여기서 걸린다.
+	// 기록은 추가만 한다. 값을 바꾸는 메서드가 생기거나 컬럼이 고칠 수 있게 매핑되면 여기서 걸린다.
 	@Test
-	void 기록에는_값을_바꾸는_메서드가_없다() {
-		List<String> instanceMethods = Arrays.stream(AuditRecord.class.getDeclaredMethods())
+	void 기록은_만든_뒤에_바꿀_수_없다() {
+		List<Method> instanceMethods = Arrays.stream(AuditRecord.class.getDeclaredMethods())
 				.filter(method -> !Modifier.isStatic(method.getModifiers()) && !method.isSynthetic())
-				.map(Method::getName)
+				.toList();
+		List<Field> columns = Arrays.stream(AuditRecord.class.getDeclaredFields())
+				.filter(field -> field.isAnnotationPresent(Column.class))
 				.toList();
 
-		assertThat(instanceMethods).isNotEmpty().allMatch(name -> name.matches("get[A-Z]\\w*"));
-		assertThat(Arrays.stream(AuditRecord.class.getDeclaredMethods())
-				.filter(method -> !Modifier.isStatic(method.getModifiers()))
-				.allMatch(method -> method.getParameterCount() == 0)).isTrue();
+		assertThat(instanceMethods).isNotEmpty()
+				.allMatch(method -> method.getName().matches("get[A-Z]\\w*") && method.getParameterCount() == 0);
+		assertThat(columns).hasSizeGreaterThanOrEqualTo(8)
+				.allSatisfy(field -> assertThat(field.getAnnotation(Column.class).updatable()).as(field.getName())
+						.isFalse());
 	}
 
 	private AuditRecord only(TestAuditAction action) {

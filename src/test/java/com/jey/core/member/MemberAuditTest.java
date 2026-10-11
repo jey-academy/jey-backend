@@ -13,6 +13,7 @@ import com.jey.core.member.api.StudentRegistered;
 import com.jey.core.member.domain.Grade;
 import com.jey.core.member.domain.GuardianRelation;
 import com.jey.core.member.domain.StudentStatus;
+import com.jey.core.member.api.MemberRefs;
 import com.jey.core.shared.PhoneNumber;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -74,7 +75,7 @@ class MemberAuditTest {
 		assertThat(registered.getEventId()).isNotNull();
 		assertThat(registered.getDetailJson()).isEqualTo("{\"studentId\":" + created.id() + "}");
 		// 이벤트가 대상을 알려 주므로 "그 학생에게 있었던 일"로 찾으면 등록도 나온다.
-		assertThat(registered.getTargetType()).isEqualTo(MemberAuditAction.STUDENT);
+		assertThat(registered.getTargetType()).isEqualTo(MemberRefs.STUDENT);
 		assertThat(registered.getTargetId()).isEqualTo(created.id());
 		// 학생에 대해 한 일은 학생의 지점으로 적힌다.
 		assertThat(ofStudent(created.id(), MemberAuditAction.GUARDIAN_LINKED.code()))
@@ -257,21 +258,19 @@ class MemberAuditTest {
 	}
 
 	private List<AuditRecord> ofStudent(long studentId, String action) {
-		return auditLogService.search(null, action, null, MemberAuditAction.STUDENT, studentId, null, null, 0, 100).getContent();
+		return auditLogService.search(null, action, null, MemberRefs.STUDENT, studentId, null, null, 0, 100).getContent();
 	}
 
 	private List<AuditRecord> ofGuardian(long guardianId, String action) {
-		return auditLogService.search(null, action, null, MemberAuditAction.GUARDIAN, guardianId, null, null, 0, 100)
+		return auditLogService.search(null, action, null, MemberRefs.GUARDIAN, guardianId, null, null, 0, 100)
 				.getContent();
 	}
 
-	// 이벤트 기록에는 대상 컬럼이 없다. 내용에 실린 학생 ID로 찾는다.
+	// 등록 이벤트는 그 학생을 대상으로 적힌다.
 	private List<AuditRecord> registeredEventOf(long studentId) {
-		return auditLogService.search(STAFF, StudentRegistered.TYPE, null, null, null, null, null, 0, 100)
-				.getContent()
-				.stream()
-				.filter(each -> ("{\"studentId\":" + studentId + "}").equals(each.getDetailJson()))
-				.toList();
+		return auditLogService
+				.search(null, StudentRegistered.TYPE, null, MemberRefs.STUDENT, studentId, null, null, 0, 100)
+				.getContent();
 	}
 
 	private static StudentChange change(StudentView current, PhoneNumber phone) {

@@ -22,6 +22,7 @@ import com.jey.core.member.GuardianService.EnsuredGuardian;
 import com.jey.core.member.StudentView.ContactView;
 import com.jey.core.member.StudentView.GuardianView;
 import com.jey.core.member.StudentView.SiblingView;
+import com.jey.core.member.api.MemberRefs;
 import com.jey.core.member.api.StudentRegistered;
 import com.jey.core.member.domain.Guardian;
 import com.jey.core.member.domain.GuardianRelation;
@@ -117,7 +118,7 @@ public class StudentService {
 			// 미리 확인에서 걸렸든 저장 직전에 걸렸든 여기서는 트랜잭션이 끝나 있다.
 			if (ex.getErrorCode() == MemberErrorCode.STUDENT_DUPLICATED) {
 				DeniedAttempts.record(auditLog,
-						AuditEntry.of(MemberAuditAction.STUDENT_DUPLICATED).campus(registration.campusId()), ex);
+						() -> AuditEntry.of(MemberAuditAction.STUDENT_DUPLICATED).campus(registration.campusId()), ex);
 			}
 			throw ex;
 		}
@@ -253,8 +254,8 @@ public class StudentService {
 			// 학생 행을 잠근 트랜잭션이 끝난 뒤에 남긴다. 안에서 남기면 잠금을 기다리는 요청들이 연결을 모두 쥐고 있어
 			// 기록용 연결을 얻지 못하고 멈춘다.
 			if (ex.getErrorCode() == MemberErrorCode.GUARDIAN_ALREADY_LINKED) {
-				DeniedAttempts.record(auditLog, AuditEntry.of(MemberAuditAction.GUARDIAN_ALREADY_LINKED)
-						.target(MemberAuditAction.STUDENT, studentId)
+				DeniedAttempts.record(auditLog, () -> AuditEntry.of(MemberAuditAction.GUARDIAN_ALREADY_LINKED)
+						.target(MemberRefs.student(studentId))
 						.with("guardianId", ensured.guardianId()), ex);
 			}
 			throw ex;
@@ -314,14 +315,14 @@ public class StudentService {
 		auditLog.record(studentEntry(MemberAuditAction.GUARDIAN_UNLINKED, student).with("guardianId", guardianId));
 	}
 
+	// 학생에 대해 한 일의 기록. 대상은 그 학생이고 지점은 학생의 지점이다.
+	private static AuditEntry studentEntry(MemberAuditAction action, Student student) {
+		return AuditEntry.of(action).target(MemberRefs.student(student.getId())).campus(student.getCampusId());
+	}
+
 	// 고치는 메서드는 모두 이것으로 학생을 읽는다. 학생 행을 잠가서 같은 학생을 고치는 요청이 줄을 서게 한다.
 	// 잠그지 않으면 "남은 연락처를 세고 지우기"가 동시에 둘 다 통과해 연락처가 없는 학생이 생기고,
 	// 수정이 읽어 둔 옛 값을 다시 써서 방금 지운 번호가 되살아난다. 각 메서드의 첫 조회여야 한다.
-	// 학생에 대해 한 일의 기록. 대상은 그 학생이고 지점은 학생의 지점이다.
-	private static AuditEntry studentEntry(MemberAuditAction action, Student student) {
-		return AuditEntry.of(action).target(MemberAuditAction.STUDENT, student.getId()).campus(student.getCampusId());
-	}
-
 	private Student find(long studentId) {
 		return students.findByIdForUpdate(studentId)
 				.orElseThrow(() -> new BusinessException(MemberErrorCode.STUDENT_NOT_FOUND));

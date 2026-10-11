@@ -38,10 +38,6 @@ enum MemberAuditAction implements AuditAction {
 	/** 등록하려는 이름의 학생이 입력한 번호의 학부모(또는 본인 번호)에게 이미 있었다. */
 	STUDENT_DUPLICATED("member.student-duplicated", AuditOutcome.DENIED);
 
-	static final String STUDENT = "student";
-
-	static final String GUARDIAN = "guardian";
-
 	private final String code;
 
 	private final AuditOutcome outcome;

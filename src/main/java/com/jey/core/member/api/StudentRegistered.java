@@ -1,5 +1,7 @@
 package com.jey.core.member.api;
 
+import java.util.Optional;
+
 import com.jey.core.shared.DomainEvent;
 import com.jey.core.shared.EntityRef;
 import com.jey.core.shared.EventMetadata;
@@ -15,8 +17,8 @@ public record StudentRegistered(EventMetadata metadata, long studentId) implemen
 	public static final int VERSION = 1;
 
 	@Override
-	public EntityRef subject() {
-		return EntityRef.of("student", studentId);
+	public Optional<EntityRef> subject() {
+		return Optional.of(MemberRefs.student(studentId));
 	}
 
 }

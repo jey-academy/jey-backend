@@ -217,7 +217,9 @@ class StudentQueryTest {
 		// 방금 등록한 학생들의 이벤트를 리스너가 다 적을 때까지 기다린다. 그 쿼리가 측정에 섞이지 않게 한다.
 		await().atMost(java.time.Duration.ofSeconds(20))
 				.untilAsserted(() -> assertThat(jdbc.queryForObject(
-						"SELECT COUNT(*) FROM event_publication WHERE completion_date IS NULL", Integer.class))
+						"SELECT COUNT(*) FROM event_publication WHERE completion_date IS NULL "
+								+ "AND serialized_event LIKE '%member.student-registered%'",
+						Integer.class))
 						.isZero());
 
 		long forOne = statementsDuring(() -> assertThat(studentService.search(null, few, null, 0, 20)).hasSize(1));
