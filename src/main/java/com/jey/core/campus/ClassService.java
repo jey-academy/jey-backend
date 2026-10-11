@@ -8,6 +8,7 @@ import com.jey.core.campus.domain.AcademyClassRepository;
 import com.jey.core.campus.domain.CampusRepository;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.Money;
+import com.jey.core.shared.UniqueKeys;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

@@ -111,6 +111,26 @@
         "required" : [ "active", "baseFee8", "bookFee", "name" ],
         "type" : "object"
       },
+      "ContactResponse" : {
+        "description" : "대표 연락처. 어머니, 먼저 연결된 학부모, 학생 본인 번호 순으로 고른다",
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "phone" : {
+            "description" : "가운데를 가린 전화번호",
+            "example" : "010-****-5678",
+            "type" : "string"
+          },
+          "relation" : {
+            "description" : "학부모의 관계. 학생 본인 번호면 null",
+            "enum" : [ "MOTHER", "FATHER", "GRANDPARENT", "OTHER" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "name", "phone" ],
+        "type" : "object"
+      },
       "CsrfToken" : {
         "properties" : {
           "headerName" : {
@@ -201,6 +221,92 @@
         "required" : [ "active", "name", "rate" ],
         "type" : "object"
       },
+      "GuardianProfileResponse" : {
+        "description" : "학부모 자신의 정보. 학생과의 관계는 학생 쪽 응답에 있다",
+        "properties" : {
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "phone" : {
+            "description" : "가운데를 가린 전화번호",
+            "example" : "010-****-5678",
+            "type" : "string"
+          }
+        },
+        "required" : [ "id", "name", "phone" ],
+        "type" : "object"
+      },
+      "GuardianRequest" : {
+        "description" : "학생에게 붙일 학부모. 같은 전화번호의 학부모가 이미 있으면 새로 만들지 않고 그 학부모를 붙인다",
+        "properties" : {
+          "name" : {
+            "description" : "같은 전화번호의 학부모가 이미 있으면 쓰이지 않는다(저장된 이름을 바꾸지 않는다)",
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "phone" : {
+            "description" : "휴대전화 번호. 하이픈이나 공백이 있어도 된다",
+            "example" : "010-1234-5678",
+            "type" : "string"
+          },
+          "relation" : {
+            "enum" : [ "MOTHER", "FATHER", "GRANDPARENT", "OTHER" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "name", "phone", "relation" ],
+        "type" : "object"
+      },
+      "GuardianResponse" : {
+        "description" : "학생에게 연결된 학부모",
+        "properties" : {
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "linkedToExisting" : {
+            "description" : "등록·학부모 추가 응답에서, 새로 만들지 않고 같은 전화번호의 기존 학부모에 연결했으면 true. 이때 name은 입력한 이름이 아니라 저장돼 있던 이름이다. 조회 응답에서는 항상 false",
+            "type" : "boolean"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "phone" : {
+            "description" : "가운데를 가린 전화번호",
+            "example" : "010-****-5678",
+            "type" : "string"
+          },
+          "relation" : {
+            "description" : "이 학생에게 누구인지. 같은 학부모가 학생마다 다른 관계일 수 있다",
+            "enum" : [ "MOTHER", "FATHER", "GRANDPARENT", "OTHER" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "id", "linkedToExisting", "name", "phone", "relation" ],
+        "type" : "object"
+      },
+      "GuardianUpdateRequest" : {
+        "description" : "학부모 수정. 이 학부모에 연결된 모든 학생에게 반영된다",
+        "properties" : {
+          "name" : {
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "phone" : {
+            "description" : "새 휴대전화 번호. 보내지 않으면 그대로 둔다. 응답의 가린 번호를 다시 보내면 안 된다. 다른 학부모가 쓰는 번호로는 바꿀 수 없다",
+            "example" : "010-1234-5678",
+            "type" : "string"
+          }
+        },
+        "required" : [ "name" ],
+        "type" : "object"
+      },
       "LoginRequest" : {
         "properties" : {
           "loginId" : {
@@ -241,6 +347,258 @@
           }
         },
         "required" : [ "campusId", "id", "loginId", "name", "role" ],
+        "type" : "object"
+      },
+      "RelationUpdateRequest" : {
+        "properties" : {
+          "relation" : {
+            "enum" : [ "MOTHER", "FATHER", "GRANDPARENT", "OTHER" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "relation" ],
+        "type" : "object"
+      },
+      "SiblingResponse" : {
+        "properties" : {
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "ENROLLED", "WITHDRAWN" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "id", "name", "status" ],
+        "type" : "object"
+      },
+      "StudentCreateRequest" : {
+        "description" : "학생 등록. 학부모가 한 명 이상이거나 학생 본인 번호가 있어야 한다",
+        "properties" : {
+          "campusId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "classId" : {
+            "description" : "반. 아직 정하지 않았으면 보내지 않는다. 학생의 지점에서 운영 중인 반이어야 한다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "grade" : {
+            "enum" : [ "ELEM_1", "ELEM_2", "ELEM_3", "ELEM_4", "ELEM_5", "ELEM_6", "MIDDLE_1", "MIDDLE_2", "MIDDLE_3", "HIGH_1", "HIGH_2", "HIGH_3", "ETC" ],
+            "type" : "string"
+          },
+          "guardians" : {
+            "description" : "학부모. 같은 전화번호를 두 번 적을 수 없다",
+            "items" : {
+              "$ref" : "#/components/schemas/GuardianRequest"
+            },
+            "maxItems" : 4,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "name" : {
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "phone" : {
+            "description" : "학생 본인의 휴대전화 번호. 없으면 보내지 않는다",
+            "example" : "010-1234-5678",
+            "type" : "string"
+          },
+          "registeredAt" : {
+            "description" : "등록일. 보내지 않으면 오늘",
+            "format" : "date",
+            "type" : "string"
+          },
+          "school" : {
+            "description" : "학교. 없으면 보내지 않는다",
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "campusId", "grade", "name" ],
+        "type" : "object"
+      },
+      "StudentPageResponse" : {
+        "description" : "학생 목록의 한 페이지. 이름 순이고 퇴원한 학생도 포함한다",
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/StudentSummaryResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "description" : "지금 페이지. 0부터",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "size" : {
+            "description" : "한 페이지의 크기",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "totalElements" : {
+            "description" : "조건에 맞는 전체 학생 수",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalPages" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "items", "page", "size", "totalElements", "totalPages" ],
+        "type" : "object"
+      },
+      "StudentResponse" : {
+        "description" : "학생 한 명의 전체 정보. 전화번호는 모두 가운데를 가린 표시다",
+        "properties" : {
+          "campusId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "classId" : {
+            "description" : "반. 정하지 않았으면 null",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "grade" : {
+            "enum" : [ "ELEM_1", "ELEM_2", "ELEM_3", "ELEM_4", "ELEM_5", "ELEM_6", "MIDDLE_1", "MIDDLE_2", "MIDDLE_3", "HIGH_1", "HIGH_2", "HIGH_3", "ETC" ],
+            "type" : "string"
+          },
+          "guardians" : {
+            "description" : "학부모. 먼저 연결된 순서",
+            "items" : {
+              "$ref" : "#/components/schemas/GuardianResponse"
+            },
+            "type" : "array"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "phone" : {
+            "description" : "학생 본인의 가린 전화번호. 없으면 null",
+            "example" : "010-****-5678",
+            "type" : "string"
+          },
+          "primaryContact" : {
+            "$ref" : "#/components/schemas/ContactResponse"
+          },
+          "registeredAt" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "school" : {
+            "description" : "학교. 없으면 null",
+            "type" : "string"
+          },
+          "siblings" : {
+            "description" : "형제. 같은 학부모에 연결된 다른 학생",
+            "items" : {
+              "$ref" : "#/components/schemas/SiblingResponse"
+            },
+            "type" : "array"
+          },
+          "status" : {
+            "enum" : [ "ENROLLED", "WITHDRAWN" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "campusId", "grade", "guardians", "id", "name", "primaryContact", "registeredAt", "siblings", "status" ],
+        "type" : "object"
+      },
+      "StudentSummaryResponse" : {
+        "description" : "목록의 한 줄. 학부모 전체가 아니라 대표 연락처만 있다",
+        "properties" : {
+          "campusId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "classId" : {
+            "description" : "반. 정하지 않았으면 null",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "grade" : {
+            "enum" : [ "ELEM_1", "ELEM_2", "ELEM_3", "ELEM_4", "ELEM_5", "ELEM_6", "MIDDLE_1", "MIDDLE_2", "MIDDLE_3", "HIGH_1", "HIGH_2", "HIGH_3", "ETC" ],
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "primaryContact" : {
+            "$ref" : "#/components/schemas/ContactResponse"
+          },
+          "school" : {
+            "description" : "학교. 없으면 null",
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "ENROLLED", "WITHDRAWN" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "campusId", "grade", "id", "name", "primaryContact", "status" ],
+        "type" : "object"
+      },
+      "StudentUpdateRequest" : {
+        "description" : "학생 정보 수정. 전화번호를 뺀 값은 통째로 바꾼다(보내지 않은 반과 학교는 비워진다)",
+        "properties" : {
+          "campusId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "classId" : {
+            "description" : "반. 보내지 않으면 반 없음이 된다. 학생의 지점에 속한 반이어야 하고, 새로 옮기는 반은 운영 중이어야 한다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "grade" : {
+            "enum" : [ "ELEM_1", "ELEM_2", "ELEM_3", "ELEM_4", "ELEM_5", "ELEM_6", "MIDDLE_1", "MIDDLE_2", "MIDDLE_3", "HIGH_1", "HIGH_2", "HIGH_3", "ETC" ],
+            "type" : "string"
+          },
+          "name" : {
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "phone" : {
+            "description" : "학생 본인의 새 휴대전화 번호. 보내지 않으면 그대로 둔다. 응답의 가린 번호를 다시 보내면 안 된다. 번호를 지우려면 DELETE /students/{id}/phone",
+            "example" : "010-1234-5678",
+            "type" : "string"
+          },
+          "registeredAt" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "school" : {
+            "description" : "학교. 보내지 않으면 비워진다",
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "ENROLLED", "WITHDRAWN" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "campusId", "grade", "name", "registeredAt", "status" ],
         "type" : "object"
       }
     }
@@ -436,7 +794,7 @@
     },
     "/api/v1/classes/{id}" : {
       "put" : {
-        "operationId" : "update_1",
+        "operationId" : "update_3",
         "parameters" : [ {
           "in" : "path",
           "name" : "id",
@@ -520,7 +878,7 @@
     },
     "/api/v1/discount-types/{id}" : {
       "put" : {
-        "operationId" : "update",
+        "operationId" : "update_2",
         "parameters" : [ {
           "in" : "path",
           "name" : "id",
@@ -553,6 +911,327 @@
           }
         },
         "tags" : [ "discount-type-controller" ]
+      }
+    },
+    "/api/v1/guardians/{id}" : {
+      "put" : {
+        "operationId" : "update_1",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/GuardianUpdateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/GuardianProfileResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "guardian-controller" ]
+      }
+    },
+    "/api/v1/students" : {
+      "get" : {
+        "operationId" : "students",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "campusId",
+          "required" : false,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "이름의 앞부분",
+          "in" : "query",
+          "name" : "name",
+          "required" : false,
+          "schema" : {
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        }, {
+          "description" : "학부모나 학생 본인 전화번호의 뒷자리 4자리. 같은 뒷자리를 가진 학생이 모두 나온다",
+          "in" : "query",
+          "name" : "phoneLast4",
+          "required" : false,
+          "schema" : {
+            "pattern" : "\\d{4}",
+            "type" : "string"
+          }
+        }, {
+          "description" : "0부터",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "format" : "int32",
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/StudentPageResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "student-controller" ]
+      },
+      "post" : {
+        "operationId" : "register",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/StudentCreateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/StudentResponse"
+                }
+              }
+            },
+            "description" : "Created"
+          }
+        },
+        "tags" : [ "student-controller" ]
+      }
+    },
+    "/api/v1/students/{id}" : {
+      "get" : {
+        "operationId" : "student",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/StudentResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "student-controller" ]
+      },
+      "put" : {
+        "operationId" : "update",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/StudentUpdateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/StudentResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "student-controller" ]
+      }
+    },
+    "/api/v1/students/{id}/guardians" : {
+      "post" : {
+        "operationId" : "addGuardian",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/GuardianRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/StudentResponse"
+                }
+              }
+            },
+            "description" : "Created"
+          }
+        },
+        "tags" : [ "student-controller" ]
+      }
+    },
+    "/api/v1/students/{id}/guardians/{guardianId}" : {
+      "delete" : {
+        "operationId" : "removeGuardian",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "in" : "path",
+          "name" : "guardianId",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        },
+        "tags" : [ "student-controller" ]
+      },
+      "put" : {
+        "operationId" : "changeRelation",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "in" : "path",
+          "name" : "guardianId",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RelationUpdateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/StudentResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "student-controller" ]
+      }
+    },
+    "/api/v1/students/{id}/phone" : {
+      "delete" : {
+        "operationId" : "removePhone",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        },
+        "tags" : [ "student-controller" ]
       }
     }
   }
