@@ -35,6 +35,9 @@ import static org.mockito.Mockito.mock;
 class GuardianFindOrCreateTest {
 
 	@Autowired
+	PhoneProbeGuard probeGuard;
+
+	@Autowired
 	GuardianRepository guardians;
 
 	@Autowired
@@ -54,7 +57,7 @@ class GuardianFindOrCreateTest {
 		doReturn(Optional.empty()).doAnswer(call -> guardians.findByPhoneIndex(call.getArgument(0)))
 				.when(firstLookupMisses)
 				.findByPhoneIndex(any());
-		GuardianService service = new GuardianService(firstLookupMisses, protector, transactionManager, auditLog);
+		GuardianService service = new GuardianService(firstLookupMisses, protector, transactionManager, auditLog, probeGuard);
 
 		EnsuredGuardian ensured = service.findOrCreate("나중에 온 이름", phone);
 
@@ -68,7 +71,7 @@ class GuardianFindOrCreateTest {
 		GuardianRepository saveFails = mock(GuardianRepository.class, delegatesTo(guardians));
 		DataIntegrityViolationException failure = new DataIntegrityViolationException("다른 제약 위반");
 		doThrow(failure).when(saveFails).saveAndFlush(any());
-		GuardianService service = new GuardianService(saveFails, protector, transactionManager, auditLog);
+		GuardianService service = new GuardianService(saveFails, protector, transactionManager, auditLog, probeGuard);
 
 		assertThatThrownBy(() -> service.findOrCreate("김어머니", randomPhone())).isSameAs(failure);
 	}

@@ -4,12 +4,14 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.time.Duration;
 import java.time.LocalDate;
 
 import com.jey.core.auth.api.AnyRole;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.CommonErrorCode;
 import com.jey.core.shared.ErrorCode;
+import com.jey.core.shared.RateLimitedException;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.validation.Constraint;
 import jakarta.validation.ConstraintValidator;
@@ -45,6 +47,16 @@ class ErrorTestController {
 	@GetMapping("/module-code")
 	void moduleCode() {
 		throw new BusinessException(TestErrorCode.TEST_PASS_EXPIRED);
+	}
+
+	@GetMapping("/rate-limited")
+	void rateLimited() {
+		throw new RateLimitedException(TestLimitCode.TEST_TOO_MANY, Duration.ofMillis(61_200));
+	}
+
+	@GetMapping("/rate-limited-briefly")
+	void rateLimitedBriefly() {
+		throw new RateLimitedException(TestLimitCode.TEST_TOO_MANY, Duration.ofMillis(300));
 	}
 
 	// 응답에 새면 안 되는 내부 정보 흉내. GlobalExceptionHandlerTest가 본문에 없는지 확인한다.
@@ -126,6 +138,27 @@ class ErrorTestController {
 		@Override
 		public String message() {
 			return "만료된 패스입니다.";
+		}
+
+	}
+
+	enum TestLimitCode implements ErrorCode {
+
+		TEST_TOO_MANY;
+
+		@Override
+		public String code() {
+			return name();
+		}
+
+		@Override
+		public HttpStatus status() {
+			return HttpStatus.TOO_MANY_REQUESTS;
+		}
+
+		@Override
+		public String message() {
+			return "너무 많이 요청했습니다.";
 		}
 
 	}

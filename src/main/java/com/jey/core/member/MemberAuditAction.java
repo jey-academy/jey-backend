@@ -9,8 +9,9 @@ import com.jey.core.audit.api.AuditOutcome;
  *
  * <p>학생 등록은 여기에 없다. 도메인 이벤트({@code member.student-registered})로 기록된다.
  *
- * <p>거부된 시도 셋은 모두 "그 번호가 이미 있다"는 것이 응답으로 드러나는 경우다.
+ * <p>거부된 시도 가운데 {@code …_DUPLICATED}와 {@code GUARDIAN_ALREADY_LINKED}는 "그 번호가 이미 있다"는 것이 응답으로 드러나는 경우다.
  * 그런 응답을 되풀이해 받으면 가린 전화번호의 가운데 자리를 알아낼 수 있어서(ADR-0023) 누가 받았는지 남긴다. 번호는 남기지 않는다.
+ * {@code …_LIMITED}는 계정별 횟수 한도에 막힌 사실이다(ADR-0026). 구간마다 처음 막힌 때만 남긴다.
  */
 enum MemberAuditAction implements AuditAction {
 
@@ -36,7 +37,25 @@ enum MemberAuditAction implements AuditAction {
 	GUARDIAN_ALREADY_LINKED("member.guardian-already-linked", AuditOutcome.DENIED),
 
 	/** 등록하려는 이름의 학생이 입력한 번호의 학부모(또는 본인 번호)에게 이미 있었다. */
-	STUDENT_DUPLICATED("member.student-duplicated", AuditOutcome.DENIED);
+	STUDENT_DUPLICATED("member.student-duplicated", AuditOutcome.DENIED),
+
+	/** 학생 본인의 전체 번호를 봤다(ADR-0026). 번호는 남기지 않는다. */
+	STUDENT_PHONE_REVEALED("member.student-phone-revealed", AuditOutcome.DONE),
+
+	/** 학부모의 전체 번호를 봤다. 상세의 {@code studentId}는 어느 학생의 화면에서 봤는지다. */
+	GUARDIAN_PHONE_REVEALED("member.guardian-phone-revealed", AuditOutcome.DONE),
+
+	/** 전체 번호를 볼 수 있는 횟수를 넘어 막혔다. */
+	PHONE_REVEAL_LIMITED("member.phone-reveal-limited", AuditOutcome.DENIED),
+
+	/**
+	 * 위의 "그 번호가 이미 있다" 거부를 한도만큼 받아, 전화번호가 실린 변경 요청이 막혔다.
+	 * 먼저 세고 되돌리는 방식이라, 거부를 받지 않은 계정도 요청을 한꺼번에 많이 보내면 이것이 남을 수 있다.
+	 */
+	PHONE_PROBE_LIMITED("member.phone-probe-limited", AuditOutcome.DENIED),
+
+	/** 전화번호가 실린 변경 요청(성공한 것 포함)이 한도를 넘어 막혔다. 번호를 바꿔 가며 넣는 대입이 여기에 걸린다. */
+	PHONE_CHANGE_LIMITED("member.phone-change-limited", AuditOutcome.DENIED);
 
 	private final String code;
 

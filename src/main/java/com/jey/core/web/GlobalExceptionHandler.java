@@ -7,6 +7,7 @@ import java.util.List;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.CommonErrorCode;
 import com.jey.core.shared.ErrorCode;
+import com.jey.core.shared.RateLimitedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -45,7 +46,13 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		if (ex.getErrorCode().status() == HttpStatus.FORBIDDEN) {
 			logDenied(ex, request);
 		}
-		return respond(ex, ex.getErrorCode(), ex.getMessage(), request);
+		HttpHeaders headers = new HttpHeaders();
+		if (ex instanceof RateLimitedException limited) {
+			// 언제 다시 보내면 되는지 알려 준다. 화면이 남은 시간을 보여 줄 수 있다.
+			headers.set(HttpHeaders.RETRY_AFTER, String.valueOf(limited.retryAfterSeconds()));
+		}
+		ProblemDetail problem = problem(ex.getErrorCode(), ex.getMessage());
+		return handleExceptionInternal(ex, problem, headers, ex.getErrorCode().status(), request);
 	}
 
 	// SecurityConfig가 필터 단계에서 넘긴 예외도 아래 두 메서드로 온다.

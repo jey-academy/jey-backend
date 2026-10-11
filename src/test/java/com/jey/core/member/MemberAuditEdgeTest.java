@@ -58,6 +58,9 @@ class MemberAuditEdgeTest {
 	private static final long FAILING_STAFF = 6363;
 
 	@Autowired
+	PhoneProbeGuard probeGuard;
+
+	@Autowired
 	StudentService studentService;
 
 	@Autowired
@@ -114,11 +117,18 @@ class MemberAuditEdgeTest {
 		assertThat(MemberAuditAction.GUARDIAN_PHONE_DUPLICATED.code()).isEqualTo("member.guardian-phone-duplicated");
 		assertThat(MemberAuditAction.GUARDIAN_ALREADY_LINKED.code()).isEqualTo("member.guardian-already-linked");
 		assertThat(MemberAuditAction.STUDENT_DUPLICATED.code()).isEqualTo("member.student-duplicated");
+		assertThat(MemberAuditAction.STUDENT_PHONE_REVEALED.code()).isEqualTo("member.student-phone-revealed");
+		assertThat(MemberAuditAction.GUARDIAN_PHONE_REVEALED.code()).isEqualTo("member.guardian-phone-revealed");
+		assertThat(MemberAuditAction.PHONE_REVEAL_LIMITED.code()).isEqualTo("member.phone-reveal-limited");
+		assertThat(MemberAuditAction.PHONE_PROBE_LIMITED.code()).isEqualTo("member.phone-probe-limited");
+		assertThat(MemberAuditAction.PHONE_CHANGE_LIMITED.code()).isEqualTo("member.phone-change-limited");
 		assertThat(StudentRegistered.TYPE).isEqualTo("member.student-registered");
-		// 거부된 시도는 이 셋뿐이다. 한 일을 거부로, 거부를 한 일로 바꾸면 적히는 방식과 조회 결과가 달라진다.
+		// 거부된 시도는 이것뿐이다. 한 일을 거부로, 거부를 한 일로 바꾸면 적히는 방식과 조회 결과가 달라진다.
 		assertThat(MemberAuditAction.values()).filteredOn(each -> each.outcome() == AuditOutcome.DENIED)
 				.containsExactlyInAnyOrder(MemberAuditAction.GUARDIAN_PHONE_DUPLICATED,
-						MemberAuditAction.GUARDIAN_ALREADY_LINKED, MemberAuditAction.STUDENT_DUPLICATED);
+						MemberAuditAction.GUARDIAN_ALREADY_LINKED, MemberAuditAction.STUDENT_DUPLICATED,
+						MemberAuditAction.PHONE_REVEAL_LIMITED, MemberAuditAction.PHONE_PROBE_LIMITED,
+						MemberAuditAction.PHONE_CHANGE_LIMITED);
 		assertThat(MemberRefs.STUDENT).isEqualTo("student");
 		assertThat(MemberRefs.GUARDIAN).isEqualTo("guardian");
 	}
@@ -135,7 +145,7 @@ class MemberAuditEdgeTest {
 				.id();
 		GuardianRepository checkMisses = mock(GuardianRepository.class, delegatesTo(guardians));
 		doReturn(false).when(checkMisses).existsOtherByPhoneIndex(any(), any());
-		GuardianService racing = new GuardianService(checkMisses, protector, transactionManager, auditLog);
+		GuardianService racing = new GuardianService(checkMisses, protector, transactionManager, auditLog, probeGuard);
 
 		assertFails(() -> racing.update(guardianId, "바뀐 이름", othersPhone),
 				MemberErrorCode.GUARDIAN_PHONE_DUPLICATED);
@@ -155,7 +165,7 @@ class MemberAuditEdgeTest {
 		StudentGuardianRepository checkMisses = mock(StudentGuardianRepository.class, delegatesTo(links));
 		doReturn(false).when(checkMisses).existsByStudentIdAndGuardianId(any(), any());
 		StudentService racing = new StudentService(students, guardians, checkMisses, guardianService, catalog,
-				protector, transaction, clock, auditLog, currentActor, events);
+				protector, transaction, clock, auditLog, currentActor, events, probeGuard);
 
 		assertFails(() -> racing.addGuardian(student.id(), father(phone)), MemberErrorCode.GUARDIAN_ALREADY_LINKED);
 
@@ -177,7 +187,7 @@ class MemberAuditEdgeTest {
 		StudentGuardianRepository readFails = mock(StudentGuardianRepository.class, delegatesTo(links));
 		doThrow(new IllegalStateException("연결 저장 실패")).when(readFails).findByStudentIdOrderByIdAsc(any());
 		StudentService failing = new StudentService(students, guardians, readFails, guardianService, catalog,
-				protector, transaction, clock, auditLog, currentActor, events);
+				protector, transaction, clock, auditLog, currentActor, events, probeGuard);
 
 		assertThatIllegalStateException()
 				.isThrownBy(() -> failing.register(registration(name, mother(randomPhone()))))
