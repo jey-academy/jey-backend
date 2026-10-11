@@ -3,8 +3,11 @@ package com.jey.core.auth.api;
 import java.io.Serializable;
 import java.security.Principal;
 import java.util.Objects;
+import java.util.Optional;
 
 import com.jey.core.shared.BusinessException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * 로그인한 사용자. 세션에 저장되므로 비밀번호나 해시를 담지 않는다.
@@ -39,6 +42,16 @@ public record AuthenticatedUser(Long id, String loginId, String displayName, Use
 	@Override
 	public String getName() {
 		return String.valueOf(id);
+	}
+
+	/**
+	 * 지금 요청을 보낸 사용자의 계정 ID. 로그인 없이 도는 코드(배치, 이벤트 리스너)와 로그인하지 않은 요청에서는 비어 있다.
+	 * 컨트롤러는 이것 대신 {@code @AuthenticationPrincipal}로 받는다. 서비스 깊은 곳에서 "누가 했는지"를 남길 때 쓴다.
+	 */
+	public static Optional<Long> currentId() {
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		return (authentication != null && authentication.getPrincipal() instanceof AuthenticatedUser user)
+				? Optional.of(user.id()) : Optional.empty();
 	}
 
 	/**
