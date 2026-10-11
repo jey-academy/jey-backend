@@ -11,7 +11,7 @@ public enum AccessErrorCode implements ErrorCode {
 	// 이 역할은 쓸 수 없는 기능이다. CSRF 거부(COMMON_FORBIDDEN)와 구분된다.
 	ROLE_NOT_ALLOWED(HttpStatus.FORBIDDEN, "이 기능을 사용할 권한이 없습니다."),
 
-	// 소속 지점으로 묶인 자료(수납, 수강료표, 패스 사용 내역)를 다른 지점 직원이나 지점 없는 계정이 다루려 했다.
+	// 소속 지점으로 묶인 자료(수납, 패스 사용 내역)를 다른 지점 직원이나 지점 없는 계정이 다루려 했다.
 	CAMPUS_NOT_ALLOWED(HttpStatus.FORBIDDEN, "이 지점의 자료를 다룰 권한이 없습니다.");
 
 	private final HttpStatus status;
