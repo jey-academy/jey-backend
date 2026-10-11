@@ -23,6 +23,13 @@ jey:
       login-id: admin
       password: local-admin-1234
       name: 로컬 관리자
+  # 전화번호 암호화 키(ADR-0009). 로컬 전용 값이라 그대로 커밋한다. 이 값으로 운영 자료를 암호화하지 않는다.
+  crypto:
+    phone:
+      active-key-version: 1
+      encryption-keys:
+        1: bG9jYWwtb25seS1waG9uZS1lbmMta2V5LTAwMDAwMDE=
+      hmac-key: bG9jYWwtb25seS1waG9uZS1obWFjLWtleS0wMDAwMDE=
 
 logging:
   level:

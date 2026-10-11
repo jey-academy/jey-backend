@@ -33,6 +33,17 @@ jey:
       name: ${INITIAL_ADMIN_NAME:관리자}
       # 계정이 하나도 없는데 위 값이 없으면 서버가 뜨지 않는다.
       required: true
+  # 전화번호 암호화 키(ADR-0009). 없거나 형식이 틀리면 서버가 뜨지 않는다.
+  crypto:
+    phone:
+      # 새로 저장할 때 쓰는 암호화 키의 버전. 키를 교체할 때는 아래에 새 버전을 추가한 뒤 이 값을 올린다.
+      active-key-version: ${PHONE_ENCRYPTION_ACTIVE_KEY_VERSION:1}
+      # Base64로 적은 32바이트 무작위 값. 옛 버전은 그 버전으로 저장된 값이 남아 있는 동안 지우지 않는다.
+      encryption-keys:
+        1: ${PHONE_ENCRYPTION_KEY_1}
+      # Base64로 적은 32바이트 이상의 무작위 값. 암호화 키와 다른 값이어야 한다.
+      # 바꾸면 저장된 인덱스와 맞지 않아 전화번호 검색이 되지 않는다.
+      hmac-key: ${PHONE_HMAC_KEY}
 
 springdoc:
   api-docs:
