@@ -13,7 +13,7 @@ import com.jey.core.shared.PhoneNumber;
  *
  * @param phone 학생 본인 번호. 없으면 {@code null}
  * @param guardians 먼저 연결된 순서
- * @param primaryContact 대표 연락처. 어머니, 먼저 연결된 학부모, 학생 본인 번호 순으로 고른다
+ * @param primaryContact 대표 연락처. 어머니, 먼저 연결된 학부모, 학생 본인 번호 순으로 고른다. 비어 있지 않다
  * @param siblings 같은 학부모에 연결된 다른 학생
  */
 public record StudentView(long id, long campusId, Long classId, String name, String school, Grade grade,
@@ -28,9 +28,28 @@ public record StudentView(long id, long campusId, Long classId, String name, Str
 	}
 
 	/**
-	 * @param relation 학생 본인 번호면 {@code null}
+	 * {@link #ofGuardian}이나 {@link #ofStudent}로 만든다.
+	 *
+	 * @param relation 학생 본인 번호면 {@code null}. 본인 번호인지는 {@link #studentOwn()}으로 확인한다
 	 */
 	public record ContactView(String name, GuardianRelation relation, PhoneNumber phone) {
+
+		public static ContactView ofGuardian(String name, GuardianRelation relation, PhoneNumber phone) {
+			if (relation == null) {
+				throw new IllegalArgumentException("학부모의 연락처에는 relation이 있어야 한다");
+			}
+			return new ContactView(name, relation, phone);
+		}
+
+		/** 학부모가 없어서 학생 본인 번호를 대표로 쓰는 경우. */
+		public static ContactView ofStudent(String studentName, PhoneNumber phone) {
+			return new ContactView(studentName, null, phone);
+		}
+
+		public boolean studentOwn() {
+			return relation == null;
+		}
+
 	}
 
 	public record SiblingView(long id, String name, StudentStatus status) {

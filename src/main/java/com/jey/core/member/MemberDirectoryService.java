@@ -3,6 +3,7 @@ package com.jey.core.member;
 import java.util.List;
 import java.util.Optional;
 
+import com.jey.core.member.StudentView.ContactView;
 import com.jey.core.member.api.ContactInfo;
 import com.jey.core.member.api.MemberDirectory;
 import com.jey.core.member.api.StudentInfo;
@@ -42,8 +43,8 @@ class MemberDirectoryService implements MemberDirectory {
 		if (!students.existsById(studentId)) {
 			return Optional.empty();
 		}
-		return Optional.ofNullable(studentService.get(studentId).primaryContact())
-				.map(contact -> new ContactInfo(contact.name(), contact.relation() == null, contact.phone()));
+		ContactView contact = studentService.get(studentId).primaryContact();
+		return Optional.of(new ContactInfo(contact.name(), contact.studentOwn(), contact.phone()));
 	}
 
 }

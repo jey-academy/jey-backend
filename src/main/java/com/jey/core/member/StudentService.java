@@ -37,6 +37,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -91,6 +92,7 @@ public class StudentService {
 	 * 같은 학부모에게 같은 이름의 학생이 이미 있을 때
 	 */
 	public StudentView register(StudentRegistration registration) {
+		requireNoTransaction("register");
 		List<GuardianInput> inputs = registration.guardians();
 		if (inputs.isEmpty() && registration.phone() == null) {
 			throw new BusinessException(MemberErrorCode.CONTACT_REQUIRED);
@@ -120,10 +122,13 @@ public class StudentService {
 				links.save(StudentGuardian.link(saved.getId(), ensured.get(i).guardianId(), inputs.get(i).relation()));
 			}
 			links.flush();
-			return viewOf(saved, ensured.stream()
+			Set<Long> linkedToExisting = ensured.stream()
 					.filter(EnsuredGuardian::existing)
 					.map(EnsuredGuardian::guardianId)
-					.collect(Collectors.toSet()));
+					.collect(Collectors.toSet());
+			linkedToExisting.forEach(guardianId -> PhoneLookupLog.record(PhoneLookupLog.LINKED_TO_EXISTING,
+					saved.getId(), guardianId));
+			return viewOf(saved, linkedToExisting);
 		});
 	}
 
@@ -132,7 +137,8 @@ public class StudentService {
 	 */
 	@Transactional(readOnly = true)
 	public StudentView get(long studentId) {
-		return viewOf(find(studentId), Set.of());
+		return viewOf(students.findById(studentId)
+				.orElseThrow(() -> new BusinessException(MemberErrorCode.STUDENT_NOT_FOUND)), Set.of());
 	}
 
 	/**
@@ -195,6 +201,7 @@ public class StudentService {
 	 * @throws BusinessException 없는 학생이거나 이미 붙어 있는 학부모일 때
 	 */
 	public StudentView addGuardian(long studentId, GuardianInput input) {
+		requireNoTransaction("addGuardian");
 		if (!students.existsById(studentId)) {
 			throw new BusinessException(MemberErrorCode.STUDENT_NOT_FOUND);
 		}
@@ -202,6 +209,7 @@ public class StudentService {
 		return transaction.execute(status -> {
 			Student student = find(studentId);
 			if (links.existsByStudentIdAndGuardianId(studentId, ensured.guardianId())) {
+				PhoneLookupLog.record(PhoneLookupLog.ALREADY_LINKED, studentId, ensured.guardianId());
 				throw new BusinessException(MemberErrorCode.GUARDIAN_ALREADY_LINKED);
 			}
 			try {
@@ -210,9 +218,13 @@ public class StudentService {
 			catch (DataIntegrityViolationException ex) {
 				// 위의 확인과 저장 사이에 같은 연결이 먼저 들어온 경우다.
 				if (UniqueKeys.isViolationOf(ex, LINK_UNIQUE_KEY)) {
+					PhoneLookupLog.record(PhoneLookupLog.ALREADY_LINKED, studentId, ensured.guardianId());
 					throw new BusinessException(MemberErrorCode.GUARDIAN_ALREADY_LINKED, null, ex);
 				}
 				throw ex;
+			}
+			if (ensured.existing()) {
+				PhoneLookupLog.record(PhoneLookupLog.LINKED_TO_EXISTING, studentId, ensured.guardianId());
 			}
 			return viewOf(student, ensured.existing() ? Set.of(ensured.guardianId()) : Set.of());
 		});
@@ -246,9 +258,20 @@ public class StudentService {
 		links.flush();
 	}
 
+	// 고치는 메서드는 모두 이것으로 학생을 읽는다. 학생 행을 잠가서 같은 학생을 고치는 요청이 줄을 서게 한다.
+	// 잠그지 않으면 "남은 연락처를 세고 지우기"가 동시에 둘 다 통과해 연락처가 없는 학생이 생기고,
+	// 수정이 읽어 둔 옛 값을 다시 써서 방금 지운 번호가 되살아난다. 각 메서드의 첫 조회여야 한다.
 	private Student find(long studentId) {
-		return students.findById(studentId)
+		return students.findByIdForUpdate(studentId)
 				.orElseThrow(() -> new BusinessException(MemberErrorCode.STUDENT_NOT_FOUND));
+	}
+
+	// 학부모를 따로 커밋한 뒤 학생을 저장하는 메서드는 바깥에 트랜잭션이 있으면 안 된다.
+	// 방금 커밋된 학부모가 바깥 트랜잭션에는 보이지 않아, 한참 뒤에 원인을 알 수 없는 오류로 드러난다.
+	private static void requireNoTransaction(String method) {
+		if (TransactionSynchronizationManager.isActualTransactionActive()) {
+			throw new IllegalStateException("StudentService#" + method + "는 트랜잭션 밖에서 불러야 한다");
+		}
 	}
 
 	private StudentGuardian findLink(long studentId, long guardianId) {
@@ -302,15 +325,15 @@ public class StudentService {
 		List<StudentGuardian> studentLinks = links.findByStudentIdOrderByIdAsc(student.getId());
 		Map<Long, Guardian> guardiansById = guardiansById(studentLinks);
 		List<GuardianView> guardianViews = studentLinks.stream().map(link -> {
-			Guardian guardian = guardiansById.get(link.getGuardianId());
+			Guardian guardian = guardianOf(link, guardiansById);
 			return new GuardianView(guardian.getId(), guardian.getName(), link.getRelation(),
 					protector.reveal(guardian.getPhone()), linkedToExisting.contains(guardian.getId()));
 		}).toList();
 		PhoneNumber phone = student.hasPhone() ? protector.reveal(student.getPhone()) : null;
 		ContactView primary = PrimaryContactRule.chooseGuardian(studentLinks)
 				.map(link -> guardianViews.get(studentLinks.indexOf(link)))
-				.map(chosen -> new ContactView(chosen.name(), chosen.relation(), chosen.phone()))
-				.orElseGet(() -> (phone != null) ? new ContactView(student.getName(), null, phone) : null);
+				.map(chosen -> ContactView.ofGuardian(chosen.name(), chosen.relation(), chosen.phone()))
+				.orElseGet(() -> ownContact(student, phone));
 		List<SiblingView> siblings = students.findSiblings(student.getId())
 				.stream()
 				.map(sibling -> new SiblingView(sibling.getId(), sibling.getName(), sibling.getStatus()))
@@ -338,16 +361,34 @@ public class StudentService {
 		for (Student student : page) {
 			StudentGuardian link = chosen.get(student.getId());
 			if (link != null) {
-				Guardian guardian = guardiansById.get(link.getGuardianId());
-				contacts.put(student.getId(), new ContactView(guardian.getName(), link.getRelation(),
+				Guardian guardian = guardianOf(link, guardiansById);
+				contacts.put(student.getId(), ContactView.ofGuardian(guardian.getName(), link.getRelation(),
 						protector.reveal(guardian.getPhone())));
 			}
-			else if (student.hasPhone()) {
+			else {
 				contacts.put(student.getId(),
-						new ContactView(student.getName(), null, protector.reveal(student.getPhone())));
+						ownContact(student, student.hasPhone() ? protector.reveal(student.getPhone()) : null));
 			}
 		}
 		return contacts;
+	}
+
+	// 학부모가 없으면 학생 본인 번호가 대표다. 둘 다 없는 학생은 있어서는 안 된다(등록과 삭제가 막는다).
+	// 그런 행이 있으면 "연락처 없음"으로 넘기지 않고 드러낸다.
+	private static ContactView ownContact(Student student, PhoneNumber phone) {
+		if (phone == null) {
+			throw new IllegalStateException("학생 " + student.getId() + "에게 연락처가 하나도 없다");
+		}
+		return ContactView.ofStudent(student.getName(), phone);
+	}
+
+	private static Guardian guardianOf(StudentGuardian link, Map<Long, Guardian> guardiansById) {
+		Guardian guardian = guardiansById.get(link.getGuardianId());
+		if (guardian == null) {
+			throw new IllegalStateException("학생 " + link.getStudentId() + "에게 연결된 학부모 " + link.getGuardianId()
+					+ "를 읽지 못했다");
+		}
+		return guardian;
 	}
 
 	private Map<Long, Guardian> guardiansById(Collection<StudentGuardian> studentLinks) {

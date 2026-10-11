@@ -71,15 +71,18 @@ public class GuardianService {
 	public GuardianProfile update(long id, String name, PhoneNumber phone) {
 		Guardian found = guardians.findById(id)
 				.orElseThrow(() -> new BusinessException(MemberErrorCode.GUARDIAN_NOT_FOUND));
+		boolean phoneChanged = false;
 		if (phone != null) {
 			String index = protector.fullIndex(phone);
 			// 값을 바꾸기 전에 확인한다. 바꾼 뒤에 조회하면 조회 직전에 변경이 DB로 나가서 유니크 키 오류가 여기서 먼저 난다.
 			if (guardians.existsOtherByPhoneIndex(index, id)) {
+				PhoneLookupLog.record(PhoneLookupLog.PHONE_DUPLICATED, null, id);
 				throw new BusinessException(MemberErrorCode.GUARDIAN_PHONE_DUPLICATED);
 			}
 			// 같은 번호를 다시 보낸 것이면 암호문을 새로 만들지 않는다.
 			if (!index.equals(found.getPhone().getFullIndex())) {
 				found.changePhone(protector.protect(phone));
+				phoneChanged = true;
 			}
 		}
 		found.rename(name);
@@ -88,9 +91,13 @@ public class GuardianService {
 		}
 		catch (DataIntegrityViolationException ex) {
 			if (UniqueKeys.isViolationOf(ex, PHONE_UNIQUE_KEY)) {
+				PhoneLookupLog.record(PhoneLookupLog.PHONE_DUPLICATED, null, id);
 				throw new BusinessException(MemberErrorCode.GUARDIAN_PHONE_DUPLICATED, null, ex);
 			}
 			throw ex;
+		}
+		if (phoneChanged) {
+			PhoneLookupLog.record(PhoneLookupLog.PHONE_CHANGED, null, id);
 		}
 		return new GuardianProfile(found.getId(), found.getName(), protector.reveal(found.getPhone()));
 	}

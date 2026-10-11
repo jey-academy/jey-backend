@@ -13,7 +13,7 @@ record ContactResponse(@Schema(requiredMode = RequiredMode.REQUIRED) String name
 				requiredMode = RequiredMode.REQUIRED) PhoneNumber phone) {
 
 	static ContactResponse from(ContactView contact) {
-		return (contact == null) ? null : new ContactResponse(contact.name(), contact.relation(), contact.phone());
+		return new ContactResponse(contact.name(), contact.relation(), contact.phone());
 	}
 
 }
