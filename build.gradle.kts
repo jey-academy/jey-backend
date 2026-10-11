@@ -68,4 +68,13 @@ tasks.withType<Test> {
 	// 테스트 JVM의 시간대를 한국도 UTC도 아닌 곳으로 고정한다.
 	// 시각을 다루는 코드가 JVM 기본 시간대에 기대고 있으면, 개발 PC(한국)와 CI(UTC) 어디서 돌려도 똑같이 드러난다.
 	jvmArgs("-Duser.timezone=America/New_York")
+
+	// API 명세 파일(docs/api/openapi.json)을 다시 쓴다: ./gradlew test --tests "*ApiSpecTest" -PupdateApiSpec
+	// 옵션이 없으면 ApiSpecTest는 비교만 한다. CI는 옵션을 주지 않는다.
+	val updateApiSpec = providers.gradleProperty("updateApiSpec").isPresent
+	systemProperty("jey.updateApiSpec", updateApiSpec)
+	if (updateApiSpec) {
+		// 파일을 쓰는 실행은 "입력이 같으니 건너뛴다"의 대상이 아니다.
+		outputs.upToDateWhen { false }
+	}
 }

@@ -5,6 +5,7 @@ import com.jey.core.auth.api.AnyRole;
 import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.CampusScope;
 import com.jey.core.auth.api.UserRole;
+import io.swagger.v3.oas.annotations.Hidden;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,7 +14,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 // 접근 규칙만 검증하기 위한 테스트 전용 컨트롤러. 규칙을 걸 실제 기능이 아직 없어서 둔다.
-// 테스트 소스라 운영 빌드에는 포함되지 않는다.
+// 테스트 소스라 운영 빌드에는 포함되지 않는다. API 명세에도 싣지 않는다(ApiSpecTest).
+@Hidden
 @RestController
 @RequestMapping("/api/v1/test-access")
 @AllowedRoles({ UserRole.ADMIN, UserRole.STAFF })
