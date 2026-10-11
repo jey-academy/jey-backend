@@ -15,6 +15,10 @@ spring:
       redis:
         # 계정 ID로 그 계정의 세션을 찾을 수 있게 색인을 둔다. 계정을 차단할 때 세션을 끊는 데 쓴다.
         repository-type: indexed
+  modulith:
+    events:
+      # 서버가 내려갔다 올라올 때 처리되지 않은 채 남아 있던 이벤트를 다시 보낸다 (ADR-0025).
+      republish-outstanding-events-on-restart: true
   jpa:
     open-in-view: false
     hibernate:
@@ -51,6 +55,14 @@ jey:
       # 한 IP에서 아이디와 무관하게 실패할 수 있는 횟수. 같은 공유기를 쓰는 사람끼리 나눠 쓴다.
       max-failures-per-ip: 30
       # hmac-key(아이디를 Redis 키에 넣을 때 쓰는 비밀키)는 기본값이 없다. 프로필마다 넣어야 하고, 없으면 서버가 뜨지 않는다.
+
+  events:
+    # 처리에 실패한 이벤트를 주기적으로 다시 보낸다 (ADR-0025).
+    resubmission:
+      # 확인하는 간격
+      interval: 1m
+      # 발행된 지 이 시간이 지나도록 끝나지 않은 것만 다시 보낸다. 방금 발행돼 처리 중인 것은 건드리지 않는다.
+      older-than: 5m
 
 management:
   endpoints:
