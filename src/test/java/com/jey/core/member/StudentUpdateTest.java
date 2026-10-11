@@ -89,8 +89,10 @@ class StudentUpdateTest {
 		String oldLast4 = randomLast4();
 		String newLast4 = String.format("%04d", (Integer.parseInt(oldLast4) + 1) % 10_000);
 		String name = uniqueName();
-		StudentView created = studentService
-				.register(registrationWithPhone(name, randomPhoneEndingWith(oldLast4), mother(randomPhone())));
+		// 어머니 번호의 뒷자리가 우연히 같으면 "옛 뒷자리로 안 찾아진다"가 깨진다. 다른 뒷자리로 고정한다.
+		String motherLast4 = String.format("%04d", (Integer.parseInt(oldLast4) + 2) % 10_000);
+		StudentView created = studentService.register(registrationWithPhone(name, randomPhoneEndingWith(oldLast4),
+				mother(randomPhoneEndingWith(motherLast4))));
 
 		studentService.update(created.id(), change(created, DONGTAN, null, randomPhoneEndingWith(newLast4)));
 
@@ -146,8 +148,9 @@ class StudentUpdateTest {
 	void 학생_번호를_지운다() {
 		String last4 = randomLast4();
 		String name = uniqueName();
-		StudentView created = studentService
-				.register(registrationWithPhone(name, randomPhoneEndingWith(last4), mother(randomPhone())));
+		String motherLast4 = String.format("%04d", (Integer.parseInt(last4) + 1) % 10_000);
+		StudentView created = studentService.register(registrationWithPhone(name, randomPhoneEndingWith(last4),
+				mother(randomPhoneEndingWith(motherLast4))));
 
 		studentService.removePhone(created.id());
 

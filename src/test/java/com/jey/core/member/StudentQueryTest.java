@@ -213,7 +213,8 @@ class StudentQueryTest {
 		long forEight = statementsDuring(() -> assertThat(studentService.search(null, many, null, 0, 20)).hasSize(8));
 
 		assertThat(forEight).isEqualTo(forOne);
-		assertThat(forOne).isLessThanOrEqualTo(4);
+		// 통계가 집계되지 않으면 둘 다 0이라 위의 비교가 그냥 통과한다. 학생, 연결, 학부모는 읽어야 한다.
+		assertThat(forOne).isBetween(3L, 4L);
 	}
 
 	private long statementsDuring(Runnable work) {
