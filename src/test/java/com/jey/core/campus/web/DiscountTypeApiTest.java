@@ -71,6 +71,18 @@ class DiscountTypeApiTest {
 				.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
 	}
 
+	// 연계 학원 계정은 학원 밖 사람이 쓴다. 조회뿐 아니라 변경도 막혀 있어야 한다.
+	@Test
+	@WithJeyUser(role = UserRole.PARTNER, partnerId = 7)
+	void 연계_학원은_할인_유형을_만들거나_고치지_못한다() throws Exception {
+		DiscountType existing = discountTypeService.create(uniqueCode(), "시험 할인", new BigDecimal("0.03"));
+
+		create(uniqueCode(), "시험 할인", "0.03").andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
+		update(existing.getId(), "시험 할인", "0.9", false).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
+	}
+
 	@Test
 	void 로그인하지_않으면_401이다() throws Exception {
 		mockMvc.perform(get("/api/v1/discount-types")).andExpect(status().isUnauthorized());
@@ -137,6 +149,26 @@ class DiscountTypeApiTest {
 					.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
 					.andExpect(jsonPath("$.errors[?(@.field == 'rate')]").isNotEmpty());
 		}
+	}
+
+	// 수정 요청은 검증 애너테이션을 따로 갖고 있다. 5%를 5로 넣는 실수는 수정 화면에서 더 흔하다.
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 수정할_할인율이_범위_밖이면_400이고_값은_그대로다() throws Exception {
+		DiscountType existing = discountTypeService.create(uniqueCode(), "시험 할인", new BigDecimal("0.03"));
+
+		for (String rate : new String[] { "5", "0", "-0.05", "1.0001", "0.07255" }) {
+			update(existing.getId(), "시험 할인", rate, true).andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+					.andExpect(jsonPath("$.errors[?(@.field == 'rate')]").isNotEmpty());
+		}
+		update(existing.getId(), "\u3000", "0.03", true).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"));
+
+		mockMvc.perform(get("/api/v1/discount-types"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[?(@.code == '%s')].rate".formatted(existing.getCode())).value(0.03))
+				.andExpect(jsonPath("$[?(@.code == '%s')].name".formatted(existing.getCode())).value("시험 할인"));
 	}
 
 	@Test

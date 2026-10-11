@@ -13,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class DiscountTypeService {
 
+	private static final String CODE_UNIQUE_KEY = "uk_core_discount_type_code";
+
 	private final DiscountTypeRepository discountTypes;
 
 	DiscountTypeService(DiscountTypeRepository discountTypes) {
@@ -35,11 +37,15 @@ public class DiscountTypeService {
 			throw new BusinessException(CampusErrorCode.DISCOUNT_CODE_DUPLICATED);
 		}
 		// 위의 확인과 저장 사이에 같은 코드가 먼저 들어오면 DB의 유니크 키가 막는다. 그 경우도 같은 오류로 답한다.
+		// 다른 제약 위반은 중복이 아니므로 바꾸지 않고 그대로 던진다(500으로 로그에 남는다).
 		try {
 			return discountTypes.saveAndFlush(created);
 		}
 		catch (DataIntegrityViolationException ex) {
-			throw new BusinessException(CampusErrorCode.DISCOUNT_CODE_DUPLICATED, null, ex);
+			if (UniqueKeys.isViolationOf(ex, CODE_UNIQUE_KEY)) {
+				throw new BusinessException(CampusErrorCode.DISCOUNT_CODE_DUPLICATED, null, ex);
+			}
+			throw ex;
 		}
 	}
 

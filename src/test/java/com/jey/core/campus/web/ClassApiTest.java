@@ -1,5 +1,8 @@
 package com.jey.core.campus.web;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import com.jey.TestcontainersConfiguration;
@@ -17,15 +20,15 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
 
 import static com.jey.TestCsrf.csrfToken;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -54,13 +57,19 @@ class ClassApiTest {
 		String name = uniqueName();
 		classService.create(DONGTAN, name, Money.of(280_000), Money.of(30_000));
 
-		mockMvc.perform(get("/api/v1/classes"))
+		String body = mockMvc.perform(get("/api/v1/classes"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[?(@.name == '%s')].campusId".formatted(name)).value((int) DONGTAN))
 				.andExpect(jsonPath("$[?(@.name == '%s')].id".formatted(name)).isNotEmpty())
-				.andExpect(jsonPath("$[*].baseFee8").doesNotExist())
-				.andExpect(jsonPath("$[*].bookFee").doesNotExist())
-				.andExpect(content().string(not(containsString("280000"))));
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		// 금액 필드의 이름을 하나씩 막지 않는다. 허용한 필드만 있어야 하므로, 무엇이든 필드가 늘면 여기서 걸린다.
+		List<Map<String, Object>> classes = JsonMapper.builder().build().readValue(body, new TypeReference<>() {
+		});
+		assertThat(classes).isNotEmpty()
+				.allSatisfy(each -> assertThat(each.keySet()).isEqualTo(Set.of("id", "campusId", "name")));
 	}
 
 	// 반은 지점으로 묶지 않는다.
@@ -110,7 +119,21 @@ class ClassApiTest {
 		mockMvc.perform(get("/api/v1/classes"))
 				.andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
-		mockMvc.perform(get("/api/v1/class-fees")).andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/v1/class-fees"))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
+	}
+
+	// 연계 학원 계정은 학원 밖 사람이 쓴다. 조회뿐 아니라 변경도 막혀 있어야 한다.
+	@Test
+	@WithJeyUser(role = UserRole.PARTNER, partnerId = 7)
+	void 연계_학원은_반을_만들거나_고치지_못한다() throws Exception {
+		AcademyClass existing = classService.create(DONGTAN, uniqueName(), Money.of(280_000), Money.ZERO);
+
+		create(DONGTAN, uniqueName(), "280000", "0").andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
+		update(existing.getId(), existing.getName(), "1", "0", false).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
 	}
 
 	@Test
@@ -137,6 +160,8 @@ class ClassApiTest {
 				.andExpect(jsonPath("$[?(@.name == '%s')].baseFee8".formatted(name)).value(280000))
 				.andExpect(jsonPath("$[?(@.name == '%s')].bookFee".formatted(name)).value(30000));
 		mockMvc.perform(get("/api/v1/class-fees").param("campusId", String.valueOf(DONGTAN)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$").isArray())
 				.andExpect(jsonPath("$[?(@.name == '%s')]".formatted(name)).isEmpty());
 	}
 
@@ -183,11 +208,15 @@ class ClassApiTest {
 	@WithJeyUser(role = UserRole.ADMIN)
 	void 끈_반은_반_목록에서_빠지고_수강료표에는_남는다() throws Exception {
 		AcademyClass existing = classService.create(DONGTAN, uniqueName(), Money.of(280_000), Money.ZERO);
+		AcademyClass stillActive = classService.create(DONGTAN, uniqueName(), Money.of(280_000), Money.ZERO);
 
 		update(existing.getId(), existing.getName(), "280000", "0", false).andExpect(status().isOk())
 				.andExpect(jsonPath("$.active").value(false));
 
+		// 요청이 오류로 끝나도 "목록에 없음"은 통과한다. 켜진 반이 보이는 것까지 같이 확인한다.
 		mockMvc.perform(get("/api/v1/classes"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[?(@.id == %d)]".formatted(stillActive.getId())).isNotEmpty())
 				.andExpect(jsonPath("$[?(@.id == %d)]".formatted(existing.getId())).isEmpty());
 		mockMvc.perform(get("/api/v1/class-fees"))
 				.andExpect(jsonPath("$[?(@.id == %d)].active".formatted(existing.getId())).value(false));
@@ -203,7 +232,8 @@ class ClassApiTest {
 				.andExpect(header().string("Content-Type", startsWith("application/problem+json")))
 				.andExpect(jsonPath("$.code").value("CAMPUS_CLASS_NAME_DUPLICATED"));
 		// 앞뒤 공백만 다른 이름도 같은 이름이다.
-		create(DONGTAN, " " + name + " ", "300000", "0").andExpect(status().isConflict());
+		create(DONGTAN, " " + name + " ", "300000", "0").andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("CAMPUS_CLASS_NAME_DUPLICATED"));
 	}
 
 	@Test
@@ -284,6 +314,51 @@ class ClassApiTest {
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
 				.andExpect(jsonPath("$.errors[?(@.field == 'active')]").isNotEmpty());
+	}
+
+	// 수정 요청은 검증 애너테이션을 따로 갖고 있다. 생성만 확인하면 수정 쪽에서 빠져도 모른다.
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 수정할_금액이나_이름이_틀리면_400이고_값은_그대로다() throws Exception {
+		AcademyClass existing = classService.create(DONGTAN, uniqueName(), Money.of(280_000), Money.of(30_000));
+
+		update(existing.getId(), existing.getName(), "0", "0", true).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("CAMPUS_INVALID_FEE"));
+		update(existing.getId(), existing.getName(), "280000.5", "0", true).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("CAMPUS_INVALID_FEE"));
+		update(existing.getId(), existing.getName(), "280000", "0.5", true).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("CAMPUS_INVALID_FEE"));
+		update(existing.getId(), "가".repeat(51), "280000", "0", true).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"));
+
+		mockMvc.perform(get("/api/v1/class-fees"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[?(@.id == %d)].baseFee8".formatted(existing.getId())).value(280000))
+				.andExpect(jsonPath("$[?(@.id == %d)].bookFee".formatted(existing.getId())).value(30000));
+	}
+
+	// 한글 입력기에서 나오는 전각 공백(U+3000)도 공백이다. 요청 검증이 놓치면 엔티티에서 걸려 500이 된다.
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 전각_공백뿐인_이름은_400이다() throws Exception {
+		AcademyClass existing = classService.create(DONGTAN, uniqueName(), Money.of(280_000), Money.ZERO);
+
+		create(DONGTAN, "\u3000\u3000", "280000", "0").andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[?(@.field == 'name')]").isNotEmpty());
+		update(existing.getId(), "\u3000", "280000", "0", true).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"));
+	}
+
+	// 이름 중복은 같은 지점 안에서만 본다.
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 다른_지점의_반이_쓰는_이름으로는_바꿀_수_있다() throws Exception {
+		AcademyClass neungdong = classService.create(NEUNGDONG, uniqueName(), Money.of(280_000), Money.ZERO);
+		AcademyClass dongtan = classService.create(DONGTAN, uniqueName(), Money.of(280_000), Money.ZERO);
+
+		update(dongtan.getId(), neungdong.getName(), "280000", "0", true).andExpect(status().isOk())
+				.andExpect(jsonPath("$.name").value(neungdong.getName()));
 	}
 
 	@Test

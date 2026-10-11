@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 class MoneyConverterTest {
 
@@ -20,6 +21,14 @@ class MoneyConverterTest {
 	void DB에서_읽은_숫자를_금액으로_바꾼다() {
 		assertThat(converter.convertToEntityAttribute(new BigDecimal("280000"))).isEqualTo(Money.of(280_000));
 		assertThat(converter.convertToEntityAttribute(new BigDecimal("280000.00"))).isEqualTo(Money.of(280_000));
+	}
+
+	// DECIMAL(15, 0) 컬럼은 304593.75를 오류 없이 304594로 저장한다. 버림(304593)과 어긋난 금액이 조용히 남는다.
+	@Test
+	void 원_미만이_남은_금액은_저장하지_않는다() {
+		assertThatIllegalStateException()
+				.isThrownBy(() -> converter.convertToDatabaseColumn(Money.of(new BigDecimal("304593.75"))));
+		assertThat(converter.convertToDatabaseColumn(Money.ZERO)).isEqualByComparingTo("0");
 	}
 
 	@Test

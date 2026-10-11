@@ -48,7 +48,7 @@ class CampusCatalogTest {
 
 		assertThat(catalog.findClass(created.getId())).contains(new ClassInfo(created.getId(), 2, name, true));
 		assertThat(catalog.findClassFee(created.getId()))
-				.contains(new ClassFee(created.getId(), 2, Money.of(280_000), Money.of(30_000)));
+				.contains(new ClassFee(created.getId(), 2, Money.of(280_000), Money.of(30_000), true));
 	}
 
 	// 이미 만든 청구가 꺼진 반을 참조한다. 새로 고를 수 있는지는 부르는 쪽이 active로 판단한다.
@@ -59,7 +59,8 @@ class CampusCatalogTest {
 		classService.update(created.getId(), name, Money.of(280_000), Money.ZERO, false);
 
 		assertThat(catalog.findClass(created.getId())).map(ClassInfo::active).contains(false);
-		assertThat(catalog.findClassFee(created.getId())).isPresent();
+		// 수강료만 조회해도 꺼진 반인지 알 수 있어야 꺼진 반으로 청구를 만들지 않는다.
+		assertThat(catalog.findClassFee(created.getId())).map(ClassFee::active).contains(false);
 	}
 
 	@Test

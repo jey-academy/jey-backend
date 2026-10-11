@@ -7,6 +7,7 @@ import com.jey.core.shared.Money;
  *
  * @param baseFee8 8회 수업 기준 수강료
  * @param bookFee 교재비. 교재가 없으면 0원
+ * @param active 꺼진 반으로는 새 청구를 만들지 않는다
  */
-public record ClassFee(long classId, long campusId, Money baseFee8, Money bookFee) {
+public record ClassFee(long classId, long campusId, Money baseFee8, Money bookFee, boolean active) {
 }

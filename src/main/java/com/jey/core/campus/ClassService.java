@@ -2,6 +2,7 @@ package com.jey.core.campus;
 
 import java.util.List;
 
+import com.jey.core.campus.api.ClassInfo;
 import com.jey.core.campus.domain.AcademyClass;
 import com.jey.core.campus.domain.AcademyClassRepository;
 import com.jey.core.campus.domain.CampusRepository;
@@ -12,10 +13,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 반과 수강료표. 돌려주는 {@link AcademyClass}에는 수강료가 들어 있으므로, 누구에게 무엇을 보일지는 부르는 쪽이 응답 타입으로 정한다.
+ * 반과 수강료표. 수강료는 관리자만 본다.
+ * 직원도 부르는 {@link #activeClasses}는 수강료가 없는 {@link ClassInfo}를 돌려준다.
+ * 그 밖의 메서드가 돌려주는 {@link AcademyClass}에는 수강료가 들어 있고, 관리자 전용 기능만 부른다.
  */
 @Service
 public class ClassService {
+
+	private static final String NAME_UNIQUE_KEY = "uk_core_class_campus_name";
 
 	private final AcademyClassRepository classes;
 
@@ -27,14 +32,17 @@ public class ClassService {
 	}
 
 	/**
-	 * 새로 고를 수 있는 반(운영 중인 반).
+	 * 새로 고를 수 있는 반(운영 중인 반). 수강료는 담지 않는다.
 	 *
 	 * @param campusId 지점. {@code null}이면 전 지점
 	 */
 	@Transactional(readOnly = true)
-	public List<AcademyClass> activeClasses(Long campusId) {
-		return (campusId == null) ? classes.findByActiveTrueOrderByCampusIdAscNameAsc()
+	public List<ClassInfo> activeClasses(Long campusId) {
+		List<AcademyClass> found = (campusId == null) ? classes.findByActiveTrueOrderByCampusIdAscNameAsc()
 				: classes.findByCampusIdAndActiveTrueOrderByNameAsc(campusId);
+		return found.stream()
+				.map(each -> new ClassInfo(each.getId(), each.getCampusId(), each.getName(), each.isActive()))
+				.toList();
 	}
 
 	/**
@@ -87,12 +95,16 @@ public class ClassService {
 	}
 
 	// 위의 이름 확인과 저장 사이에 같은 이름이 먼저 들어오면 DB의 유니크 키가 막는다. 그 경우도 같은 오류로 답한다.
+	// 다른 제약 위반은 중복이 아니므로 바꾸지 않고 그대로 던진다(500으로 로그에 남는다).
 	private AcademyClass saveOrDuplicated(AcademyClass academyClass) {
 		try {
 			return classes.saveAndFlush(academyClass);
 		}
 		catch (DataIntegrityViolationException ex) {
-			throw new BusinessException(CampusErrorCode.CLASS_NAME_DUPLICATED, null, ex);
+			if (UniqueKeys.isViolationOf(ex, NAME_UNIQUE_KEY)) {
+				throw new BusinessException(CampusErrorCode.CLASS_NAME_DUPLICATED, null, ex);
+			}
+			throw ex;
 		}
 	}
 

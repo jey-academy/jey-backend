@@ -44,7 +44,7 @@ class CampusCatalogService implements CampusCatalog {
 	public Optional<ClassFee> findClassFee(long classId) {
 		return classes.findById(classId)
 				.map(found -> new ClassFee(found.getId(), found.getCampusId(), found.getBaseFee8(),
-						found.getBookFee()));
+						found.getBookFee(), found.isActive()));
 	}
 
 	@Override

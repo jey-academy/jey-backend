@@ -5,5 +5,5 @@ package com.jey.core.campus.api;
  *
  * @param active 꺼진 반은 새로 고를 수 없다
  */
-public record ClassInfo(long id, long campusId, String name, boolean active) {
+public record ClassInfo(long classId, long campusId, String name, boolean active) {
 }
