@@ -10,11 +10,8 @@ import com.jey.core.member.StudentService;
 import com.jey.core.member.StudentView;
 import com.jey.core.shared.PhoneNumber;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.system.CapturedOutput;
-import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -44,12 +41,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@ExtendWith(OutputCaptureExtension.class)
 class MemberApiEdgeTest {
 
 	private static final String STUDENTS = "/api/v1/students";
-
-	private static final long STAFF_ACCOUNT = 4242;
 
 	@Autowired
 	MockMvc mockMvc;
@@ -164,44 +158,6 @@ class MemberApiEdgeTest {
 			jdbc.update("UPDATE core_guardian SET phone_enc = ? WHERE id = ?", original, guardianId);
 		}
 		mockMvc.perform(get(STUDENTS + "/{id}", student.id())).andExpect(status().isOk());
-	}
-
-	// 가린 번호의 가운데 자리는 "그 번호가 이미 있다"는 응답을 되풀이해 받으면 알아낼 수 있다.
-	// 막을 수는 없어서, 누가 그런 응답을 받았는지 남긴다. 번호는 남기지 않는다.
-	@Test
-	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = STAFF_ACCOUNT)
-	void 번호가_이미_있다고_알려_준_응답은_계정과_함께_기록된다(CapturedOutput output) throws Exception {
-		PhoneNumber othersPhone = randomPhone();
-		PhoneNumber newPhone = randomPhone();
-		long othersGuardian = studentService.register(registration(uniqueName(), mother(othersPhone)))
-				.guardians()
-				.getFirst()
-				.id();
-		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
-		long guardianId = student.guardians().getFirst().id();
-
-		send(put("/api/v1/guardians/{id}", guardianId), "{\"name\": \"김어머니\", \"phone\": \"%s\"}"
-				.formatted(othersPhone.value())).andExpect(status().isConflict());
-		send(put("/api/v1/guardians/{id}", guardianId), "{\"name\": \"김어머니\", \"phone\": \"%s\"}"
-				.formatted(newPhone.value())).andExpect(status().isOk());
-		send(post(STUDENTS + "/{id}/guardians", student.id()), guardianBody(othersPhone))
-				.andExpect(status().isCreated());
-		send(post(STUDENTS + "/{id}/guardians", student.id()), guardianBody(othersPhone))
-				.andExpect(status().isConflict());
-		// 이름만 바꾼 수정은 번호와 무관하다.
-		send(put("/api/v1/guardians/{id}", guardianId), "{\"name\": \"박어머니\"}").andExpect(status().isOk());
-
-		String who = " account=" + STAFF_ACCOUNT + " ";
-		assertThat(output.getAll())
-				.contains("event=GUARDIAN_PHONE_DUPLICATED" + who + "student=null guardian=" + guardianId)
-				.contains("event=GUARDIAN_PHONE_CHANGED" + who + "student=null guardian=" + guardianId)
-				.contains("event=LINKED_TO_EXISTING" + who + "student=" + student.id() + " guardian=" + othersGuardian)
-				.contains("event=GUARDIAN_ALREADY_LINKED" + who + "student=" + student.id() + " guardian="
-						+ othersGuardian);
-		assertThat(output.getAll().split("event=GUARDIAN_PHONE_CHANGED", -1)).hasSize(2);
-		assertThat(output.getAll()).doesNotContain(othersPhone.value())
-				.doesNotContain(othersPhone.value().substring(3))
-				.doesNotContain(newPhone.value().substring(3));
 	}
 
 	private ResultActions send(MockHttpServletRequestBuilder request, String json) throws Exception {

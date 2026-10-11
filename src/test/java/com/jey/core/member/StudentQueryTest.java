@@ -217,7 +217,17 @@ class StudentQueryTest {
 		assertThat(forOne).isBetween(3L, 4L);
 	}
 
+	// 통계는 애플리케이션 전체의 값이다. 방금 등록한 학생의 이벤트를 리스너가 다른 스레드에서 적는 중이면 그 쿼리가 섞인다.
+	// 여러 번 재서 가장 작은 값을 쓴다. 섞인 쿼리는 값을 키우기만 한다.
 	private long statementsDuring(Runnable work) {
+		long fewest = Long.MAX_VALUE;
+		for (int attempt = 0; attempt < 5; attempt++) {
+			fewest = Math.min(fewest, statementsDuringOnce(work));
+		}
+		return fewest;
+	}
+
+	private long statementsDuringOnce(Runnable work) {
 		Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
 		boolean wasEnabled = statistics.isStatisticsEnabled();
 		statistics.setStatisticsEnabled(true);

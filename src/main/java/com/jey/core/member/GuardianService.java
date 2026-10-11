@@ -1,5 +1,7 @@
 package com.jey.core.member;
 
+import java.util.Map;
+
 import com.jey.core.member.domain.Guardian;
 import com.jey.core.member.domain.GuardianRepository;
 import com.jey.core.shared.BusinessException;
@@ -27,10 +29,13 @@ public class GuardianService {
 
 	private final TransactionTemplate newTransaction;
 
+	private final MemberAudit audit;
+
 	GuardianService(GuardianRepository guardians, PhoneProtector protector,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager, MemberAudit audit) {
 		this.guardians = guardians;
 		this.protector = protector;
+		this.audit = audit;
 		this.newTransaction = new TransactionTemplate(transactionManager);
 		this.newTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 	}
@@ -76,7 +81,7 @@ public class GuardianService {
 			String index = protector.fullIndex(phone);
 			// 값을 바꾸기 전에 확인한다. 바꾼 뒤에 조회하면 조회 직전에 변경이 DB로 나가서 유니크 키 오류가 여기서 먼저 난다.
 			if (guardians.existsOtherByPhoneIndex(index, id)) {
-				PhoneLookupLog.record(PhoneLookupLog.PHONE_DUPLICATED, null, id);
+				audit.guardianAttempt(MemberAudit.GUARDIAN_PHONE_DUPLICATED, id);
 				throw new BusinessException(MemberErrorCode.GUARDIAN_PHONE_DUPLICATED);
 			}
 			// 같은 번호를 다시 보낸 것이면 암호문을 새로 만들지 않는다.
@@ -91,14 +96,12 @@ public class GuardianService {
 		}
 		catch (DataIntegrityViolationException ex) {
 			if (UniqueKeys.isViolationOf(ex, PHONE_UNIQUE_KEY)) {
-				PhoneLookupLog.record(PhoneLookupLog.PHONE_DUPLICATED, null, id);
+				audit.guardianAttempt(MemberAudit.GUARDIAN_PHONE_DUPLICATED, id);
 				throw new BusinessException(MemberErrorCode.GUARDIAN_PHONE_DUPLICATED, null, ex);
 			}
 			throw ex;
 		}
-		if (phoneChanged) {
-			PhoneLookupLog.record(PhoneLookupLog.PHONE_CHANGED, null, id);
-		}
+		audit.guardian(MemberAudit.GUARDIAN_UPDATED, id, Map.of("phoneChanged", phoneChanged));
 		return new GuardianProfile(found.getId(), found.getName(), protector.reveal(found.getPhone()));
 	}
 

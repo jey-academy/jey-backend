@@ -13,12 +13,14 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.campus.api.CampusCatalog;
 import com.jey.core.campus.api.ClassInfo;
 import com.jey.core.member.GuardianService.EnsuredGuardian;
 import com.jey.core.member.StudentView.ContactView;
 import com.jey.core.member.StudentView.GuardianView;
 import com.jey.core.member.StudentView.SiblingView;
+import com.jey.core.member.api.StudentRegistered;
 import com.jey.core.member.domain.Guardian;
 import com.jey.core.member.domain.GuardianRelation;
 import com.jey.core.member.domain.GuardianRepository;
@@ -28,9 +30,11 @@ import com.jey.core.member.domain.StudentGuardian;
 import com.jey.core.member.domain.StudentGuardianRepository;
 import com.jey.core.member.domain.StudentRepository;
 import com.jey.core.shared.BusinessException;
+import com.jey.core.shared.EventMetadata;
 import com.jey.core.shared.PhoneNumber;
 import com.jey.core.shared.PhoneProtector;
 import com.jey.core.shared.UniqueKeys;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -69,9 +73,15 @@ public class StudentService {
 
 	private final Clock clock;
 
+	private final MemberAudit audit;
+
+	private final ApplicationEventPublisher events;
+
 	StudentService(StudentRepository students, GuardianRepository guardians, StudentGuardianRepository links,
 			GuardianService guardianService, CampusCatalog catalog, PhoneProtector protector,
-			TransactionTemplate transaction, Clock clock) {
+			TransactionTemplate transaction, Clock clock, MemberAudit audit, ApplicationEventPublisher events) {
+		this.audit = audit;
+		this.events = events;
 		this.students = students;
 		this.guardians = guardians;
 		this.links = links;
@@ -126,8 +136,12 @@ public class StudentService {
 					.filter(EnsuredGuardian::existing)
 					.map(EnsuredGuardian::guardianId)
 					.collect(Collectors.toSet());
-			linkedToExisting.forEach(guardianId -> PhoneLookupLog.record(PhoneLookupLog.LINKED_TO_EXISTING,
-					saved.getId(), guardianId));
+			ensured.forEach(each -> audit.student(MemberAudit.GUARDIAN_LINKED, saved.getId(),
+					Map.of("guardianId", each.guardianId(), "linkedToExisting", each.existing())));
+			// 같은 트랜잭션에서 낸다. 등록이 커밋돼야 이벤트도 나가고, 리스너는 커밋 뒤에 돈다.
+			events.publishEvent(new StudentRegistered(EventMetadata.create(StudentRegistered.TYPE,
+					StudentRegistered.VERSION, saved.getCampusId(), AuthenticatedUser.currentId().orElse(null), clock),
+					saved.getId()));
 			return viewOf(saved, linkedToExisting);
 		});
 	}
@@ -170,10 +184,13 @@ public class StudentService {
 		requireValidPlacement(change.campusId(), change.classId(), student);
 		student.update(change.campusId(), change.classId(), change.name(), change.school(), change.grade(),
 				change.status(), change.registeredAt());
-		if (change.phone() != null && !sameNumber(student, change.phone())) {
+		boolean phoneChanged = change.phone() != null && !sameNumber(student, change.phone());
+		if (phoneChanged) {
 			student.changePhone(protector.protect(change.phone()));
 		}
-		return viewOf(students.saveAndFlush(student), Set.of());
+		Student saved = students.saveAndFlush(student);
+		audit.student(MemberAudit.STUDENT_UPDATED, studentId, Map.of("phoneChanged", phoneChanged));
+		return viewOf(saved, Set.of());
 	}
 
 	/**
@@ -192,6 +209,7 @@ public class StudentService {
 		}
 		student.removePhone();
 		students.saveAndFlush(student);
+		audit.student(MemberAudit.STUDENT_PHONE_REMOVED, studentId, Map.of());
 	}
 
 	/**
@@ -209,7 +227,8 @@ public class StudentService {
 		return transaction.execute(status -> {
 			Student student = find(studentId);
 			if (links.existsByStudentIdAndGuardianId(studentId, ensured.guardianId())) {
-				PhoneLookupLog.record(PhoneLookupLog.ALREADY_LINKED, studentId, ensured.guardianId());
+				audit.studentAttempt(MemberAudit.GUARDIAN_ALREADY_LINKED, studentId,
+						Map.of("guardianId", ensured.guardianId()));
 				throw new BusinessException(MemberErrorCode.GUARDIAN_ALREADY_LINKED);
 			}
 			try {
@@ -218,14 +237,14 @@ public class StudentService {
 			catch (DataIntegrityViolationException ex) {
 				// 위의 확인과 저장 사이에 같은 연결이 먼저 들어온 경우다.
 				if (UniqueKeys.isViolationOf(ex, LINK_UNIQUE_KEY)) {
-					PhoneLookupLog.record(PhoneLookupLog.ALREADY_LINKED, studentId, ensured.guardianId());
+					audit.studentAttempt(MemberAudit.GUARDIAN_ALREADY_LINKED, studentId,
+							Map.of("guardianId", ensured.guardianId()));
 					throw new BusinessException(MemberErrorCode.GUARDIAN_ALREADY_LINKED, null, ex);
 				}
 				throw ex;
 			}
-			if (ensured.existing()) {
-				PhoneLookupLog.record(PhoneLookupLog.LINKED_TO_EXISTING, studentId, ensured.guardianId());
-			}
+			audit.student(MemberAudit.GUARDIAN_LINKED, studentId,
+					Map.of("guardianId", ensured.guardianId(), "linkedToExisting", ensured.existing()));
 			return viewOf(student, ensured.existing() ? Set.of(ensured.guardianId()) : Set.of());
 		});
 	}
@@ -239,6 +258,8 @@ public class StudentService {
 		StudentGuardian link = findLink(studentId, guardianId);
 		link.changeRelation(relation);
 		links.saveAndFlush(link);
+		audit.student(MemberAudit.GUARDIAN_RELATION_CHANGED, studentId,
+				Map.of("guardianId", guardianId, "relation", relation));
 		return viewOf(student, Set.of());
 	}
 
@@ -256,6 +277,7 @@ public class StudentService {
 		}
 		links.delete(link);
 		links.flush();
+		audit.student(MemberAudit.GUARDIAN_UNLINKED, studentId, Map.of("guardianId", guardianId));
 	}
 
 	// 고치는 메서드는 모두 이것으로 학생을 읽는다. 학생 행을 잠가서 같은 학생을 고치는 요청이 줄을 서게 한다.
