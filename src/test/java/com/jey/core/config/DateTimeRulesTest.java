@@ -74,14 +74,16 @@ class DateTimeRulesTest {
 	@Test
 	void 봉투_정보는_JSON으로_나갔다가_같은_값으로_돌아온다() {
 		EventMetadata metadata = new EventMetadata(UUID.fromString("0192f8a4-0000-7000-8000-000000000001"),
-				"billing.payment-completed", 1, Instant.parse("2026-11-03T01:21:05.123Z"), 1L);
+				"billing.payment-completed", 1, Instant.parse("2026-11-03T01:21:05.123Z"), 1L, 7L);
 
 		String json = mapper.writeValueAsString(metadata);
 
 		assertThat(json).isEqualTo("{\"eventId\":\"0192f8a4-0000-7000-8000-000000000001\","
 				+ "\"eventType\":\"billing.payment-completed\",\"version\":1,"
-				+ "\"occurredAt\":\"2026-11-03T01:21:05.123Z\",\"campusId\":1}");
+				+ "\"occurredAt\":\"2026-11-03T01:21:05.123Z\",\"campusId\":1,\"actorId\":7}");
 		assertThat(mapper.readValue(json, EventMetadata.class)).isEqualTo(metadata);
+		// 행위자를 싣기 전에 저장된 이벤트도 읽혀야 한다. 발행 기록에 남아 있다가 다시 보내질 수 있다.
+		assertThat(mapper.readValue(json.replace(",\"actorId\":7", ""), EventMetadata.class).actorId()).isNull();
 	}
 
 }

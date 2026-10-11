@@ -23,11 +23,12 @@ class EventMetadataTest {
 
 	@Test
 	void 시계로_발생_시각과_ID를_채운다() {
-		EventMetadata metadata = EventMetadata.create("billing.payment-completed", 1, 1L, CLOCK);
+		EventMetadata metadata = EventMetadata.create("billing.payment-completed", 1, 1L, 7L, CLOCK);
 
 		assertThat(metadata.eventType()).isEqualTo("billing.payment-completed");
 		assertThat(metadata.version()).isEqualTo(1);
 		assertThat(metadata.campusId()).isEqualTo(1L);
+		assertThat(metadata.actorId()).isEqualTo(7L);
 		assertThat(metadata.occurredAt()).isEqualTo(NOW);
 		assertThat(metadata.eventId().version()).isEqualTo(7);
 		assertThat(metadata.eventId().getMostSignificantBits() >>> 16).isEqualTo(NOW.toEpochMilli());
@@ -35,52 +36,66 @@ class EventMetadataTest {
 
 	@Test
 	void 만들_때마다_ID가_다르다() {
-		assertThat(EventMetadata.create("billing.payment-completed", 1, 1L, CLOCK).eventId())
-				.isNotEqualTo(EventMetadata.create("billing.payment-completed", 1, 1L, CLOCK).eventId());
+		assertThat(EventMetadata.create("billing.payment-completed", 1, 1L, 7L, CLOCK).eventId())
+				.isNotEqualTo(EventMetadata.create("billing.payment-completed", 1, 1L, 7L, CLOCK).eventId());
 	}
 
 	@Test
 	void 지점과_무관한_이벤트는_지점_없이_만들_수_있다() {
-		assertThat(EventMetadata.create("core.user-created", 1, null, CLOCK).campusId()).isNull();
+		assertThat(EventMetadata.create("core.user-created", 1, null, 7L, CLOCK).campusId()).isNull();
+	}
+
+	// 배치나 웹훅처럼 로그인 없이 일어난 일이다.
+	@Test
+	void 행위자가_없는_이벤트는_행위자_없이_만들_수_있다() {
+		assertThat(EventMetadata.create("billing.payment-completed", 1, 1L, null, CLOCK).actorId()).isNull();
+	}
+
+	@Test
+	void 행위자_ID는_양수여야_한다() {
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> new EventMetadata(ID, "billing.payment-completed", 1, NOW, 1L, 0L));
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> EventMetadata.create("billing.payment-completed", 1, 1L, -1L, CLOCK));
 	}
 
 	@ParameterizedTest
 	@ValueSource(strings = { "billing.payment-completed", "dongtanpass.pass-redeemed", "core.user-created",
 			"billing.paid2" })
 	void 이벤트_이름은_모듈_점_사건_형식이다(String eventType) {
-		assertThat(new EventMetadata(ID, eventType, 1, NOW, 1L).eventType()).isEqualTo(eventType);
+		assertThat(new EventMetadata(ID, eventType, 1, NOW, 1L, 7L).eventType()).isEqualTo(eventType);
 	}
 
 	@ParameterizedTest
 	@ValueSource(strings = { "", "payment-completed", "billing.", ".payment-completed", "Billing.PaymentCompleted",
 			"billing.payment_completed", "billing.payment-", "billing.payment.completed", "billing payment" })
 	void 형식이_틀린_이벤트_이름은_거부한다(String eventType) {
-		assertThatIllegalArgumentException().isThrownBy(() -> new EventMetadata(ID, eventType, 1, NOW, 1L));
+		assertThatIllegalArgumentException().isThrownBy(() -> new EventMetadata(ID, eventType, 1, NOW, 1L, 7L));
 	}
 
 	@Test
 	void 버전은_1_이상이어야_한다() {
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> new EventMetadata(ID, "billing.payment-completed", 0, NOW, 1L));
+				.isThrownBy(() -> new EventMetadata(ID, "billing.payment-completed", 0, NOW, 1L, 7L));
 	}
 
 	@Test
 	void 지점_ID는_양수여야_한다() {
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> new EventMetadata(ID, "billing.payment-completed", 1, NOW, 0L));
+				.isThrownBy(() -> new EventMetadata(ID, "billing.payment-completed", 1, NOW, 0L, 7L));
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> new EventMetadata(ID, "billing.payment-completed", 1, NOW, -1L));
+				.isThrownBy(() -> new EventMetadata(ID, "billing.payment-completed", 1, NOW, -1L, 7L));
 	}
 
 	@Test
 	void ID_이름_시각은_비울_수_없다() {
 		assertThatNullPointerException()
-				.isThrownBy(() -> new EventMetadata(null, "billing.payment-completed", 1, NOW, 1L))
+				.isThrownBy(() -> new EventMetadata(null, "billing.payment-completed", 1, NOW, 1L, 7L))
 				.withMessage("eventId");
-		assertThatNullPointerException().isThrownBy(() -> new EventMetadata(ID, null, 1, NOW, 1L))
+		assertThatNullPointerException().isThrownBy(() -> new EventMetadata(ID, null, 1, NOW, 1L, 7L))
 				.withMessage("eventType");
 		assertThatNullPointerException()
-				.isThrownBy(() -> new EventMetadata(ID, "billing.payment-completed", 1, null, 1L))
+				.isThrownBy(() -> new EventMetadata(ID, "billing.payment-completed", 1, null, 1L, 7L))
 				.withMessage("occurredAt");
 	}
 

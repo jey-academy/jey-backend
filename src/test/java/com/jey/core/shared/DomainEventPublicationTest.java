@@ -73,7 +73,7 @@ class DomainEventPublicationTest {
 	}
 
 	private TestDomainEvent newEvent(long targetId) {
-		return new TestDomainEvent(EventMetadata.create("core.test-happened", 1, 1L, clock), targetId);
+		return new TestDomainEvent(EventMetadata.create("core.test-happened", 1, 1L, 7L, clock), targetId);
 	}
 
 	// 리스너는 트랜잭션이 커밋된 뒤에 실행되므로 트랜잭션 안에서 발행한다.
