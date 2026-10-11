@@ -26,6 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -253,6 +254,32 @@ class GlobalExceptionHandlerTest {
 		mockMvc.perform(delete("/api/v1/test-errors/business").with(csrfToken(mockMvc)))
 				.andExpect(status().isMethodNotAllowed())
 				.andExpect(jsonPath("$.code").value("COMMON_METHOD_NOT_ALLOWED"));
+	}
+
+	// 남은 시간은 초로 올려서 싣는다. 내려서 실으면 그 시각에 다시 보낸 요청이 또 막힌다.
+	@Test
+	void 횟수_제한에_막힌_요청은_429와_남은_시간으로_응답한다() throws Exception {
+		mockMvc.perform(get("/api/v1/test-errors/rate-limited"))
+				.andExpect(status().isTooManyRequests())
+				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+				.andExpect(header().string("Retry-After", "62"))
+				.andExpect(jsonPath("$.status").value(429))
+				.andExpect(jsonPath("$.detail").value("너무 많이 요청했습니다."))
+				.andExpect(jsonPath("$.code").value("TEST_TOO_MANY"));
+	}
+
+	@Test
+	void 남은_시간이_1초_미만이어도_1초로_알린다() throws Exception {
+		mockMvc.perform(get("/api/v1/test-errors/rate-limited-briefly"))
+				.andExpect(status().isTooManyRequests())
+				.andExpect(header().string("Retry-After", "1"));
+	}
+
+	@Test
+	void 횟수_제한이_아닌_오류에는_남은_시간이_없다() throws Exception {
+		mockMvc.perform(get("/api/v1/test-errors/business"))
+				.andExpect(status().isConflict())
+				.andExpect(header().doesNotExist("Retry-After"));
 	}
 
 }
