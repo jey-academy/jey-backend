@@ -3,6 +3,7 @@ package com.jey.core.member;
 import java.util.Optional;
 
 import com.jey.TestcontainersConfiguration;
+import com.jey.core.audit.api.AuditLog;
 import com.jey.core.member.GuardianService.EnsuredGuardian;
 import com.jey.core.member.domain.Guardian;
 import com.jey.core.member.domain.GuardianRepository;
@@ -42,6 +43,9 @@ class GuardianFindOrCreateTest {
 	@Autowired
 	PlatformTransactionManager transactionManager;
 
+	@Autowired
+	AuditLog auditLog;
+
 	@Test
 	void 확인과_저장_사이에_같은_번호가_먼저_들어오면_먼저_만들어진_학부모를_돌려준다() {
 		PhoneNumber phone = randomPhone();
@@ -50,7 +54,7 @@ class GuardianFindOrCreateTest {
 		doReturn(Optional.empty()).doAnswer(call -> guardians.findByPhoneIndex(call.getArgument(0)))
 				.when(firstLookupMisses)
 				.findByPhoneIndex(any());
-		GuardianService service = new GuardianService(firstLookupMisses, protector, transactionManager);
+		GuardianService service = new GuardianService(firstLookupMisses, protector, transactionManager, auditLog);
 
 		EnsuredGuardian ensured = service.findOrCreate("나중에 온 이름", phone);
 
@@ -64,7 +68,7 @@ class GuardianFindOrCreateTest {
 		GuardianRepository saveFails = mock(GuardianRepository.class, delegatesTo(guardians));
 		DataIntegrityViolationException failure = new DataIntegrityViolationException("다른 제약 위반");
 		doThrow(failure).when(saveFails).saveAndFlush(any());
-		GuardianService service = new GuardianService(saveFails, protector, transactionManager);
+		GuardianService service = new GuardianService(saveFails, protector, transactionManager, auditLog);
 
 		assertThatThrownBy(() -> service.findOrCreate("김어머니", randomPhone())).isSameAs(failure);
 	}

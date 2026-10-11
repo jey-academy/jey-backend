@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 class CurrentUserAuditorAwareTest {
 
-	private final CurrentUserAuditorAware auditorAware = new CurrentUserAuditorAware();
+	private final CurrentUserAuditorAware auditorAware = new CurrentUserAuditorAware(new SecurityContextCurrentActor());
 
 	@AfterEach
 	void clearContext() {

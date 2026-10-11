@@ -24,9 +24,9 @@ record StudentPageResponse(@Schema(requiredMode = RequiredMode.REQUIRED) List<St
 	@Schema(description = "목록의 한 줄. 학부모 전체가 아니라 대표 연락처만 있다")
 	record StudentSummaryResponse(@Schema(requiredMode = RequiredMode.REQUIRED) Long id,
 			@Schema(requiredMode = RequiredMode.REQUIRED) Long campusId,
-			@Schema(description = "반. 정하지 않았으면 null") Long classId,
+			@Schema(description = "반. 정하지 않았으면 null", requiredMode = RequiredMode.REQUIRED, nullable = true) Long classId,
 			@Schema(requiredMode = RequiredMode.REQUIRED) String name,
-			@Schema(description = "학교. 없으면 null") String school,
+			@Schema(description = "학교. 없으면 null", requiredMode = RequiredMode.REQUIRED, nullable = true) String school,
 			@Schema(requiredMode = RequiredMode.REQUIRED) Grade grade,
 			@Schema(requiredMode = RequiredMode.REQUIRED) StudentStatus status,
 			@Schema(requiredMode = RequiredMode.REQUIRED) ContactResponse primaryContact) {

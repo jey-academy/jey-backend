@@ -13,12 +13,17 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.jey.core.audit.api.AuditEntry;
+import com.jey.core.audit.api.AuditLog;
+import com.jey.core.auth.api.CurrentActor;
 import com.jey.core.campus.api.CampusCatalog;
 import com.jey.core.campus.api.ClassInfo;
 import com.jey.core.member.GuardianService.EnsuredGuardian;
 import com.jey.core.member.StudentView.ContactView;
 import com.jey.core.member.StudentView.GuardianView;
 import com.jey.core.member.StudentView.SiblingView;
+import com.jey.core.member.api.MemberRefs;
+import com.jey.core.member.api.StudentRegistered;
 import com.jey.core.member.domain.Guardian;
 import com.jey.core.member.domain.GuardianRelation;
 import com.jey.core.member.domain.GuardianRepository;
@@ -28,9 +33,11 @@ import com.jey.core.member.domain.StudentGuardian;
 import com.jey.core.member.domain.StudentGuardianRepository;
 import com.jey.core.member.domain.StudentRepository;
 import com.jey.core.shared.BusinessException;
+import com.jey.core.shared.EventMetadata;
 import com.jey.core.shared.PhoneNumber;
 import com.jey.core.shared.PhoneProtector;
 import com.jey.core.shared.UniqueKeys;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -69,9 +76,19 @@ public class StudentService {
 
 	private final Clock clock;
 
+	private final AuditLog auditLog;
+
+	private final CurrentActor currentActor;
+
+	private final ApplicationEventPublisher events;
+
 	StudentService(StudentRepository students, GuardianRepository guardians, StudentGuardianRepository links,
 			GuardianService guardianService, CampusCatalog catalog, PhoneProtector protector,
-			TransactionTemplate transaction, Clock clock) {
+			TransactionTemplate transaction, Clock clock, AuditLog auditLog, CurrentActor currentActor,
+			ApplicationEventPublisher events) {
+		this.auditLog = auditLog;
+		this.currentActor = currentActor;
+		this.events = events;
 		this.students = students;
 		this.guardians = guardians;
 		this.links = links;
@@ -93,6 +110,21 @@ public class StudentService {
 	 */
 	public StudentView register(StudentRegistration registration) {
 		requireNoTransaction("register");
+		try {
+			return registerChecked(registration);
+		}
+		catch (BusinessException ex) {
+			// 이름과 번호를 넣었을 때 "이미 있다"는 답은 그 번호가 맞다는 뜻이기도 하다. 누가 받았는지 남긴다.
+			// 미리 확인에서 걸렸든 저장 직전에 걸렸든 여기서는 트랜잭션이 끝나 있다.
+			if (ex.getErrorCode() == MemberErrorCode.STUDENT_DUPLICATED) {
+				DeniedAttempts.record(auditLog,
+						() -> AuditEntry.of(MemberAuditAction.STUDENT_DUPLICATED).campus(registration.campusId()), ex);
+			}
+			throw ex;
+		}
+	}
+
+	private StudentView registerChecked(StudentRegistration registration) {
 		List<GuardianInput> inputs = registration.guardians();
 		if (inputs.isEmpty() && registration.phone() == null) {
 			throw new BusinessException(MemberErrorCode.CONTACT_REQUIRED);
@@ -126,8 +158,13 @@ public class StudentService {
 					.filter(EnsuredGuardian::existing)
 					.map(EnsuredGuardian::guardianId)
 					.collect(Collectors.toSet());
-			linkedToExisting.forEach(guardianId -> PhoneLookupLog.record(PhoneLookupLog.LINKED_TO_EXISTING,
-					saved.getId(), guardianId));
+			ensured.forEach(each -> auditLog.record(studentEntry(MemberAuditAction.GUARDIAN_LINKED, saved)
+					.with("guardianId", each.guardianId())
+					.with("linkedToExisting", each.existing())));
+			// 같은 트랜잭션에서 낸다. 등록이 커밋돼야 이벤트도 나가고, 리스너는 커밋 뒤에 돈다.
+			events.publishEvent(new StudentRegistered(EventMetadata.create(StudentRegistered.TYPE,
+					StudentRegistered.VERSION, saved.getCampusId(), currentActor.get(), clock),
+					saved.getId()));
 			return viewOf(saved, linkedToExisting);
 		});
 	}
@@ -170,10 +207,13 @@ public class StudentService {
 		requireValidPlacement(change.campusId(), change.classId(), student);
 		student.update(change.campusId(), change.classId(), change.name(), change.school(), change.grade(),
 				change.status(), change.registeredAt());
-		if (change.phone() != null && !sameNumber(student, change.phone())) {
+		boolean phoneChanged = change.phone() != null && !sameNumber(student, change.phone());
+		if (phoneChanged) {
 			student.changePhone(protector.protect(change.phone()));
 		}
-		return viewOf(students.saveAndFlush(student), Set.of());
+		Student saved = students.saveAndFlush(student);
+		auditLog.record(studentEntry(MemberAuditAction.STUDENT_UPDATED, saved).with("phoneChanged", phoneChanged));
+		return viewOf(saved, Set.of());
 	}
 
 	/**
@@ -192,6 +232,7 @@ public class StudentService {
 		}
 		student.removePhone();
 		students.saveAndFlush(student);
+		auditLog.record(studentEntry(MemberAuditAction.STUDENT_PHONE_REMOVED, student));
 	}
 
 	/**
@@ -206,28 +247,40 @@ public class StudentService {
 			throw new BusinessException(MemberErrorCode.STUDENT_NOT_FOUND);
 		}
 		EnsuredGuardian ensured = guardianService.findOrCreate(input.name(), input.phone());
-		return transaction.execute(status -> {
-			Student student = find(studentId);
-			if (links.existsByStudentIdAndGuardianId(studentId, ensured.guardianId())) {
-				PhoneLookupLog.record(PhoneLookupLog.ALREADY_LINKED, studentId, ensured.guardianId());
-				throw new BusinessException(MemberErrorCode.GUARDIAN_ALREADY_LINKED);
+		try {
+			return transaction.execute(status -> linkGuardian(studentId, ensured, input.relation()));
+		}
+		catch (BusinessException ex) {
+			// 학생 행을 잠근 트랜잭션이 끝난 뒤에 남긴다. 안에서 남기면 잠금을 기다리는 요청들이 연결을 모두 쥐고 있어
+			// 기록용 연결을 얻지 못하고 멈춘다.
+			if (ex.getErrorCode() == MemberErrorCode.GUARDIAN_ALREADY_LINKED) {
+				DeniedAttempts.record(auditLog, () -> AuditEntry.of(MemberAuditAction.GUARDIAN_ALREADY_LINKED)
+						.target(MemberRefs.student(studentId))
+						.with("guardianId", ensured.guardianId()), ex);
 			}
-			try {
-				links.saveAndFlush(StudentGuardian.link(studentId, ensured.guardianId(), input.relation()));
+			throw ex;
+		}
+	}
+
+	private StudentView linkGuardian(long studentId, EnsuredGuardian ensured, GuardianRelation relation) {
+		Student student = find(studentId);
+		if (links.existsByStudentIdAndGuardianId(studentId, ensured.guardianId())) {
+			throw new BusinessException(MemberErrorCode.GUARDIAN_ALREADY_LINKED);
+		}
+		try {
+			links.saveAndFlush(StudentGuardian.link(studentId, ensured.guardianId(), relation));
+		}
+		catch (DataIntegrityViolationException ex) {
+			// 위의 확인과 저장 사이에 같은 연결이 먼저 들어온 경우다.
+			if (UniqueKeys.isViolationOf(ex, LINK_UNIQUE_KEY)) {
+				throw new BusinessException(MemberErrorCode.GUARDIAN_ALREADY_LINKED, null, ex);
 			}
-			catch (DataIntegrityViolationException ex) {
-				// 위의 확인과 저장 사이에 같은 연결이 먼저 들어온 경우다.
-				if (UniqueKeys.isViolationOf(ex, LINK_UNIQUE_KEY)) {
-					PhoneLookupLog.record(PhoneLookupLog.ALREADY_LINKED, studentId, ensured.guardianId());
-					throw new BusinessException(MemberErrorCode.GUARDIAN_ALREADY_LINKED, null, ex);
-				}
-				throw ex;
-			}
-			if (ensured.existing()) {
-				PhoneLookupLog.record(PhoneLookupLog.LINKED_TO_EXISTING, studentId, ensured.guardianId());
-			}
-			return viewOf(student, ensured.existing() ? Set.of(ensured.guardianId()) : Set.of());
-		});
+			throw ex;
+		}
+		auditLog.record(studentEntry(MemberAuditAction.GUARDIAN_LINKED, student)
+				.with("guardianId", ensured.guardianId())
+				.with("linkedToExisting", ensured.existing()));
+		return viewOf(student, ensured.existing() ? Set.of(ensured.guardianId()) : Set.of());
 	}
 
 	/**
@@ -239,6 +292,9 @@ public class StudentService {
 		StudentGuardian link = findLink(studentId, guardianId);
 		link.changeRelation(relation);
 		links.saveAndFlush(link);
+		auditLog.record(studentEntry(MemberAuditAction.GUARDIAN_RELATION_CHANGED, student)
+				.with("guardianId", guardianId)
+				.with("relation", relation));
 		return viewOf(student, Set.of());
 	}
 
@@ -256,6 +312,12 @@ public class StudentService {
 		}
 		links.delete(link);
 		links.flush();
+		auditLog.record(studentEntry(MemberAuditAction.GUARDIAN_UNLINKED, student).with("guardianId", guardianId));
+	}
+
+	// 학생에 대해 한 일의 기록. 대상은 그 학생이고 지점은 학생의 지점이다.
+	private static AuditEntry studentEntry(MemberAuditAction action, Student student) {
+		return AuditEntry.of(action).target(MemberRefs.student(student.getId())).campus(student.getCampusId());
 	}
 
 	// 고치는 메서드는 모두 이것으로 학생을 읽는다. 학생 행을 잠가서 같은 학생을 고치는 요청이 줄을 서게 한다.
