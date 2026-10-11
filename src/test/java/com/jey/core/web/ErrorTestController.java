@@ -11,6 +11,7 @@ import com.jey.core.auth.api.AnyRole;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.CommonErrorCode;
 import com.jey.core.shared.ErrorCode;
+import com.jey.core.shared.NotIdempotent;
 import com.jey.core.shared.RateLimitedException;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.validation.Constraint;
@@ -83,11 +84,13 @@ class ErrorTestController {
 		throw new AccessDeniedException("내부 사유");
 	}
 
+	@NotIdempotent("예외 변환만 보는 테스트용이다")
 	@PostMapping("/validated")
 	void validated(@Valid @RequestBody Body body) {
 	}
 
 	// 파라미터에 직접 제약이 있으면 Spring이 본문 검증까지 메서드 검증으로 처리한다.
+	@NotIdempotent("예외 변환만 보는 테스트용이다")
 	@PostMapping("/validated-mixed")
 	void validatedMixed(@RequestParam @Min(1) int size, @Valid @RequestBody Body body) {
 	}
@@ -100,6 +103,7 @@ class ErrorTestController {
 	void query(@Valid @ModelAttribute Query query) {
 	}
 
+	@NotIdempotent("예외 변환만 보는 테스트용이다")
 	@PostMapping("/range")
 	void range(@Valid @RequestBody Range range) {
 	}

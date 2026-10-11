@@ -382,7 +382,8 @@ public class StudentService {
 		return ids;
 	}
 
-	// Idempotency-Key가 생기기 전까지, 같은 등록 요청이 두 번 와서 학생이 둘 생기는 것을 막는다.
+	// 같은 등록 요청이 두 번 와서 학생이 둘 생기는 것을 막는다. 같은 키로 다시 보낸 요청은 Idempotency-Key가 막지만(ADR-0027),
+	// 키가 다른 두 요청(버튼을 두 번 누름, 두 화면에서 등록)은 여기서 막는다.
 	// 동시에 온 두 요청은 둘 다 이 확인을 통과할 수 있다.
 	// 학부모와 함께 등록하면 "그 학부모에게 같은 이름의 학생이 있는지"를, 학부모 없이 등록하면 "같은 이름과 같은 본인 번호"를 본다.
 	private void requireNotDuplicated(Student student, boolean withGuardians, List<Long> guardianIds) {

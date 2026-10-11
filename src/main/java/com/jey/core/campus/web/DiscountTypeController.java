@@ -5,6 +5,7 @@ import java.util.List;
 import com.jey.core.auth.api.AllowedRoles;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.campus.DiscountTypeService;
+import com.jey.core.shared.Idempotent;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,6 +35,7 @@ class DiscountTypeController {
 	}
 
 	@AllowedRoles(UserRole.ADMIN)
+	@Idempotent
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
 	DiscountTypeResponse create(@Valid @RequestBody DiscountTypeCreateRequest body) {

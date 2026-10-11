@@ -4,6 +4,7 @@ import com.jey.core.auth.LoginService;
 import com.jey.core.auth.api.AnyRole;
 import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.PublicEndpoint;
+import com.jey.core.shared.NotIdempotent;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -36,6 +37,7 @@ class AuthController {
 	}
 
 	@PublicEndpoint
+	@NotIdempotent("로그인하기 전이라 계정별로 키를 볼 수 없다. 다시 보내면 다시 로그인할 뿐이다")
 	@PostMapping("/login")
 	MeResponse login(@Valid @RequestBody LoginRequest body, HttpServletRequest request,
 			HttpServletResponse response) {
@@ -50,6 +52,7 @@ class AuthController {
 	}
 
 	@AnyRole
+	@NotIdempotent("다시 보내도 결과가 같다. 이미 끝난 세션을 한 번 더 끝낼 뿐이다")
 	@PostMapping("/logout")
 	ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response,
 			Authentication authentication) {

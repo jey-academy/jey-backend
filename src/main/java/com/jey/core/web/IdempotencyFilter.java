@@ -48,6 +48,9 @@ class IdempotencyFilter extends OncePerRequestFilter implements Ordered {
 	// 내용이 같은지 가리려고 본문을 통째로 읽는다. 이 장치가 붙는 요청은 작은 JSON이다.
 	static final int MAX_BODY_BYTES = 1024 * 1024;
 
+	// 보관하는 응답의 크기. 응답은 요청마다 하나씩 보관 기간 내내 저장소에 남는다. 이 장치가 붙는 응답은 작은 JSON이다.
+	static final int MAX_STORED_RESPONSE_BYTES = 256 * 1024;
+
 	private static final Logger log = LoggerFactory.getLogger(IdempotencyFilter.class);
 
 	// UUID를 받는다. 화면이 다른 형식을 쓰더라도 헤더와 로그에 문제가 없는 글자만 받는다.
@@ -113,7 +116,13 @@ class IdempotencyFilter extends OncePerRequestFilter implements Ordered {
 			throw failure;
 		}
 		byte[] body = captured.getContentAsByteArray();
-		if (isStorable(captured.getStatus(), body)) {
+		if (body.length > MAX_STORED_RESPONSE_BYTES) {
+			// 보관하지 않으면 같은 키로 다시 보낸 요청이 한 번 더 실행된다. 이렇게 큰 응답을 내는 경로에는 이 장치가 맞지 않는다.
+			log.error("응답이 너무 커서 멱등 키로 보관하지 않는다: {} {} status={} bytes={}", request.getMethod(),
+					request.getRequestURI(), captured.getStatus(), body.length);
+			release(account, key, claim);
+		}
+		else if (isStorable(captured.getStatus(), body)) {
 			complete(account, key, claim, new StoredResponse(captured.getStatus(), captured.getContentType(), body));
 		}
 		else {
@@ -164,6 +173,10 @@ class IdempotencyFilter extends OncePerRequestFilter implements Ordered {
 	}
 
 	private static byte[] readBody(HttpServletRequest request) throws IOException {
+		// 길이를 알려 준 요청은 읽기 전에 거른다. 알려 주지 않았거나 거짓으로 알려 준 요청은 읽으면서 거른다.
+		if (request.getContentLengthLong() > MAX_BODY_BYTES) {
+			throw new BusinessException(CommonErrorCode.BAD_REQUEST, "요청 본문이 너무 큽니다.");
+		}
 		byte[] body = request.getInputStream().readNBytes(MAX_BODY_BYTES + 1);
 		if (body.length > MAX_BODY_BYTES) {
 			throw new BusinessException(CommonErrorCode.BAD_REQUEST, "요청 본문이 너무 큽니다.");

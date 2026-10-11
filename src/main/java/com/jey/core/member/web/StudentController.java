@@ -5,6 +5,8 @@ import com.jey.core.auth.api.UserRole;
 import com.jey.core.member.PhoneRevealService;
 import com.jey.core.member.StudentService;
 import com.jey.core.member.domain.Student;
+import com.jey.core.shared.Idempotent;
+import com.jey.core.shared.NotIdempotent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
@@ -53,6 +55,7 @@ class StudentController {
 		return StudentPageResponse.from(studentService.search(campusId, name, phoneLast4, page, size));
 	}
 
+	@Idempotent
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
 	StudentResponse register(@Valid @RequestBody StudentCreateRequest body) {
@@ -75,6 +78,7 @@ class StudentController {
 		studentService.removePhone(id);
 	}
 
+	@Idempotent
 	@PostMapping("/{id}/guardians")
 	@ResponseStatus(HttpStatus.CREATED)
 	StudentResponse addGuardian(@PathVariable long id, @Valid @RequestBody GuardianRequest body) {
@@ -94,9 +98,9 @@ class StudentController {
 	}
 
 	// GET이 아니다. 볼 때마다 기록과 횟수가 남는 요청이라 브라우저가 미리 읽거나 주소만으로 불리면 안 된다.
-	// 다시 보내면 한 번 더 본 것으로 센다(Idempotency-Key를 받지 않는다).
 	@Operation(summary = "학생 본인의 전체 전화번호 보기",
 			description = "볼 때마다 감사 로그에 남고 계정별 횟수에 든다. 한도를 넘으면 429와 Retry-After(초)가 온다")
+	@NotIdempotent("바꾸는 자료가 없다. 다시 보내면 한 번 더 본 것으로 세고 적는다(ADR-0026)")
 	@PostMapping("/{id}/phone/reveal")
 	PhoneRevealResponse revealPhone(@PathVariable long id) {
 		return PhoneRevealResponse.from(phoneRevealService.studentPhone(id));
@@ -104,6 +108,7 @@ class StudentController {
 
 	@Operation(summary = "학부모의 전체 전화번호 보기",
 			description = "그 학생에게 연결된 학부모만 된다. 볼 때마다 감사 로그에 남고 계정별 횟수에 든다. 한도를 넘으면 429와 Retry-After(초)가 온다")
+	@NotIdempotent("바꾸는 자료가 없다. 다시 보내면 한 번 더 본 것으로 세고 적는다(ADR-0026)")
 	@PostMapping("/{id}/guardians/{guardianId}/phone/reveal")
 	PhoneRevealResponse revealGuardianPhone(@PathVariable long id, @PathVariable long guardianId) {
 		return PhoneRevealResponse.from(phoneRevealService.guardianPhone(id, guardianId));

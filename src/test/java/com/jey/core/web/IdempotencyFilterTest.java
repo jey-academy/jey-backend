@@ -97,6 +97,41 @@ class IdempotencyFilterTest {
 		assertThat(store.released).isEqualTo(1);
 	}
 
+	// 응답은 요청마다 하나씩 24시간 동안 저장소에 남는다. 크기에 한도가 없으면 저장소가 찬다.
+	@Test
+	void 너무_큰_응답은_보관하지_않고_그대로_내보낸다() throws Exception {
+		String huge = "x".repeat(IdempotencyFilter.MAX_STORED_RESPONSE_BYTES + 1);
+		MockHttpServletResponse response = new MockHttpServletResponse();
+
+		filter.doFilter(request("{}"), response, respond(200, huge));
+
+		assertThat(store.completed).isEmpty();
+		assertThat(store.released).isEqualTo(1);
+		assertThat(response.getContentAsByteArray()).hasSize(IdempotencyFilter.MAX_STORED_RESPONSE_BYTES + 1);
+	}
+
+	// 길이를 알려 준 요청은 본문을 읽지 않고 거른다.
+	@Test
+	void 길이가_한도를_넘는다고_알려_온_요청은_읽지_않고_거부한다() {
+		MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/things") {
+			@Override
+			public long getContentLengthLong() {
+				return IdempotencyFilter.MAX_BODY_BYTES + 1L;
+			}
+
+			@Override
+			public jakarta.servlet.ServletInputStream getInputStream() {
+				throw new AssertionError("본문을 읽으면 안 된다");
+			}
+		};
+		request.addHeader("Idempotency-Key", KEY);
+
+		assertThatThrownBy(() -> filter.doFilter(request, new MockHttpServletResponse(), respond(201, "{}")))
+				.isInstanceOfSatisfying(BusinessException.class,
+						ex -> assertThat(ex.getErrorCode()).isEqualTo(CommonErrorCode.BAD_REQUEST));
+		assertThat(store.claims).isZero();
+	}
+
 	@Test
 	void 선점을_풀지_못해도_응답은_그대로_나간다() throws Exception {
 		store.releaseFailure = new IllegalStateException("Redis에 닿지 못했다");
