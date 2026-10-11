@@ -1,3 +1,5 @@
 /gradlew text eol=lf
 *.bat text eol=crlf
 *.jar binary
+# 프론트가 이 파일에서 타입을 만든다. 어디서 체크아웃해도 같은 바이트여야 한다.
+/docs/api/openapi.json text eol=lf

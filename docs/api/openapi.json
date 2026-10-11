@@ -1,0 +1,559 @@
+{
+  "components" : {
+    "schemas" : {
+      "CampusResponse" : {
+        "properties" : {
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "name" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "id", "name" ],
+        "type" : "object"
+      },
+      "ClassCreateRequest" : {
+        "properties" : {
+          "baseFee8" : {
+            "description" : "8회 수업 기준 수강료(원). 0보다 큰 1원 단위의 정수",
+            "type" : "number"
+          },
+          "bookFee" : {
+            "description" : "교재비(원). 1원 단위의 정수. 교재가 없으면 0",
+            "type" : "number"
+          },
+          "campusId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "name" : {
+            "description" : "같은 지점 안에서 겹칠 수 없다. 앞뒤 공백은 떼고 저장한다",
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "baseFee8", "bookFee", "campusId", "name" ],
+        "type" : "object"
+      },
+      "ClassFeeResponse" : {
+        "description" : "수강료표의 한 줄. 관리자만 받는다. 꺼진 반도 포함한다",
+        "properties" : {
+          "active" : {
+            "description" : "운영 여부. 꺼진 반은 새로 고를 수 없다",
+            "type" : "boolean"
+          },
+          "baseFee8" : {
+            "description" : "8회 수업 기준 수강료(원). 1원 단위의 정수",
+            "type" : "number"
+          },
+          "bookFee" : {
+            "description" : "교재비(원). 교재가 없으면 0",
+            "type" : "number"
+          },
+          "campusId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "name" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "active", "baseFee8", "bookFee", "campusId", "id", "name" ],
+        "type" : "object"
+      },
+      "ClassResponse" : {
+        "description" : "반. 운영 중인 반만 내려간다. 수강료는 없다",
+        "properties" : {
+          "campusId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "name" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "campusId", "id", "name" ],
+        "type" : "object"
+      },
+      "ClassUpdateRequest" : {
+        "description" : "반의 값을 통째로 바꾼다. 바꾸지 않는 값도 모두 보낸다. 지점은 바꿀 수 없다",
+        "properties" : {
+          "active" : {
+            "description" : "운영 여부. false로 보내면 반을 끈다",
+            "type" : "boolean"
+          },
+          "baseFee8" : {
+            "description" : "8회 수업 기준 수강료(원). 0보다 큰 1원 단위의 정수",
+            "type" : "number"
+          },
+          "bookFee" : {
+            "description" : "교재비(원). 1원 단위의 정수. 교재가 없으면 0",
+            "type" : "number"
+          },
+          "name" : {
+            "description" : "같은 지점 안에서 겹칠 수 없다. 앞뒤 공백은 떼고 저장한다",
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "active", "baseFee8", "bookFee", "name" ],
+        "type" : "object"
+      },
+      "CsrfToken" : {
+        "properties" : {
+          "headerName" : {
+            "type" : "string"
+          },
+          "parameterName" : {
+            "type" : "string"
+          },
+          "token" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "DiscountTypeCreateRequest" : {
+        "properties" : {
+          "code" : {
+            "description" : "대문자로 시작하는 대문자·숫자·밑줄 2~30자. 만든 뒤에는 바꿀 수 없다",
+            "example" : "SIBLING_5",
+            "minLength" : 1,
+            "pattern" : "[A-Z][A-Z0-9_]{1,29}",
+            "type" : "string"
+          },
+          "name" : {
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "rate" : {
+            "description" : "할인율. 퍼센트가 아니라 비율이다(5%는 0.05). 0보다 크고 1 이하, 소수 넷째 자리까지",
+            "example" : 0.05,
+            "exclusiveMinimum" : 0,
+            "maximum" : 1,
+            "type" : "number"
+          }
+        },
+        "required" : [ "code", "name", "rate" ],
+        "type" : "object"
+      },
+      "DiscountTypeResponse" : {
+        "description" : "할인 유형. 꺼진 것도 내려가므로 고르는 목록에서는 active로 거른다",
+        "properties" : {
+          "active" : {
+            "description" : "사용 여부. 꺼진 할인은 새로 고를 수 없다",
+            "type" : "boolean"
+          },
+          "code" : {
+            "description" : "할인 유형 코드. 만든 뒤 바뀌지 않는다",
+            "example" : "SIBLING_5",
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "rate" : {
+            "description" : "할인율. 퍼센트가 아니라 비율이다(5%는 0.05)",
+            "example" : 0.05,
+            "type" : "number"
+          }
+        },
+        "required" : [ "active", "code", "id", "name", "rate" ],
+        "type" : "object"
+      },
+      "DiscountTypeUpdateRequest" : {
+        "description" : "할인 유형의 값을 통째로 바꾼다. 바꾸지 않는 값도 모두 보낸다. 코드는 바꿀 수 없다",
+        "properties" : {
+          "active" : {
+            "description" : "사용 여부. false로 보내면 할인을 끈다",
+            "type" : "boolean"
+          },
+          "name" : {
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "rate" : {
+            "description" : "할인율. 퍼센트가 아니라 비율이다(5%는 0.05). 0보다 크고 1 이하, 소수 넷째 자리까지",
+            "example" : 0.05,
+            "exclusiveMinimum" : 0,
+            "maximum" : 1,
+            "type" : "number"
+          }
+        },
+        "required" : [ "active", "name", "rate" ],
+        "type" : "object"
+      },
+      "LoginRequest" : {
+        "properties" : {
+          "loginId" : {
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "password" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "loginId", "password" ],
+        "type" : "object"
+      },
+      "MeResponse" : {
+        "properties" : {
+          "campusId" : {
+            "description" : "소속 지점. 직원만 값이 있고 관리자와 연계 학원은 null이다. 필드는 항상 있다",
+            "format" : "int64",
+            "type" : [ "integer", "null" ]
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "loginId" : {
+            "type" : "string"
+          },
+          "name" : {
+            "description" : "화면에 보일 이름",
+            "type" : "string"
+          },
+          "role" : {
+            "enum" : [ "ADMIN", "STAFF", "PARTNER" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "campusId", "id", "loginId", "name", "role" ],
+        "type" : "object"
+      }
+    }
+  },
+  "info" : {
+    "title" : "OpenAPI definition",
+    "version" : "v0"
+  },
+  "openapi" : "3.1.0",
+  "paths" : {
+    "/api/v1/auth/csrf" : {
+      "get" : {
+        "operationId" : "csrf",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "csrfToken",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/CsrfToken"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/api/v1/auth/login" : {
+      "post" : {
+        "operationId" : "login",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MeResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/api/v1/auth/logout" : {
+      "post" : {
+        "operationId" : "logout",
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/api/v1/auth/me" : {
+      "get" : {
+        "operationId" : "me",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MeResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/api/v1/campuses" : {
+      "get" : {
+        "operationId" : "list_1",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/CampusResponse"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "campus-controller" ]
+      }
+    },
+    "/api/v1/class-fees" : {
+      "get" : {
+        "operationId" : "classFees",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "campusId",
+          "required" : false,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/ClassFeeResponse"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "class-controller" ]
+      }
+    },
+    "/api/v1/classes" : {
+      "get" : {
+        "operationId" : "classes",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "campusId",
+          "required" : false,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/ClassResponse"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "class-controller" ]
+      },
+      "post" : {
+        "operationId" : "create_1",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ClassCreateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ClassFeeResponse"
+                }
+              }
+            },
+            "description" : "Created"
+          }
+        },
+        "tags" : [ "class-controller" ]
+      }
+    },
+    "/api/v1/classes/{id}" : {
+      "put" : {
+        "operationId" : "update_1",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ClassUpdateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ClassFeeResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "class-controller" ]
+      }
+    },
+    "/api/v1/discount-types" : {
+      "get" : {
+        "operationId" : "list",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/DiscountTypeResponse"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "discount-type-controller" ]
+      },
+      "post" : {
+        "operationId" : "create",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DiscountTypeCreateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DiscountTypeResponse"
+                }
+              }
+            },
+            "description" : "Created"
+          }
+        },
+        "tags" : [ "discount-type-controller" ]
+      }
+    },
+    "/api/v1/discount-types/{id}" : {
+      "put" : {
+        "operationId" : "update",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DiscountTypeUpdateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DiscountTypeResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "discount-type-controller" ]
+      }
+    }
+  }
+}

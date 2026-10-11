@@ -10,6 +10,7 @@ import com.jey.core.auth.api.AnyRole;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.CommonErrorCode;
 import com.jey.core.shared.ErrorCode;
+import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.validation.Constraint;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
@@ -29,7 +30,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 // 예외 변환만 검증하기 위한 테스트 전용 컨트롤러. 각 예외를 확정적으로 일으킨다.
-// 테스트 소스라 운영 빌드에는 포함되지 않는다.
+// 테스트 소스라 운영 빌드에는 포함되지 않는다. API 명세에도 싣지 않는다(ApiSpecTest).
+@Hidden
 @AnyRole
 @RestController
 @RequestMapping("/api/v1/test-errors")
