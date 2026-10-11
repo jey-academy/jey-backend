@@ -10,3 +10,9 @@ jey:
     secure-cookies: false
     login-attempt-limit:
       hmac-key: test-only-login-attempt-hmac-key-0123456789
+  crypto:
+    phone:
+      active-key-version: 1
+      encryption-keys:
+        1: dGVzdC1vbmx5LXBob25lLWVuYy1rZXktMDAwMDAwMDE=
+      hmac-key: dGVzdC1vbmx5LXBob25lLWhtYWMta2V5LTAwMDAwMDE=
