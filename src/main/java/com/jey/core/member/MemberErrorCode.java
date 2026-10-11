@@ -31,7 +31,12 @@ public enum MemberErrorCode implements ErrorCode {
 	PHONE_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 본인의 전화번호가 없습니다."),
 
 	// 응답의 Retry-After 헤더에 남은 시간(초)이 있다.
-	PHONE_REVEAL_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "전화번호를 너무 많이 조회했습니다. 잠시 후 다시 시도해 주세요.");
+	PHONE_REVEAL_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "전화번호를 너무 많이 조회했습니다. 잠시 후 다시 시도해 주세요."),
+
+	// 번호가 드러나는 거부(위의 409 셋)를 한도만큼 받았다. 풀릴 때까지 전화번호가 실린 등록·수정이 막힌다.
+	// 응답의 Retry-After 헤더에 남은 시간(초)이 있다.
+	PHONE_CHANGE_LIMITED(HttpStatus.TOO_MANY_REQUESTS,
+			"전화번호가 든 요청이 여러 번 거부되어 잠시 막혔습니다. 잠시 후 다시 시도해 주세요.");
 
 	private final HttpStatus status;
 

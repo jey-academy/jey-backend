@@ -26,6 +26,12 @@ public interface AccountRateLimiter {
 	void refund(RateLimit limit, long accountId);
 
 	/**
+	 * "이 구간에서 막힌 것을 알렸다"는 표시를 지운다. 다음에 막히는 요청이 다시 {@link Blocked#firstInWindow()}를 받는다.
+	 * 막힌 사실을 기록하려다 실패했을 때 부른다. 부르지 않으면 그 구간의 기록이 영영 빠진다.
+	 */
+	void forgetBlockNotice(RateLimit limit, long accountId);
+
+	/**
 	 * @param retryAfter 다시 할 수 있을 때까지 남은 시간
 	 * @param firstInWindow 이 구간에서 처음 막힌 것인지. 막힌 사실을 구간마다 한 번만 기록하는 데 쓴다.
 	 * 동시에 막힌 요청 중에서도 하나만 참이다

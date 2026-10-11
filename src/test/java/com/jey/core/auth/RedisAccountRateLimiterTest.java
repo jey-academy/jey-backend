@@ -199,6 +199,20 @@ class RedisAccountRateLimiterTest {
 		assertThat(limiter.tryAcquire(LIMIT, accountId).orElseThrow().firstInWindow()).isFalse();
 	}
 
+	// 막힌 사실을 기록하다 실패하면 표시를 지운다. 그러면 다음에 막힌 요청이 다시 기록을 시도한다.
+	@Test
+	void 알림_표시를_지우면_다음에_막힌_요청이_다시_처음으로_알린다() {
+		acquire(LIMIT, accountId, 5);
+		assertThat(limiter.tryAcquire(LIMIT, accountId).orElseThrow().firstInWindow()).isTrue();
+
+		limiter.forgetBlockNotice(LIMIT, accountId);
+
+		assertThat(limiter.tryAcquire(LIMIT, accountId).orElseThrow().firstInWindow()).isTrue();
+		assertThat(limiter.tryAcquire(LIMIT, accountId).orElseThrow().firstInWindow()).isFalse();
+		// 횟수는 그대로다. 표시만 지운다.
+		assertThat(redis.opsForValue().get(countKey(LIMIT, accountId))).isEqualTo("5");
+	}
+
 	@Test
 	void 구간이_바뀌면_다시_처음_막힌_것으로_알린다() throws InterruptedException {
 		RateLimit brief = new RateLimit("test.brief-noted", 1, Duration.ofMillis(300));

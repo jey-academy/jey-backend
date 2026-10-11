@@ -45,7 +45,12 @@ enum MemberAuditAction implements AuditAction {
 	GUARDIAN_PHONE_REVEALED("member.guardian-phone-revealed", AuditOutcome.DONE),
 
 	/** 전체 번호를 볼 수 있는 횟수를 넘어 막혔다. 구간마다 처음 막힌 때만 남긴다. */
-	PHONE_REVEAL_LIMITED("member.phone-reveal-limited", AuditOutcome.DENIED);
+	PHONE_REVEAL_LIMITED("member.phone-reveal-limited", AuditOutcome.DENIED),
+
+	/**
+	 * 위의 "그 번호가 이미 있다" 거부를 한도만큼 받아, 전화번호가 실린 변경 요청이 막혔다. 구간마다 처음 막힌 때만 남긴다.
+	 */
+	PHONE_PROBE_LIMITED("member.phone-probe-limited", AuditOutcome.DENIED);
 
 	private final String code;
 

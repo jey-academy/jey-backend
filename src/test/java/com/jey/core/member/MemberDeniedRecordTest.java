@@ -61,6 +61,9 @@ class MemberDeniedRecordTest {
 	private static final long STAFF = 7373;
 
 	@Autowired
+	PhoneProbeGuard probeGuard;
+
+	@Autowired
 	StudentService studentService;
 
 	@Autowired
@@ -119,7 +122,7 @@ class MemberDeniedRecordTest {
 		IllegalStateException failure = new IllegalStateException("기록 실패");
 		doThrow(failure).when(deniedFails)
 				.record(argThat(entry -> entry != null && entry.action().outcome() == AuditOutcome.DENIED));
-		GuardianService service = new GuardianService(guardians, protector, transactionManager, deniedFails);
+		GuardianService service = new GuardianService(guardians, protector, transactionManager, deniedFails, probeGuard);
 
 		assertThatThrownBy(() -> service.update(guardianId, "바뀐 이름", othersPhone)).isSameAs(failure)
 				.satisfies(thrown -> assertThat(thrown.getSuppressed()).singleElement()
@@ -153,7 +156,7 @@ class MemberDeniedRecordTest {
 				.when(firstCheckMisses)
 				.existsByNameAndAnyGuardian(any(), any());
 		StudentService racing = new StudentService(firstCheckMisses, guardians, links, guardianService, catalog,
-				protector, transaction, clock, auditLog, currentActor, events);
+				protector, transaction, clock, auditLog, currentActor, events, probeGuard);
 
 		assertFails(() -> racing.register(registration(name, mother(phone))), MemberErrorCode.STUDENT_DUPLICATED);
 

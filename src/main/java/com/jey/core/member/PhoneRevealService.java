@@ -2,9 +2,9 @@ package com.jey.core.member;
 
 import com.jey.core.audit.api.AuditEntry;
 import com.jey.core.audit.api.AuditLog;
-import com.jey.core.audit.api.DeniedAttempts;
 import com.jey.core.auth.api.AccountRateLimiter;
 import com.jey.core.auth.api.CurrentActor;
+import com.jey.core.auth.api.RateLimit;
 import com.jey.core.member.api.MemberRefs;
 import com.jey.core.member.domain.Guardian;
 import com.jey.core.member.domain.GuardianRepository;
@@ -118,14 +118,10 @@ public class PhoneRevealService {
 		if (!(currentActor.get() instanceof Actor.User viewer)) {
 			throw new IllegalStateException("로그인한 계정 없이 전체 전화번호를 볼 수 없다");
 		}
-		limiter.tryAcquire(limits.phoneReveal(), viewer.accountId()).ifPresent(blocked -> {
-			RateLimitedException denial = new RateLimitedException(MemberErrorCode.PHONE_REVEAL_LIMITED,
-					blocked.retryAfter());
-			// 막힌 계정이 계속 누르면 줄이 끝없이 는다. 구간마다 처음 막힌 때만 적는다.
-			if (blocked.firstInWindow()) {
-				DeniedAttempts.record(auditLog, () -> AuditEntry.of(MemberAuditAction.PHONE_REVEAL_LIMITED), denial);
-			}
-			throw denial;
+		RateLimit limit = limits.phoneReveal();
+		limiter.tryAcquire(limit, viewer.accountId()).ifPresent(blocked -> {
+			throw LimitBlocks.rejection(limiter, auditLog, limit, viewer.accountId(), blocked,
+					MemberAuditAction.PHONE_REVEAL_LIMITED, MemberErrorCode.PHONE_REVEAL_LIMITED);
 		});
 	}
 

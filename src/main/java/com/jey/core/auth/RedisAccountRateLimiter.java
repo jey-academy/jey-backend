@@ -74,7 +74,7 @@ class RedisAccountRateLimiter implements AccountRateLimiter {
 	@Override
 	public Optional<Blocked> tryAcquire(RateLimit limit, long accountId) {
 		String countKey = countKey(limit, accountId);
-		List<?> result = redis.execute(ACQUIRE, List.of(countKey, countKey + ":noted"),
+		List<?> result = redis.execute(ACQUIRE, List.of(countKey, noticeKey(limit, accountId)),
 				String.valueOf(limit.window().toMillis()), String.valueOf(limit.max()));
 		if (result == null || result.size() != 4 || !result.stream().allMatch(Number.class::isInstance)) {
 			throw new IllegalStateException("횟수 제한 스크립트의 결과가 예상과 다르다: " + result);
@@ -92,6 +92,15 @@ class RedisAccountRateLimiter implements AccountRateLimiter {
 	@Override
 	public void refund(RateLimit limit, long accountId) {
 		redis.execute(REFUND, List.of(countKey(limit, accountId)));
+	}
+
+	@Override
+	public void forgetBlockNotice(RateLimit limit, long accountId) {
+		redis.delete(noticeKey(limit, accountId));
+	}
+
+	private static String noticeKey(RateLimit limit, long accountId) {
+		return countKey(limit, accountId) + ":noted";
 	}
 
 	private static String countKey(RateLimit limit, long accountId) {

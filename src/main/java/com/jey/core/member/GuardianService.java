@@ -9,6 +9,7 @@ import com.jey.core.member.domain.GuardianRepository;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.PhoneNumber;
 import com.jey.core.shared.PhoneProtector;
+import com.jey.core.shared.RateLimitedException;
 import com.jey.core.shared.UniqueKeys;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -35,8 +36,11 @@ public class GuardianService {
 
 	private final AuditLog auditLog;
 
+	private final PhoneProbeGuard probeGuard;
+
 	GuardianService(GuardianRepository guardians, PhoneProtector protector,
-			PlatformTransactionManager transactionManager, AuditLog auditLog) {
+			PlatformTransactionManager transactionManager, AuditLog auditLog, PhoneProbeGuard probeGuard) {
+		this.probeGuard = probeGuard;
 		this.guardians = guardians;
 		this.protector = protector;
 		this.auditLog = auditLog;
@@ -79,11 +83,20 @@ public class GuardianService {
 	 *
 	 * @param phone 새 번호. {@code null}이면 그대로 둔다
 	 * @throws BusinessException 없는 학부모이거나, 다른 학부모가 쓰는 번호일 때
+	 * @throws RateLimitedException 번호를 실었는데, 이 계정이 "그 번호가 이미 있다"는 거부를 한도만큼 받아 막혀 있을 때
 	 */
 	public GuardianProfile update(long id, String name, PhoneNumber phone) {
 		if (TransactionSynchronizationManager.isActualTransactionActive()) {
 			throw new IllegalStateException("GuardianService#update는 트랜잭션 밖에서 불러야 한다");
 		}
+		// 번호를 싣지 않은 수정은 "그 번호가 이미 있다"는 답을 받을 일이 없다. 세지도 막지도 않는다.
+		if (phone == null) {
+			return updateRecordingDenial(id, name, null);
+		}
+		return probeGuard.guard(() -> updateRecordingDenial(id, name, phone));
+	}
+
+	private GuardianProfile updateRecordingDenial(long id, String name, PhoneNumber phone) {
 		try {
 			return transaction.execute(status -> updateInTransaction(id, name, phone));
 		}

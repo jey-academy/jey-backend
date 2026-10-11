@@ -37,6 +37,7 @@ import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.EventMetadata;
 import com.jey.core.shared.PhoneNumber;
 import com.jey.core.shared.PhoneProtector;
+import com.jey.core.shared.RateLimitedException;
 import com.jey.core.shared.UniqueKeys;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -83,10 +84,13 @@ public class StudentService {
 
 	private final ApplicationEventPublisher events;
 
+	private final PhoneProbeGuard probeGuard;
+
 	StudentService(StudentRepository students, GuardianRepository guardians, StudentGuardianRepository links,
 			GuardianService guardianService, CampusCatalog catalog, PhoneProtector protector,
 			TransactionTemplate transaction, Clock clock, AuditLog auditLog, CurrentActor currentActor,
-			ApplicationEventPublisher events) {
+			ApplicationEventPublisher events, PhoneProbeGuard probeGuard) {
+		this.probeGuard = probeGuard;
 		this.auditLog = auditLog;
 		this.currentActor = currentActor;
 		this.events = events;
@@ -108,9 +112,14 @@ public class StudentService {
 	 *
 	 * @throws BusinessException 연락처가 하나도 없거나, 같은 번호의 학부모를 두 번 적었거나, 지점·반이 틀렸거나,
 	 * 같은 학부모에게 같은 이름의 학생이 이미 있을 때
+	 * @throws RateLimitedException 이 계정이 "그 번호가 이미 있다"는 거부를 한도만큼 받아 막혀 있을 때({@link PhoneProbeGuard})
 	 */
 	public StudentView register(StudentRegistration registration) {
 		requireNoTransaction("register");
+		return probeGuard.guard(() -> registerRecordingDenial(registration));
+	}
+
+	private StudentView registerRecordingDenial(StudentRegistration registration) {
 		try {
 			return registerChecked(registration);
 		}
@@ -241,9 +250,14 @@ public class StudentService {
 	 * {@link #register}와 같은 이유로 트랜잭션 안에서 부르지 않는다.
 	 *
 	 * @throws BusinessException 없는 학생이거나 이미 붙어 있는 학부모일 때
+	 * @throws RateLimitedException 이 계정이 "그 번호가 이미 있다"는 거부를 한도만큼 받아 막혀 있을 때
 	 */
 	public StudentView addGuardian(long studentId, GuardianInput input) {
 		requireNoTransaction("addGuardian");
+		return probeGuard.guard(() -> addGuardianRecordingDenial(studentId, input));
+	}
+
+	private StudentView addGuardianRecordingDenial(long studentId, GuardianInput input) {
 		if (!students.existsById(studentId)) {
 			throw new BusinessException(MemberErrorCode.STUDENT_NOT_FOUND);
 		}

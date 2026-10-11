@@ -1,6 +1,9 @@
 package com.jey.core.member;
 
+import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import com.jey.TestcontainersConfiguration;
@@ -19,8 +22,12 @@ import com.jey.core.shared.PhoneProtector;
 import com.jey.core.shared.RateLimitedException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -95,9 +102,11 @@ class PhoneRevealTest {
 	}
 
 	// 막혔다는 것도 기록하지 못하면 429 대신 그 실패가 나간다. 원래의 거부는 그 실패에 붙어 로그에 남는다.
+	// 다음에 막힌 요청이 다시 기록을 시도한다.
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = BLOCKED_VIEWER)
 	void 막힌_사실을_기록하지_못하면_그_실패를_던진다() {
+		List<String> forgotten = new ArrayList<>();
 		AccountRateLimiter alwaysBlocked = new AccountRateLimiter() {
 			@Override
 			public Optional<Blocked> tryAcquire(RateLimit limit, long accountId) {
@@ -106,6 +115,11 @@ class PhoneRevealTest {
 
 			@Override
 			public void refund(RateLimit limit, long accountId) {
+			}
+
+			@Override
+			public void forgetBlockNotice(RateLimit limit, long accountId) {
+				forgotten.add(limit.name() + ":" + accountId);
 			}
 		};
 		AuditLog failing = entry -> {
@@ -117,6 +131,8 @@ class PhoneRevealTest {
 		assertThatThrownBy(() -> service.studentPhone(1)).isInstanceOf(IllegalStateException.class)
 				.satisfies(thrown -> assertThat(thrown.getSuppressed()).hasSize(1)
 						.allSatisfy(denial -> assertThat(denial).isInstanceOf(RateLimitedException.class)));
+		// "막힌 것을 알렸다"는 표시를 지운다. 남겨 두면 이 구간에서는 막힌 사실이 다시 적히지 않는다.
+		assertThat(forgotten).containsExactly("member.phone-reveal:" + BLOCKED_VIEWER);
 	}
 
 	// 누가 봤는지 모르면 세지도 적지도 못한다. 로그인 없이 도는 작업이 실수로 부르면 멈춘다.
@@ -162,10 +178,19 @@ class PhoneRevealTest {
 				.hasMessageContaining("max");
 	}
 
+	// 테스트 프로필은 한도를 바꿔 둔다. 운영이 쓰는 기본 설정 파일을 직접 읽어서 본다.
 	@Test
-	void 운영_설정의_한도는_정한_값이다() {
-		assertThat(limits.phoneReveal()).isEqualTo(new RateLimit("member.phone-reveal", 60, Duration.ofHours(1)));
-		assertThat(limits.phoneProbe()).isEqualTo(new RateLimit("member.phone-probe", 10, Duration.ofMinutes(15)));
+	void 운영_설정의_한도는_정한_값이다() throws IOException {
+		StandardEnvironment environment = new StandardEnvironment();
+		new YamlPropertySourceLoader().load("application", new ClassPathResource("application.yaml"))
+				.forEach(environment.getPropertySources()::addLast);
+
+		MemberLimitProperties production = Binder.get(environment)
+				.bind("jey.member", MemberLimitProperties.class)
+				.get();
+
+		assertThat(production.phoneReveal()).isEqualTo(new RateLimit("member.phone-reveal", 60, Duration.ofHours(1)));
+		assertThat(production.phoneProbe()).isEqualTo(new RateLimit("member.phone-probe", 10, Duration.ofMinutes(15)));
 	}
 
 }
