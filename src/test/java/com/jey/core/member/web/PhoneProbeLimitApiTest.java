@@ -61,11 +61,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @TestPropertySource(properties = { "jey.member.phone-probe-limit.window=15m", "jey.member.phone-probe-limit.max=10" })
+// 변경 요청의 한도(phone-change-limit)는 테스트 프로필의 큰 값을 그대로 쓴다. 그 한도는 PhoneChangeLimitApiTest가 본다.
 class PhoneProbeLimitApiTest {
 
 	private static final int LIMIT = 10;
 
-	// 테스트마다 다른 계정을 쓴다. 그 계정의 횟수와 기록을 통째로 센다.
+	// 테스트마다 다른 계정을 쓴다. 그 계정의 횟수와 기록을 통째로 센다. 감사 로그는 테스트 사이에 남으므로 계정을 같이 쓰면 순서에 따라 깨진다.
 	private static final long PROBER = 9301;
 
 	private static final long CAREFUL = 9302;
@@ -73,6 +74,8 @@ class PhoneProbeLimitApiTest {
 	private static final long RACER = 9303;
 
 	private static final long BYSTANDER = 9304;
+
+	private static final long BLOCKED_READER = 9305;
 
 	@Autowired
 	MockMvc mockMvc;
@@ -91,7 +94,7 @@ class PhoneProbeLimitApiTest {
 
 	@BeforeEach
 	void forgetCounts() {
-		redis.delete(redis.keys("jey:auth:account-limit:member.phone-probe:*"));
+		redis.delete(redis.keys("jey:auth:account-limit:member.phone-*"));
 	}
 
 	@Test
@@ -121,7 +124,8 @@ class PhoneProbeLimitApiTest {
 		// 이제부터는 무엇을 넣어도 같은 답이다. 맞는 번호인지 아닌지를 알 수 없다.
 		registerStudent(name, phone).andExpect(status().isTooManyRequests())
 				.andExpect(jsonPath("$.code").value("MEMBER_PHONE_CHANGE_LIMITED"))
-				.andExpect(header().string("Retry-After", matchesPattern("[1-9]\\d{0,2}")));
+				// 15분 구간의 남은 시간(초). 방금 시작한 구간이라 거의 다 남아 있다.
+				.andExpect(header().string("Retry-After", matchesPattern("(8[5-9]\\d|900)")));
 		String blockedName = uniqueName();
 		registerStudent(blockedName, randomPhone()).andExpect(status().isTooManyRequests());
 		changeGuardianPhone(guardianId, othersPhone).andExpect(status().isTooManyRequests());
@@ -140,7 +144,7 @@ class PhoneProbeLimitApiTest {
 	}
 
 	@Test
-	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = PROBER)
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = BLOCKED_READER)
 	void 막힌_동안에도_조회와_번호가_없는_수정은_된다() throws Exception {
 		PhoneNumber phone = randomPhone();
 		String name = uniqueName();
@@ -175,7 +179,8 @@ class PhoneProbeLimitApiTest {
 		}
 		changeGuardianPhone(guardianId, randomPhone()).andExpect(status().isOk());
 
-		assertThat(redis.opsForValue().get("jey:auth:account-limit:member.phone-probe:" + CAREFUL)).isEqualTo("0");
+		assertThat(redis.opsForHash().get("jey:auth:account-limit:member.phone-probe:" + CAREFUL, "count"))
+				.isEqualTo("0");
 	}
 
 	// 스크립트는 요청을 한꺼번에 보낸다. 받은 뒤에 세면 모두 확인을 지나 한도보다 많은 답을 받는다.
@@ -203,9 +208,9 @@ class PhoneProbeLimitApiTest {
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = BYSTANDER)
 	void 다른_계정이_막혀도_이_계정은_영향받지_않는다() throws Exception {
-		for (int i = 0; i < LIMIT; i++) {
-			redis.opsForValue().increment("jey:auth:account-limit:member.phone-probe:" + PROBER);
-		}
+		String othersKey = "jey:auth:account-limit:member.phone-probe:" + PROBER;
+		redis.opsForHash().put(othersKey, "count", String.valueOf(LIMIT));
+		redis.expire(othersKey, java.time.Duration.ofMinutes(15));
 
 		registerStudent(uniqueName(), randomPhone()).andExpect(status().isCreated());
 	}

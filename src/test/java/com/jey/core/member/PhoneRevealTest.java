@@ -1,19 +1,16 @@
 package com.jey.core.member;
 
-import java.io.IOException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
-import com.jey.core.audit.AuditLogService;
+import com.jey.core.audit.api.AuditEntry;
 import com.jey.core.audit.api.AuditLog;
 import com.jey.core.auth.api.AccountRateLimiter;
 import com.jey.core.auth.api.CurrentActor;
-import com.jey.core.auth.api.RateLimit;
 import com.jey.core.auth.api.UserRole;
+import com.jey.core.member.PhoneProbeGuardTest.FakeLimiter;
 import com.jey.core.member.domain.GuardianRepository;
 import com.jey.core.member.domain.StudentGuardianRepository;
 import com.jey.core.member.domain.StudentRepository;
@@ -22,12 +19,8 @@ import com.jey.core.shared.PhoneProtector;
 import com.jey.core.shared.RateLimitedException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.properties.bind.Binder;
-import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.core.env.StandardEnvironment;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -54,9 +47,6 @@ class PhoneRevealTest {
 
 	@Autowired
 	PhoneRevealService phoneRevealService;
-
-	@Autowired
-	AuditLogService auditLogService;
 
 	@Autowired
 	StudentRepository students;
@@ -93,46 +83,72 @@ class PhoneRevealTest {
 		AuditLog failing = entry -> {
 			throw new IllegalStateException("감사 로그를 쓰지 못했다");
 		};
-		PhoneRevealService service = new PhoneRevealService(students, links, guardians, protector, transaction,
-				failing, currentActor, limiter, limits);
 
-		assertThatThrownBy(() -> service.guardianPhone(student.id(), student.guardians().getFirst().id()))
+		assertThatThrownBy(
+				() -> service(failing, limiter).guardianPhone(student.id(), student.guardians().getFirst().id()))
 				.isInstanceOf(IllegalStateException.class)
 				.hasMessage("감사 로그를 쓰지 못했다");
 	}
 
+	// "Redis가 안 될 때 업무가 멈추지 않게" 통과시키면 한도 없이 번호가 나간다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = VIEWER)
+	void 횟수를_세지_못하면_번호를_주지_않고_봤다고_적지도_않는다() {
+		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
+		FakeLimiter down = new FakeLimiter();
+		down.acquireFailure = new IllegalStateException("Redis에 닿지 못했다");
+		List<AuditEntry> written = new ArrayList<>();
+
+		assertThatThrownBy(
+				() -> service(written::add, down).guardianPhone(student.id(), student.guardians().getFirst().id()))
+				.isSameAs(down.acquireFailure);
+
+		assertThat(written).isEmpty();
+	}
+
 	// 막혔다는 것도 기록하지 못하면 429 대신 그 실패가 나간다. 원래의 거부는 그 실패에 붙어 로그에 남는다.
-	// 다음에 막힌 요청이 다시 기록을 시도한다.
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = BLOCKED_VIEWER)
 	void 막힌_사실을_기록하지_못하면_그_실패를_던진다() {
-		List<String> forgotten = new ArrayList<>();
-		AccountRateLimiter alwaysBlocked = new AccountRateLimiter() {
-			@Override
-			public Optional<Blocked> tryAcquire(RateLimit limit, long accountId) {
-				return Optional.of(new Blocked(Duration.ofMinutes(10), true));
-			}
-
-			@Override
-			public void refund(RateLimit limit, long accountId) {
-			}
-
-			@Override
-			public void forgetBlockNotice(RateLimit limit, long accountId) {
-				forgotten.add(limit.name() + ":" + accountId);
-			}
-		};
+		FakeLimiter blocked = new FakeLimiter();
+		blocked.blockOn = "member.phone-reveal";
 		AuditLog failing = entry -> {
 			throw new IllegalStateException("감사 로그를 쓰지 못했다");
 		};
-		PhoneRevealService service = new PhoneRevealService(students, links, guardians, protector, transaction,
-				failing, currentActor, alwaysBlocked, limits);
 
-		assertThatThrownBy(() -> service.studentPhone(1)).isInstanceOf(IllegalStateException.class)
+		assertThatThrownBy(() -> service(failing, blocked).studentPhone(1)).isInstanceOf(IllegalStateException.class)
+				.hasMessage("감사 로그를 쓰지 못했다")
 				.satisfies(thrown -> assertThat(thrown.getSuppressed()).hasSize(1)
 						.allSatisfy(denial -> assertThat(denial).isInstanceOf(RateLimitedException.class)));
-		// "막힌 것을 알렸다"는 표시를 지운다. 남겨 두면 이 구간에서는 막힌 사실이 다시 적히지 않는다.
-		assertThat(forgotten).containsExactly("member.phone-reveal:" + BLOCKED_VIEWER);
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = BLOCKED_VIEWER)
+	void 한도에_막히면_대상을_읽지_않고_막힌_사실만_적는다() {
+		FakeLimiter blocked = new FakeLimiter();
+		blocked.blockOn = "member.phone-reveal";
+		List<AuditEntry> written = new ArrayList<>();
+
+		assertThatThrownBy(() -> service(written::add, blocked).studentPhone(1)).isInstanceOfSatisfying(
+				RateLimitedException.class,
+				ex -> assertThat(ex.getErrorCode()).isEqualTo(MemberErrorCode.PHONE_REVEAL_LIMITED));
+
+		assertThat(written).extracting(entry -> entry.action().code()).containsExactly("member.phone-reveal-limited");
+	}
+
+	// 센 것은 되돌리지 않는다. 없는 대상을 찌른 요청도 한 번이다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = VIEWER)
+	void 본_횟수는_되돌리지_않는다() {
+		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
+		FakeLimiter counting = new FakeLimiter();
+		PhoneRevealService service = service(auditLog, counting);
+
+		service.guardianPhone(student.id(), student.guardians().getFirst().id());
+		assertThatThrownBy(() -> service.studentPhone(Long.MAX_VALUE)).isInstanceOf(RuntimeException.class);
+
+		assertThat(counting.acquired).containsExactly("member.phone-reveal", "member.phone-reveal");
+		assertThat(counting.refunded).isEmpty();
 	}
 
 	// 누가 봤는지 모르면 세지도 적지도 못한다. 로그인 없이 도는 작업이 실수로 부르면 멈춘다.
@@ -160,37 +176,9 @@ class PhoneRevealTest {
 				.isEqualTo(motherPhone);
 	}
 
-	@Test
-	void 한도_설정은_빠지거나_너무_작으면_안_된다() {
-		var fine = new MemberLimitProperties.Limit(Duration.ofHours(1), 60);
-		assertThatThrownBy(() -> new MemberLimitProperties(null, fine)).isInstanceOf(IllegalArgumentException.class)
-				.hasMessageContaining("phone-reveal-limit");
-		assertThatThrownBy(() -> new MemberLimitProperties(fine, null)).isInstanceOf(IllegalArgumentException.class)
-				.hasMessageContaining("phone-probe-limit");
-		// 단위를 빼먹은 "5"는 5밀리초로 읽힌다.
-		assertThatThrownBy(() -> new MemberLimitProperties(new MemberLimitProperties.Limit(Duration.ofMillis(5), 60),
-				fine)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("window");
-		assertThatThrownBy(() -> new MemberLimitProperties(new MemberLimitProperties.Limit(null, 60), fine))
-				.isInstanceOf(IllegalArgumentException.class)
-				.hasMessageContaining("window");
-		assertThatThrownBy(() -> new MemberLimitProperties(fine, new MemberLimitProperties.Limit(Duration.ofHours(1), 0)))
-				.isInstanceOf(IllegalArgumentException.class)
-				.hasMessageContaining("max");
-	}
-
-	// 테스트 프로필은 한도를 바꿔 둔다. 운영이 쓰는 기본 설정 파일을 직접 읽어서 본다.
-	@Test
-	void 운영_설정의_한도는_정한_값이다() throws IOException {
-		StandardEnvironment environment = new StandardEnvironment();
-		new YamlPropertySourceLoader().load("application", new ClassPathResource("application.yaml"))
-				.forEach(environment.getPropertySources()::addLast);
-
-		MemberLimitProperties production = Binder.get(environment)
-				.bind("jey.member", MemberLimitProperties.class)
-				.get();
-
-		assertThat(production.phoneReveal()).isEqualTo(new RateLimit("member.phone-reveal", 60, Duration.ofHours(1)));
-		assertThat(production.phoneProbe()).isEqualTo(new RateLimit("member.phone-probe", 10, Duration.ofMinutes(15)));
+	private PhoneRevealService service(AuditLog log, AccountRateLimiter rateLimiter) {
+		return new PhoneRevealService(students, links, guardians, protector, transaction, log, currentActor,
+				rateLimiter, limits);
 	}
 
 }

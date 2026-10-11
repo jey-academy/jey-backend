@@ -2,6 +2,7 @@ package com.jey.core.member;
 
 import com.jey.core.audit.api.AuditEntry;
 import com.jey.core.audit.api.AuditLog;
+import com.jey.core.audit.api.DeniedAttempts;
 import com.jey.core.auth.api.AccountRateLimiter;
 import com.jey.core.auth.api.CurrentActor;
 import com.jey.core.auth.api.RateLimit;
@@ -25,7 +26,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 가리지 않은 전화번호를 내준다(ADR-0026). 전체 번호가 나가는 길은 여기 하나다.
  *
  * <p>볼 때마다 누가 누구의 번호를 봤는지 감사 로그에 남긴다. 기록과 같은 트랜잭션에서 번호를 읽으므로, 기록하지 못하면 번호도 나가지 않는다.
- * 계정마다 볼 수 있는 횟수에 한도가 있다. 없는 대상을 찌른 요청도 한 번으로 센다.
+ * 계정마다 볼 수 있는 횟수에 한도가 있다. 센 것은 되돌리지 않는다. 없는 대상을 찌른 요청도, 서버 오류로 끝난 요청도 한 번이다.
  *
  * <p>트랜잭션 안에서 부르지 않는다. 한도에 막힌 사실은 트랜잭션 밖에서 적어야 한다.
  */
@@ -49,7 +50,7 @@ public class PhoneRevealService {
 
 	private final AccountRateLimiter limiter;
 
-	private final MemberLimitProperties limits;
+	private final RateLimit revealLimit;
 
 	PhoneRevealService(StudentRepository students, StudentGuardianRepository links, GuardianRepository guardians,
 			PhoneProtector protector, TransactionTemplate transaction, AuditLog auditLog, CurrentActor currentActor,
@@ -62,7 +63,7 @@ public class PhoneRevealService {
 		this.auditLog = auditLog;
 		this.currentActor = currentActor;
 		this.limiter = limiter;
-		this.limits = limits;
+		this.revealLimit = limits.phoneReveal();
 	}
 
 	/**
@@ -74,8 +75,7 @@ public class PhoneRevealService {
 	public PhoneNumber studentPhone(long studentId) {
 		countView();
 		return transaction.execute(status -> {
-			Student student = students.findById(studentId)
-				.orElseThrow(() -> new BusinessException(MemberErrorCode.STUDENT_NOT_FOUND));
+			Student student = findStudent(studentId);
 			if (!student.hasPhone()) {
 				throw new BusinessException(MemberErrorCode.PHONE_NOT_FOUND);
 			}
@@ -96,18 +96,24 @@ public class PhoneRevealService {
 	public PhoneNumber guardianPhone(long studentId, long guardianId) {
 		countView();
 		return transaction.execute(status -> {
-			if (!students.existsById(studentId)) {
-				throw new BusinessException(MemberErrorCode.STUDENT_NOT_FOUND);
-			}
+			Student student = findStudent(studentId);
 			Guardian guardian = links.findByStudentIdAndGuardianId(studentId, guardianId)
 				.flatMap(link -> guardians.findById(link.getGuardianId()))
 				.orElseThrow(() -> new BusinessException(MemberErrorCode.GUARDIAN_NOT_FOUND));
 			PhoneNumber phone = protector.reveal(guardian.getPhone());
+			// 학부모는 지점이 없다. 어느 학생의 화면에서 봤는지에 따라 그 학생의 지점으로 적는다.
+			// 지점으로 걸러 보는 조회에서 학부모 번호를 본 기록만 빠지지 않게 하기 위해서다.
 			auditLog.record(AuditEntry.of(MemberAuditAction.GUARDIAN_PHONE_REVEALED)
 				.target(MemberRefs.guardian(guardianId))
+				.campus(student.getCampusId())
 				.with("studentId", studentId));
 			return phone;
 		});
+	}
+
+	private Student findStudent(long studentId) {
+		return students.findById(studentId)
+			.orElseThrow(() -> new BusinessException(MemberErrorCode.STUDENT_NOT_FOUND));
 	}
 
 	// 번호를 읽기 전에 센다. 읽은 뒤에 세면 동시에 보낸 요청이 모두 확인을 통과한다.
@@ -118,11 +124,8 @@ public class PhoneRevealService {
 		if (!(currentActor.get() instanceof Actor.User viewer)) {
 			throw new IllegalStateException("로그인한 계정 없이 전체 전화번호를 볼 수 없다");
 		}
-		RateLimit limit = limits.phoneReveal();
-		limiter.tryAcquire(limit, viewer.accountId()).ifPresent(blocked -> {
-			throw LimitBlocks.rejection(limiter, auditLog, limit, viewer.accountId(), blocked,
-					MemberAuditAction.PHONE_REVEAL_LIMITED, MemberErrorCode.PHONE_REVEAL_LIMITED);
-		});
+		limiter.acquire(revealLimit, viewer, MemberErrorCode.PHONE_REVEAL_LIMITED, denial -> DeniedAttempts
+			.record(auditLog, () -> AuditEntry.of(MemberAuditAction.PHONE_REVEAL_LIMITED), denial));
 	}
 
 }

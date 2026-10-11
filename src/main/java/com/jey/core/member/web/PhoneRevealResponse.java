@@ -19,4 +19,10 @@ record PhoneRevealResponse(
 				digits.substring(0, 3) + "-" + digits.substring(3, lastStart) + "-" + digits.substring(lastStart));
 	}
 
+	// 기본 구현은 번호를 그대로 찍는다. 로그나 예외 문구에 실려도 번호가 나가지 않게 한다. JSON 응답과는 무관하다.
+	@Override
+	public String toString() {
+		return "PhoneRevealResponse[phone=(가림)]";
+	}
+
 }

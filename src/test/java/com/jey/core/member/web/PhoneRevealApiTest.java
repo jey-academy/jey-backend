@@ -99,10 +99,13 @@ class PhoneRevealApiTest {
 				.filter(each -> each.getAction().endsWith("-phone-revealed"))
 				.toList();
 		// 볼 때마다 한 줄이다. 같은 번호를 두 번 보면 두 줄이다.
-		assertThat(seen).extracting(AuditRecord::getAction, AuditRecord::getTargetType, AuditRecord::getTargetId)
-				.containsExactly(tuple("member.guardian-phone-revealed", "guardian", guardianId),
-						tuple("member.guardian-phone-revealed", "guardian", guardianId),
-						tuple("member.student-phone-revealed", "student", student.id()));
+		// 학부모는 지점이 없지만, 그 학생의 지점으로 적는다. 지점으로 걸러 보는 조회에서 빠지지 않아야 한다.
+		assertThat(seen)
+				.extracting(AuditRecord::getAction, AuditRecord::getTargetType, AuditRecord::getTargetId,
+						AuditRecord::getCampusId)
+				.containsExactly(tuple("member.guardian-phone-revealed", "guardian", guardianId, DONGTAN),
+						tuple("member.guardian-phone-revealed", "guardian", guardianId, DONGTAN),
+						tuple("member.student-phone-revealed", "student", student.id(), DONGTAN));
 		assertThat(auditLogService.detailOf(seen.getFirst())).containsEntry("studentId", (int) student.id());
 		// 기록에는 번호가 없다.
 		assertThat(seen).allSatisfy(each -> assertThat(String.valueOf(each.getDetailJson()))
@@ -158,8 +161,8 @@ class PhoneRevealApiTest {
 			revealGuardian(student.id(), guardianId).andExpect(status().isTooManyRequests())
 					.andExpect(jsonPath("$.code").value("MEMBER_PHONE_REVEAL_LIMITED"))
 					.andExpect(jsonPath("$.phone").doesNotExist())
-					// 한 시간 구간의 남은 시간(초).
-					.andExpect(header().string("Retry-After", matchesPattern("[1-9]\\d{0,3}")));
+					// 한 시간 구간의 남은 시간(초). 방금 시작한 구간이라 거의 다 남아 있다.
+					.andExpect(header().string("Retry-After", matchesPattern("(3[45]\\d\\d|3600)")));
 		}
 
 		assertThat(auditLogService.search(HEAVY_VIEWER, "member.guardian-phone-revealed", null, null, null, null,

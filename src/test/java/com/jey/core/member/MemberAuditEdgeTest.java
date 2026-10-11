@@ -121,12 +121,14 @@ class MemberAuditEdgeTest {
 		assertThat(MemberAuditAction.GUARDIAN_PHONE_REVEALED.code()).isEqualTo("member.guardian-phone-revealed");
 		assertThat(MemberAuditAction.PHONE_REVEAL_LIMITED.code()).isEqualTo("member.phone-reveal-limited");
 		assertThat(MemberAuditAction.PHONE_PROBE_LIMITED.code()).isEqualTo("member.phone-probe-limited");
+		assertThat(MemberAuditAction.PHONE_CHANGE_LIMITED.code()).isEqualTo("member.phone-change-limited");
 		assertThat(StudentRegistered.TYPE).isEqualTo("member.student-registered");
 		// 거부된 시도는 이것뿐이다. 한 일을 거부로, 거부를 한 일로 바꾸면 적히는 방식과 조회 결과가 달라진다.
 		assertThat(MemberAuditAction.values()).filteredOn(each -> each.outcome() == AuditOutcome.DENIED)
 				.containsExactlyInAnyOrder(MemberAuditAction.GUARDIAN_PHONE_DUPLICATED,
 						MemberAuditAction.GUARDIAN_ALREADY_LINKED, MemberAuditAction.STUDENT_DUPLICATED,
-						MemberAuditAction.PHONE_REVEAL_LIMITED, MemberAuditAction.PHONE_PROBE_LIMITED);
+						MemberAuditAction.PHONE_REVEAL_LIMITED, MemberAuditAction.PHONE_PROBE_LIMITED,
+						MemberAuditAction.PHONE_CHANGE_LIMITED);
 		assertThat(MemberRefs.STUDENT).isEqualTo("student");
 		assertThat(MemberRefs.GUARDIAN).isEqualTo("guardian");
 	}

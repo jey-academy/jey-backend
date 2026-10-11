@@ -33,10 +33,9 @@ public enum MemberErrorCode implements ErrorCode {
 	// 응답의 Retry-After 헤더에 남은 시간(초)이 있다.
 	PHONE_REVEAL_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "전화번호를 너무 많이 조회했습니다. 잠시 후 다시 시도해 주세요."),
 
-	// 번호가 드러나는 거부(위의 409 셋)를 한도만큼 받았다. 풀릴 때까지 전화번호가 실린 등록·수정이 막힌다.
-	// 응답의 Retry-After 헤더에 남은 시간(초)이 있다.
-	PHONE_CHANGE_LIMITED(HttpStatus.TOO_MANY_REQUESTS,
-			"전화번호가 든 요청이 여러 번 거부되어 잠시 막혔습니다. 잠시 후 다시 시도해 주세요.");
+	// 전화번호가 실린 등록·수정을 너무 많이 했거나, 번호가 드러나는 거부(위의 409 셋)를 한도만큼 받았다.
+	// 어느 쪽인지는 응답으로 가르지 않는다(감사 로그에는 따로 남는다). 응답의 Retry-After 헤더에 남은 시간(초)이 있다.
+	PHONE_CHANGE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "전화번호가 든 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
 
 	private final HttpStatus status;
 
@@ -50,6 +49,20 @@ public enum MemberErrorCode implements ErrorCode {
 	@Override
 	public String code() {
 		return "MEMBER_" + name();
+	}
+
+	/**
+	 * 이 거부가 응답만으로 "그 전화번호가 이미 있다"를 알려 주는지. 그런 거부는 계정마다 횟수를 센다({@link PhoneProbeGuard}).
+	 * 상수를 추가하면 여기서 컴파일 오류가 난다. 새 거부가 번호를 드러내는지 정하고 넣는다.
+	 */
+	boolean revealsExistingPhone() {
+		return switch (this) {
+			case STUDENT_DUPLICATED, GUARDIAN_PHONE_DUPLICATED, GUARDIAN_ALREADY_LINKED -> true;
+			case STUDENT_NOT_FOUND, GUARDIAN_NOT_FOUND, INVALID_CAMPUS, INVALID_CLASS, CONTACT_REQUIRED,
+					GUARDIAN_PHONE_REPEATED, LAST_CONTACT, PHONE_NOT_FOUND, PHONE_REVEAL_LIMITED,
+					PHONE_CHANGE_LIMITED ->
+				false;
+		};
 	}
 
 	@Override

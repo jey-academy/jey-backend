@@ -9,11 +9,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * 학생·학부모 기능의 계정별 횟수 한도({@code jey.member.*}, ADR-0026). 값이 없거나 잘못되면 서버가 뜨지 않는다.
  *
  * @param phoneRevealLimit 전체 전화번호 보기
+ * @param phoneChangeLimit 전화번호가 실린 변경 요청(학생 등록, 학부모 추가, 번호를 실은 학부모 수정). 성공해도 센다.
+ * 번호를 바꿔 가며 넣는 대입에서 틀린 번호는 거부가 아니라 성공으로 끝나기 때문이다
  * @param phoneProbeLimit "그 번호가 이미 있다"가 드러나는 거부 응답(번호 중복, 이미 연결됨, 같은 이름의 학생).
  * 넘으면 번호가 실린 변경 요청이 막힌다
  */
 @ConfigurationProperties("jey.member")
-record MemberLimitProperties(Limit phoneRevealLimit, Limit phoneProbeLimit) {
+record MemberLimitProperties(Limit phoneRevealLimit, Limit phoneChangeLimit, Limit phoneProbeLimit) {
 
 	private static final String PREFIX = "jey.member.";
 
@@ -22,11 +24,16 @@ record MemberLimitProperties(Limit phoneRevealLimit, Limit phoneProbeLimit) {
 
 	MemberLimitProperties {
 		check("phone-reveal-limit", phoneRevealLimit);
+		check("phone-change-limit", phoneChangeLimit);
 		check("phone-probe-limit", phoneProbeLimit);
 	}
 
 	RateLimit phoneReveal() {
 		return new RateLimit("member.phone-reveal", phoneRevealLimit.max(), phoneRevealLimit.window());
+	}
+
+	RateLimit phoneChange() {
+		return new RateLimit("member.phone-change", phoneChangeLimit.max(), phoneChangeLimit.window());
 	}
 
 	RateLimit phoneProbe() {
