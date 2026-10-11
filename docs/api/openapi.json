@@ -1,6 +1,82 @@
 {
   "components" : {
     "schemas" : {
+      "AuditLogPageResponse" : {
+        "description" : "감사 로그의 한 페이지. 최신순이다",
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AuditLogResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "description" : "지금 페이지. 0부터",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "size" : {
+            "description" : "한 페이지의 크기",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "totalElements" : {
+            "description" : "조건에 맞는 전체 건수",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalPages" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "items", "page", "size", "totalElements", "totalPages" ],
+        "type" : "object"
+      },
+      "AuditLogResponse" : {
+        "description" : "누가 언제 무엇에 무엇을 했는지 한 줄. 개인정보(이름, 전화번호)는 없고 ID만 있다",
+        "properties" : {
+          "action" : {
+            "description" : "무엇을 했는지. {모듈}.{사건} 형식(예: member.guardian-phone-duplicated)",
+            "type" : "string"
+          },
+          "actorId" : {
+            "description" : "그 일을 한 계정의 ID. 로그인 없이 일어난 일이면 null",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "campusId" : {
+            "description" : "그 일이 속한 지점. 지점과 무관하면 null",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "detail" : {
+            "additionalProperties" : { },
+            "description" : "덧붙인 내용. 행위마다 키가 다르다. 없으면 null",
+            "type" : "object"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "occurredAt" : {
+            "description" : "그 일이 일어난 시각(UTC)",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "targetId" : {
+            "description" : "대상의 ID. 없으면 null",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "targetType" : {
+            "description" : "대상의 종류(예: student, guardian). 없으면 null",
+            "type" : "string"
+          }
+        },
+        "required" : [ "action", "id", "occurredAt" ],
+        "type" : "object"
+      },
       "CampusResponse" : {
         "properties" : {
           "id" : {
@@ -609,6 +685,104 @@
   },
   "openapi" : "3.1.0",
   "paths" : {
+    "/api/v1/audit-logs" : {
+      "get" : {
+        "operationId" : "auditLogs",
+        "parameters" : [ {
+          "description" : "그 일을 한 계정의 ID",
+          "in" : "query",
+          "name" : "actorId",
+          "required" : false,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "행위 이름. 정확히 일치하는 것만 찾는다",
+          "in" : "query",
+          "name" : "action",
+          "required" : false,
+          "schema" : {
+            "maxLength" : 80,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        }, {
+          "description" : "대상의 종류(예: student)",
+          "in" : "query",
+          "name" : "targetType",
+          "required" : false,
+          "schema" : {
+            "maxLength" : 40,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "targetId",
+          "required" : false,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "이 시각부터(포함). 시간대를 붙인 ISO 8601 형식",
+          "example" : "2026-11-01T00:00:00+09:00",
+          "in" : "query",
+          "name" : "from",
+          "required" : false,
+          "schema" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        }, {
+          "description" : "이 시각 전까지(제외). 시간대를 붙인 ISO 8601 형식",
+          "example" : "2026-12-01T00:00:00+09:00",
+          "in" : "query",
+          "name" : "to",
+          "required" : false,
+          "schema" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        }, {
+          "description" : "0부터",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "format" : "int32",
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuditLogPageResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "audit-log-controller" ]
+      }
+    },
     "/api/v1/auth/csrf" : {
       "get" : {
         "operationId" : "csrf",
