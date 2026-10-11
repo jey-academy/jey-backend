@@ -36,7 +36,16 @@ enum MemberAuditAction implements AuditAction {
 	GUARDIAN_ALREADY_LINKED("member.guardian-already-linked", AuditOutcome.DENIED),
 
 	/** 등록하려는 이름의 학생이 입력한 번호의 학부모(또는 본인 번호)에게 이미 있었다. */
-	STUDENT_DUPLICATED("member.student-duplicated", AuditOutcome.DENIED);
+	STUDENT_DUPLICATED("member.student-duplicated", AuditOutcome.DENIED),
+
+	/** 학생 본인의 전체 번호를 봤다(ADR-0026). 번호는 남기지 않는다. */
+	STUDENT_PHONE_REVEALED("member.student-phone-revealed", AuditOutcome.DONE),
+
+	/** 학부모의 전체 번호를 봤다. 상세의 {@code studentId}는 어느 학생의 화면에서 봤는지다. */
+	GUARDIAN_PHONE_REVEALED("member.guardian-phone-revealed", AuditOutcome.DONE),
+
+	/** 전체 번호를 볼 수 있는 횟수를 넘어 막혔다. 구간마다 처음 막힌 때만 남긴다. */
+	PHONE_REVEAL_LIMITED("member.phone-reveal-limited", AuditOutcome.DENIED);
 
 	private final String code;
 

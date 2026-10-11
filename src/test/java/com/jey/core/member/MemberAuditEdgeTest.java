@@ -114,11 +114,15 @@ class MemberAuditEdgeTest {
 		assertThat(MemberAuditAction.GUARDIAN_PHONE_DUPLICATED.code()).isEqualTo("member.guardian-phone-duplicated");
 		assertThat(MemberAuditAction.GUARDIAN_ALREADY_LINKED.code()).isEqualTo("member.guardian-already-linked");
 		assertThat(MemberAuditAction.STUDENT_DUPLICATED.code()).isEqualTo("member.student-duplicated");
+		assertThat(MemberAuditAction.STUDENT_PHONE_REVEALED.code()).isEqualTo("member.student-phone-revealed");
+		assertThat(MemberAuditAction.GUARDIAN_PHONE_REVEALED.code()).isEqualTo("member.guardian-phone-revealed");
+		assertThat(MemberAuditAction.PHONE_REVEAL_LIMITED.code()).isEqualTo("member.phone-reveal-limited");
 		assertThat(StudentRegistered.TYPE).isEqualTo("member.student-registered");
-		// 거부된 시도는 이 셋뿐이다. 한 일을 거부로, 거부를 한 일로 바꾸면 적히는 방식과 조회 결과가 달라진다.
+		// 거부된 시도는 이것뿐이다. 한 일을 거부로, 거부를 한 일로 바꾸면 적히는 방식과 조회 결과가 달라진다.
 		assertThat(MemberAuditAction.values()).filteredOn(each -> each.outcome() == AuditOutcome.DENIED)
 				.containsExactlyInAnyOrder(MemberAuditAction.GUARDIAN_PHONE_DUPLICATED,
-						MemberAuditAction.GUARDIAN_ALREADY_LINKED, MemberAuditAction.STUDENT_DUPLICATED);
+						MemberAuditAction.GUARDIAN_ALREADY_LINKED, MemberAuditAction.STUDENT_DUPLICATED,
+						MemberAuditAction.PHONE_REVEAL_LIMITED);
 		assertThat(MemberRefs.STUDENT).isEqualTo("student");
 		assertThat(MemberRefs.GUARDIAN).isEqualTo("guardian");
 	}

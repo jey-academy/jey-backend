@@ -65,6 +65,17 @@ jey:
       max-failures-per-ip: 30
       # hmac-key(아이디를 Redis 키에 넣을 때 쓰는 비밀키)는 기본값이 없다. 프로필마다 넣어야 하고, 없으면 서버가 뜨지 않는다.
 
+  member:
+    # 전체 전화번호 보기 (ADR-0026). 계정마다 window 동안 max번까지 본다. 넘으면 429로 응답한다.
+    phone-reveal-limit:
+      window: 1h
+      max: 60
+    # "그 번호가 이미 있다"가 드러나는 거부 응답(번호 중복, 이미 연결됨, 같은 이름의 학생).
+    # 계정마다 window 동안 max번 받으면 번호가 실린 변경 요청이 429로 막힌다.
+    phone-probe-limit:
+      window: 15m
+      max: 10
+
   events:
     # 처리에 실패한 이벤트를 주기적으로 다시 보낸다 (ADR-0025).
     resubmission:

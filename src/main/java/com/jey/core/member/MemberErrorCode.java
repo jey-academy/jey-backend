@@ -25,7 +25,13 @@ public enum MemberErrorCode implements ErrorCode {
 
 	GUARDIAN_ALREADY_LINKED(HttpStatus.CONFLICT, "이미 이 학생에게 연결된 학부모입니다."),
 
-	LAST_CONTACT(HttpStatus.CONFLICT, "마지막 연락처는 지울 수 없습니다. 다른 연락처를 먼저 넣어 주세요.");
+	LAST_CONTACT(HttpStatus.CONFLICT, "마지막 연락처는 지울 수 없습니다. 다른 연락처를 먼저 넣어 주세요."),
+
+	// 전체 번호를 보려 했는데 학생 본인의 번호가 없다.
+	PHONE_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 본인의 전화번호가 없습니다."),
+
+	// 응답의 Retry-After 헤더에 남은 시간(초)이 있다.
+	PHONE_REVEAL_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "전화번호를 너무 많이 조회했습니다. 잠시 후 다시 시도해 주세요.");
 
 	private final HttpStatus status;
 
