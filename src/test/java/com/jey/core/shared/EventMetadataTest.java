@@ -23,7 +23,7 @@ class EventMetadataTest {
 
 	@Test
 	void 시계로_발생_시각과_ID를_채운다() {
-		EventMetadata metadata = EventMetadata.create("billing.payment-completed", 1, 1L, 7L, CLOCK);
+		EventMetadata metadata = EventMetadata.create("billing.payment-completed", 1, 1L, Actor.user(7), CLOCK);
 
 		assertThat(metadata.eventType()).isEqualTo("billing.payment-completed");
 		assertThat(metadata.version()).isEqualTo(1);
@@ -36,19 +36,19 @@ class EventMetadataTest {
 
 	@Test
 	void 만들_때마다_ID가_다르다() {
-		assertThat(EventMetadata.create("billing.payment-completed", 1, 1L, 7L, CLOCK).eventId())
-				.isNotEqualTo(EventMetadata.create("billing.payment-completed", 1, 1L, 7L, CLOCK).eventId());
+		assertThat(EventMetadata.create("billing.payment-completed", 1, 1L, Actor.user(7), CLOCK).eventId())
+				.isNotEqualTo(EventMetadata.create("billing.payment-completed", 1, 1L, Actor.user(7), CLOCK).eventId());
 	}
 
 	@Test
 	void 지점과_무관한_이벤트는_지점_없이_만들_수_있다() {
-		assertThat(EventMetadata.create("core.user-created", 1, null, 7L, CLOCK).campusId()).isNull();
+		assertThat(EventMetadata.create("core.user-created", 1, null, Actor.user(7), CLOCK).campusId()).isNull();
 	}
 
 	// 배치나 웹훅처럼 로그인 없이 일어난 일이다.
 	@Test
 	void 행위자가_없는_이벤트는_행위자_없이_만들_수_있다() {
-		assertThat(EventMetadata.create("billing.payment-completed", 1, 1L, null, CLOCK).actorId()).isNull();
+		assertThat(EventMetadata.create("billing.payment-completed", 1, 1L, Actor.none(), CLOCK).actorId()).isNull();
 	}
 
 	@Test
@@ -56,7 +56,18 @@ class EventMetadataTest {
 		assertThatIllegalArgumentException()
 				.isThrownBy(() -> new EventMetadata(ID, "billing.payment-completed", 1, NOW, 1L, 0L));
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> EventMetadata.create("billing.payment-completed", 1, 1L, -1L, CLOCK));
+				.isThrownBy(() -> EventMetadata.create("billing.payment-completed", 1, 1L, Actor.user(-1), CLOCK));
+		assertThatNullPointerException()
+				.isThrownBy(() -> EventMetadata.create("billing.payment-completed", 1, 1L, null, CLOCK));
+	}
+
+	// 이벤트 이름은 감사 로그의 행위 이름으로 저장된다. 그 컬럼보다 긴 이름을 발행하면 받는 쪽이 저장하지 못한다.
+	@Test
+	void 이벤트_이름은_80자까지다() {
+		String longest = "billing." + "a".repeat(72);
+
+		assertThat(new EventMetadata(ID, longest, 1, NOW, 1L, 7L).eventType()).hasSize(80);
+		assertThatIllegalArgumentException().isThrownBy(() -> new EventMetadata(ID, longest + "a", 1, NOW, 1L, 7L));
 	}
 
 	@ParameterizedTest

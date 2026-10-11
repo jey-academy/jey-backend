@@ -1,6 +1,7 @@
 package com.jey.core.member.api;
 
 import com.jey.core.shared.DomainEvent;
+import com.jey.core.shared.EntityRef;
 import com.jey.core.shared.EventMetadata;
 
 /**
@@ -12,5 +13,10 @@ public record StudentRegistered(EventMetadata metadata, long studentId) implemen
 	public static final String TYPE = "member.student-registered";
 
 	public static final int VERSION = 1;
+
+	@Override
+	public EntityRef subject() {
+		return EntityRef.of("student", studentId);
+	}
 
 }

@@ -52,7 +52,7 @@
           },
           "detail" : {
             "additionalProperties" : { },
-            "description" : "덧붙인 내용. 행위마다 키가 다르다. 없으면 null",
+            "description" : "덧붙인 내용. 행위마다 키가 다르다. 없으면 null. 내용을 싣지 못했으면 {\"truncated\": true}(너무 큼), {\"redacted\": true}(개인정보로 보이는 값), {\"unreadable\": true}(읽을 수 없음) 가운데 하나다",
             "type" : "object"
           },
           "id" : {
@@ -62,6 +62,11 @@
           "occurredAt" : {
             "description" : "그 일이 일어난 시각(UTC)",
             "format" : "date-time",
+            "type" : "string"
+          },
+          "outcome" : {
+            "description" : "DONE은 실제로 한 일, DENIED는 거부된 시도",
+            "enum" : [ "DONE", "DENIED" ],
             "type" : "string"
           },
           "targetId" : {
@@ -74,7 +79,7 @@
             "type" : "string"
           }
         },
-        "required" : [ "action", "id", "occurredAt" ],
+        "required" : [ "action", "id", "occurredAt", "outcome" ],
         "type" : "object"
       },
       "CampusResponse" : {
@@ -708,6 +713,15 @@
             "type" : "string"
           }
         }, {
+          "description" : "DONE(한 일)이나 DENIED(거부된 시도)만 보려면 준다. 안 주면 둘 다",
+          "in" : "query",
+          "name" : "outcome",
+          "required" : false,
+          "schema" : {
+            "enum" : [ "DONE", "DENIED" ],
+            "type" : "string"
+          }
+        }, {
           "description" : "대상의 종류(예: student)",
           "in" : "query",
           "name" : "targetType",
@@ -718,6 +732,7 @@
             "type" : "string"
           }
         }, {
+          "description" : "대상의 ID. targetType과 같이 주어야 한다",
           "in" : "query",
           "name" : "targetId",
           "required" : false,

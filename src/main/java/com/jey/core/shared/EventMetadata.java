@@ -20,12 +20,19 @@ import java.util.regex.Pattern;
 public record EventMetadata(UUID eventId, String eventType, int version, Instant occurredAt, Long campusId,
 		Long actorId) {
 
+	/** 이벤트 이름의 최대 길이. 감사 로그가 이벤트 이름을 행위 이름으로 저장하는 컬럼의 길이와 같다. */
+	public static final int MAX_EVENT_TYPE_LENGTH = 80;
+
 	private static final Pattern EVENT_TYPE = Pattern.compile("[a-z][a-z0-9]*\\.[a-z][a-z0-9]*(-[a-z0-9]+)*");
 
 	public EventMetadata {
 		Objects.requireNonNull(eventId, "eventId");
 		Objects.requireNonNull(eventType, "eventType");
 		Objects.requireNonNull(occurredAt, "occurredAt");
+		// 길이를 넘는 이름은 발행할 때 막는다. 넘겨 두면 이 이름을 저장하는 쪽(감사 로그)이 몇 번을 다시 받아도 같은 자리에서 실패한다.
+		if (eventType.length() > MAX_EVENT_TYPE_LENGTH) {
+			throw new IllegalArgumentException("eventType은 " + MAX_EVENT_TYPE_LENGTH + "자를 넘을 수 없다: " + eventType);
+		}
 		if (!EVENT_TYPE.matcher(eventType).matches()) {
 			throw new IllegalArgumentException("eventType은 {모듈}.{사건} 형식의 소문자 kebab-case여야 한다: " + eventType);
 		}
@@ -40,9 +47,14 @@ public record EventMetadata(UUID eventId, String eventType, int version, Instant
 		}
 	}
 
-	/** 새 이벤트의 봉투 정보를 만든다. ID와 발생 시각은 시계에서 얻는다. */
-	public static EventMetadata create(String eventType, int version, Long campusId, Long actorId, Clock clock) {
-		return new EventMetadata(UuidV7.generate(clock), eventType, version, clock.instant(), campusId, actorId);
+	/**
+	 * 새 이벤트의 봉투 정보를 만든다. ID와 발생 시각은 시계에서 얻는다.
+	 *
+	 * @param actor 그 일을 한 주체. 요청을 처리하는 중이면 {@code CurrentActor#get()}, 로그인 없이 일어난 일이면 {@link Actor#none()}
+	 */
+	public static EventMetadata create(String eventType, int version, Long campusId, Actor actor, Clock clock) {
+		return new EventMetadata(UuidV7.generate(clock), eventType, version, clock.instant(), campusId,
+				Objects.requireNonNull(actor, "actor").idOrNull());
 	}
 
 }

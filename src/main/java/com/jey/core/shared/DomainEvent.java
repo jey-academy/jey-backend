@@ -13,4 +13,14 @@ public interface DomainEvent {
 
 	EventMetadata metadata();
 
+	/**
+	 * 이 사건이 무엇에 대한 것인지(예: 학생 12번). 감사 로그가 대상으로 적어서 "그 학생에게 있었던 일"로 찾을 수 있게 한다.
+	 * 대상이 하나로 정해지는 이벤트는 재정의한다. 이름이 {@code get}으로 시작하지 않아 JSON에는 실리지 않는다.
+	 *
+	 * @return 특정 대상이 없으면 {@code null}
+	 */
+	default EntityRef subject() {
+		return null;
+	}
+
 }

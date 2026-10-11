@@ -13,7 +13,9 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import com.jey.core.auth.api.AuthenticatedUser;
+import com.jey.core.audit.api.AuditEntry;
+import com.jey.core.audit.api.AuditLog;
+import com.jey.core.auth.api.CurrentActor;
 import com.jey.core.campus.api.CampusCatalog;
 import com.jey.core.campus.api.ClassInfo;
 import com.jey.core.member.GuardianService.EnsuredGuardian;
@@ -73,14 +75,18 @@ public class StudentService {
 
 	private final Clock clock;
 
-	private final MemberAudit audit;
+	private final AuditLog auditLog;
+
+	private final CurrentActor currentActor;
 
 	private final ApplicationEventPublisher events;
 
 	StudentService(StudentRepository students, GuardianRepository guardians, StudentGuardianRepository links,
 			GuardianService guardianService, CampusCatalog catalog, PhoneProtector protector,
-			TransactionTemplate transaction, Clock clock, MemberAudit audit, ApplicationEventPublisher events) {
-		this.audit = audit;
+			TransactionTemplate transaction, Clock clock, AuditLog auditLog, CurrentActor currentActor,
+			ApplicationEventPublisher events) {
+		this.auditLog = auditLog;
+		this.currentActor = currentActor;
 		this.events = events;
 		this.students = students;
 		this.guardians = guardians;
@@ -103,6 +109,21 @@ public class StudentService {
 	 */
 	public StudentView register(StudentRegistration registration) {
 		requireNoTransaction("register");
+		try {
+			return registerChecked(registration);
+		}
+		catch (BusinessException ex) {
+			// 이름과 번호를 넣었을 때 "이미 있다"는 답은 그 번호가 맞다는 뜻이기도 하다. 누가 받았는지 남긴다.
+			// 미리 확인에서 걸렸든 저장 직전에 걸렸든 여기서는 트랜잭션이 끝나 있다.
+			if (ex.getErrorCode() == MemberErrorCode.STUDENT_DUPLICATED) {
+				DeniedAttempts.record(auditLog,
+						AuditEntry.of(MemberAuditAction.STUDENT_DUPLICATED).campus(registration.campusId()), ex);
+			}
+			throw ex;
+		}
+	}
+
+	private StudentView registerChecked(StudentRegistration registration) {
 		List<GuardianInput> inputs = registration.guardians();
 		if (inputs.isEmpty() && registration.phone() == null) {
 			throw new BusinessException(MemberErrorCode.CONTACT_REQUIRED);
@@ -136,11 +157,12 @@ public class StudentService {
 					.filter(EnsuredGuardian::existing)
 					.map(EnsuredGuardian::guardianId)
 					.collect(Collectors.toSet());
-			ensured.forEach(each -> audit.student(MemberAudit.GUARDIAN_LINKED, saved.getId(),
-					Map.of("guardianId", each.guardianId(), "linkedToExisting", each.existing())));
+			ensured.forEach(each -> auditLog.record(studentEntry(MemberAuditAction.GUARDIAN_LINKED, saved)
+					.with("guardianId", each.guardianId())
+					.with("linkedToExisting", each.existing())));
 			// 같은 트랜잭션에서 낸다. 등록이 커밋돼야 이벤트도 나가고, 리스너는 커밋 뒤에 돈다.
 			events.publishEvent(new StudentRegistered(EventMetadata.create(StudentRegistered.TYPE,
-					StudentRegistered.VERSION, saved.getCampusId(), AuthenticatedUser.currentId().orElse(null), clock),
+					StudentRegistered.VERSION, saved.getCampusId(), currentActor.get(), clock),
 					saved.getId()));
 			return viewOf(saved, linkedToExisting);
 		});
@@ -189,7 +211,7 @@ public class StudentService {
 			student.changePhone(protector.protect(change.phone()));
 		}
 		Student saved = students.saveAndFlush(student);
-		audit.student(MemberAudit.STUDENT_UPDATED, studentId, Map.of("phoneChanged", phoneChanged));
+		auditLog.record(studentEntry(MemberAuditAction.STUDENT_UPDATED, saved).with("phoneChanged", phoneChanged));
 		return viewOf(saved, Set.of());
 	}
 
@@ -209,7 +231,7 @@ public class StudentService {
 		}
 		student.removePhone();
 		students.saveAndFlush(student);
-		audit.student(MemberAudit.STUDENT_PHONE_REMOVED, studentId, Map.of());
+		auditLog.record(studentEntry(MemberAuditAction.STUDENT_PHONE_REMOVED, student));
 	}
 
 	/**
@@ -224,29 +246,40 @@ public class StudentService {
 			throw new BusinessException(MemberErrorCode.STUDENT_NOT_FOUND);
 		}
 		EnsuredGuardian ensured = guardianService.findOrCreate(input.name(), input.phone());
-		return transaction.execute(status -> {
-			Student student = find(studentId);
-			if (links.existsByStudentIdAndGuardianId(studentId, ensured.guardianId())) {
-				audit.studentAttempt(MemberAudit.GUARDIAN_ALREADY_LINKED, studentId,
-						Map.of("guardianId", ensured.guardianId()));
-				throw new BusinessException(MemberErrorCode.GUARDIAN_ALREADY_LINKED);
+		try {
+			return transaction.execute(status -> linkGuardian(studentId, ensured, input.relation()));
+		}
+		catch (BusinessException ex) {
+			// 학생 행을 잠근 트랜잭션이 끝난 뒤에 남긴다. 안에서 남기면 잠금을 기다리는 요청들이 연결을 모두 쥐고 있어
+			// 기록용 연결을 얻지 못하고 멈춘다.
+			if (ex.getErrorCode() == MemberErrorCode.GUARDIAN_ALREADY_LINKED) {
+				DeniedAttempts.record(auditLog, AuditEntry.of(MemberAuditAction.GUARDIAN_ALREADY_LINKED)
+						.target(MemberAuditAction.STUDENT, studentId)
+						.with("guardianId", ensured.guardianId()), ex);
 			}
-			try {
-				links.saveAndFlush(StudentGuardian.link(studentId, ensured.guardianId(), input.relation()));
+			throw ex;
+		}
+	}
+
+	private StudentView linkGuardian(long studentId, EnsuredGuardian ensured, GuardianRelation relation) {
+		Student student = find(studentId);
+		if (links.existsByStudentIdAndGuardianId(studentId, ensured.guardianId())) {
+			throw new BusinessException(MemberErrorCode.GUARDIAN_ALREADY_LINKED);
+		}
+		try {
+			links.saveAndFlush(StudentGuardian.link(studentId, ensured.guardianId(), relation));
+		}
+		catch (DataIntegrityViolationException ex) {
+			// 위의 확인과 저장 사이에 같은 연결이 먼저 들어온 경우다.
+			if (UniqueKeys.isViolationOf(ex, LINK_UNIQUE_KEY)) {
+				throw new BusinessException(MemberErrorCode.GUARDIAN_ALREADY_LINKED, null, ex);
 			}
-			catch (DataIntegrityViolationException ex) {
-				// 위의 확인과 저장 사이에 같은 연결이 먼저 들어온 경우다.
-				if (UniqueKeys.isViolationOf(ex, LINK_UNIQUE_KEY)) {
-					audit.studentAttempt(MemberAudit.GUARDIAN_ALREADY_LINKED, studentId,
-							Map.of("guardianId", ensured.guardianId()));
-					throw new BusinessException(MemberErrorCode.GUARDIAN_ALREADY_LINKED, null, ex);
-				}
-				throw ex;
-			}
-			audit.student(MemberAudit.GUARDIAN_LINKED, studentId,
-					Map.of("guardianId", ensured.guardianId(), "linkedToExisting", ensured.existing()));
-			return viewOf(student, ensured.existing() ? Set.of(ensured.guardianId()) : Set.of());
-		});
+			throw ex;
+		}
+		auditLog.record(studentEntry(MemberAuditAction.GUARDIAN_LINKED, student)
+				.with("guardianId", ensured.guardianId())
+				.with("linkedToExisting", ensured.existing()));
+		return viewOf(student, ensured.existing() ? Set.of(ensured.guardianId()) : Set.of());
 	}
 
 	/**
@@ -258,8 +291,9 @@ public class StudentService {
 		StudentGuardian link = findLink(studentId, guardianId);
 		link.changeRelation(relation);
 		links.saveAndFlush(link);
-		audit.student(MemberAudit.GUARDIAN_RELATION_CHANGED, studentId,
-				Map.of("guardianId", guardianId, "relation", relation));
+		auditLog.record(studentEntry(MemberAuditAction.GUARDIAN_RELATION_CHANGED, student)
+				.with("guardianId", guardianId)
+				.with("relation", relation));
 		return viewOf(student, Set.of());
 	}
 
@@ -277,12 +311,17 @@ public class StudentService {
 		}
 		links.delete(link);
 		links.flush();
-		audit.student(MemberAudit.GUARDIAN_UNLINKED, studentId, Map.of("guardianId", guardianId));
+		auditLog.record(studentEntry(MemberAuditAction.GUARDIAN_UNLINKED, student).with("guardianId", guardianId));
 	}
 
 	// 고치는 메서드는 모두 이것으로 학생을 읽는다. 학생 행을 잠가서 같은 학생을 고치는 요청이 줄을 서게 한다.
 	// 잠그지 않으면 "남은 연락처를 세고 지우기"가 동시에 둘 다 통과해 연락처가 없는 학생이 생기고,
 	// 수정이 읽어 둔 옛 값을 다시 써서 방금 지운 번호가 되살아난다. 각 메서드의 첫 조회여야 한다.
+	// 학생에 대해 한 일의 기록. 대상은 그 학생이고 지점은 학생의 지점이다.
+	private static AuditEntry studentEntry(MemberAuditAction action, Student student) {
+		return AuditEntry.of(action).target(MemberAuditAction.STUDENT, student.getId()).campus(student.getCampusId());
+	}
+
 	private Student find(long studentId) {
 		return students.findByIdForUpdate(studentId)
 				.orElseThrow(() -> new BusinessException(MemberErrorCode.STUDENT_NOT_FOUND));

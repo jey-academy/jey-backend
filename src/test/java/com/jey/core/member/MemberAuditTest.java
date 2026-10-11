@@ -6,6 +6,7 @@ import java.util.List;
 import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
 import com.jey.core.audit.AuditLogService;
+import com.jey.core.audit.api.AuditOutcome;
 import com.jey.core.audit.domain.AuditRecord;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.member.api.StudentRegistered;
@@ -39,6 +40,9 @@ class MemberAuditTest {
 
 	private static final long STAFF = 4242;
 
+	// 거부되는 등록을 시험하는 테스트 하나만 쓰는 계정. 그 계정의 기록을 통째로 셀 수 있다.
+	private static final long DUPLICATING_STAFF = 4243;
+
 	private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
 	@Autowired
@@ -69,31 +73,50 @@ class MemberAuditTest {
 		assertThat(registered.getCampusId()).isEqualTo(NEUNGDONG);
 		assertThat(registered.getEventId()).isNotNull();
 		assertThat(registered.getDetailJson()).isEqualTo("{\"studentId\":" + created.id() + "}");
+		// 이벤트가 대상을 알려 주므로 "그 학생에게 있었던 일"로 찾으면 등록도 나온다.
+		assertThat(registered.getTargetType()).isEqualTo(MemberAuditAction.STUDENT);
+		assertThat(registered.getTargetId()).isEqualTo(created.id());
+		// 학생에 대해 한 일은 학생의 지점으로 적힌다.
+		assertThat(ofStudent(created.id(), MemberAuditAction.GUARDIAN_LINKED.code()))
+				.allSatisfy(each -> assertThat(each.getCampusId()).isEqualTo(NEUNGDONG));
 		long newGuardian = created.guardians().getLast().id();
-		assertThat(ofStudent(created.id(), MemberAudit.GUARDIAN_LINKED)).extracting(AuditRecord::getDetailJson)
+		assertThat(ofStudent(created.id(), MemberAuditAction.GUARDIAN_LINKED.code())).extracting(AuditRecord::getDetailJson)
 				.containsExactlyInAnyOrder("{\"guardianId\":" + existingGuardian + ",\"linkedToExisting\":true}",
 						"{\"guardianId\":" + newGuardian + ",\"linkedToExisting\":false}");
-		assertThat(ofStudent(created.id(), MemberAudit.GUARDIAN_LINKED))
+		assertThat(ofStudent(created.id(), MemberAuditAction.GUARDIAN_LINKED.code()))
 				.allSatisfy(each -> assertThat(each.getActorId()).isEqualTo(STAFF));
 	}
 
-	// 등록이 실패하면 이벤트도 연결 기록도 남지 않는다.
+	// 미리 확인에서 걸린 등록은 아무것도 남기지 않는다. 그 계정이 한 등록은 성공한 하나뿐이어야 한다.
+	// 저장하다 실패한 경우(트랜잭션 롤백)는 MemberAuditEdgeTest가 본다.
 	@Test
-	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = STAFF)
-	void 실패한_등록은_기록되지_않는다() {
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = DUPLICATING_STAFF)
+	void 중복으로_거부된_등록은_이벤트와_연결_기록을_남기지_않는다() {
 		PhoneNumber phone = randomPhone();
 		String name = uniqueName();
 		StudentView existing = studentService.register(registration(name, mother(phone)));
-		long before = auditLogService.search(null, StudentRegistered.TYPE, null, null, null, null, 0, 1)
-				.getTotalElements();
 
 		assertFails(() -> studentService.register(registration(name, mother(phone))),
 				MemberErrorCode.STUDENT_DUPLICATED);
 
-		await().atMost(TIMEOUT).untilAsserted(() -> assertThat(registeredEventOf(existing.id())).hasSize(1));
-		assertThat(auditLogService.search(null, StudentRegistered.TYPE, null, null, null, null, 0, 1)
-				.getTotalElements()).isLessThanOrEqualTo(before + 1);
-		assertThat(ofStudent(existing.id(), MemberAudit.GUARDIAN_LINKED)).hasSize(1);
+		// 이 테스트만 쓰는 계정이다. 등록 이벤트와 연결 기록이 계정 전체에서 하나씩뿐이어야 한다.
+		await().atMost(TIMEOUT)
+				.untilAsserted(() -> assertThat(auditLogService
+						.search(DUPLICATING_STAFF, StudentRegistered.TYPE, null, null, null, null, null, 0, 20)
+						.getContent()).extracting(AuditRecord::getDetailJson)
+						.containsExactly("{\"studentId\":" + existing.id() + "}"));
+		assertThat(auditLogService
+				.search(DUPLICATING_STAFF, MemberAuditAction.GUARDIAN_LINKED.code(), null, null, null, null, null, 0, 20)
+				.getContent()).extracting(AuditRecord::getTargetId).containsExactly(existing.id());
+		// 이름과 번호를 넣어 "이미 있다"는 답을 받은 것은 그 번호가 맞다는 것을 안 것이기도 하다. 거부로 남는다.
+		assertThat(auditLogService
+				.search(DUPLICATING_STAFF, MemberAuditAction.STUDENT_DUPLICATED.code(), AuditOutcome.DENIED, null, null,
+						null, null, 0, 20)
+				.getContent()).singleElement().satisfies(denied -> {
+					assertThat(denied.getCampusId()).isEqualTo(DONGTAN);
+					assertThat(denied.getTargetType()).isNull();
+					assertThat(denied.getDetailJson()).isNull();
+				});
 	}
 
 	@Test
@@ -108,9 +131,9 @@ class MemberAuditTest {
 		// 원래 번호가 없으면 아무 일도 하지 않으므로 기록도 없다.
 		studentService.removePhone(student.id());
 
-		assertThat(ofStudent(student.id(), MemberAudit.STUDENT_UPDATED)).extracting(AuditRecord::getDetailJson)
+		assertThat(ofStudent(student.id(), MemberAuditAction.STUDENT_UPDATED.code())).extracting(AuditRecord::getDetailJson)
 				.containsExactlyInAnyOrder("{\"phoneChanged\":false}", "{\"phoneChanged\":true}");
-		assertThat(ofStudent(student.id(), MemberAudit.STUDENT_PHONE_REMOVED)).singleElement().satisfies(each -> {
+		assertThat(ofStudent(student.id(), MemberAuditAction.STUDENT_PHONE_REMOVED.code())).singleElement().satisfies(each -> {
 			assertThat(each.getActorId()).isEqualTo(STAFF);
 			assertThat(each.getTargetType()).isEqualTo("student");
 			assertThat(each.getDetailJson()).isNull();
@@ -129,8 +152,8 @@ class MemberAuditTest {
 				MemberErrorCode.INVALID_CLASS);
 		assertFails(() -> studentService.removeGuardian(student.id(), guardianId), MemberErrorCode.LAST_CONTACT);
 
-		assertThat(ofStudent(student.id(), MemberAudit.STUDENT_UPDATED)).isEmpty();
-		assertThat(ofStudent(student.id(), MemberAudit.GUARDIAN_UNLINKED)).isEmpty();
+		assertThat(ofStudent(student.id(), MemberAuditAction.STUDENT_UPDATED.code())).isEmpty();
+		assertThat(ofStudent(student.id(), MemberAuditAction.GUARDIAN_UNLINKED.code())).isEmpty();
 	}
 
 	@Test
@@ -142,13 +165,13 @@ class MemberAuditTest {
 		studentService.changeRelation(student.id(), guardianId, GuardianRelation.GRANDPARENT);
 		studentService.removeGuardian(student.id(), guardianId);
 
-		assertThat(ofStudent(student.id(), MemberAudit.GUARDIAN_LINKED)).singleElement()
+		assertThat(ofStudent(student.id(), MemberAuditAction.GUARDIAN_LINKED.code())).singleElement()
 				.satisfies(each -> assertThat(each.getDetailJson())
 						.isEqualTo("{\"guardianId\":" + guardianId + ",\"linkedToExisting\":false}"));
-		assertThat(ofStudent(student.id(), MemberAudit.GUARDIAN_RELATION_CHANGED)).singleElement()
+		assertThat(ofStudent(student.id(), MemberAuditAction.GUARDIAN_RELATION_CHANGED.code())).singleElement()
 				.satisfies(each -> assertThat(each.getDetailJson())
 						.isEqualTo("{\"guardianId\":" + guardianId + ",\"relation\":\"GRANDPARENT\"}"));
-		assertThat(ofStudent(student.id(), MemberAudit.GUARDIAN_UNLINKED)).singleElement()
+		assertThat(ofStudent(student.id(), MemberAuditAction.GUARDIAN_UNLINKED.code())).singleElement()
 				.satisfies(each -> assertThat(each.getDetailJson()).isEqualTo("{\"guardianId\":" + guardianId + "}"));
 	}
 
@@ -174,18 +197,18 @@ class MemberAuditTest {
 				MemberErrorCode.GUARDIAN_ALREADY_LINKED);
 
 		// 되풀이한 횟수만큼 남는다.
-		assertThat(ofGuardian(guardianId, MemberAudit.GUARDIAN_PHONE_DUPLICATED)).hasSize(2).allSatisfy(each -> {
+		assertThat(ofGuardian(guardianId, MemberAuditAction.GUARDIAN_PHONE_DUPLICATED.code())).hasSize(2).allSatisfy(each -> {
 			assertThat(each.getActorId()).isEqualTo(STAFF);
 			assertThat(each.getDetailJson()).isNull();
 		});
-		assertThat(ofStudent(student.id(), MemberAudit.GUARDIAN_ALREADY_LINKED)).singleElement().satisfies(each -> {
+		assertThat(ofStudent(student.id(), MemberAuditAction.GUARDIAN_ALREADY_LINKED.code())).singleElement().satisfies(each -> {
 			assertThat(each.getActorId()).isEqualTo(STAFF);
 			assertThat(each.getDetailJson()).isEqualTo("{\"guardianId\":" + othersGuardian + "}");
 		});
-		assertThat(ofStudent(student.id(), MemberAudit.GUARDIAN_LINKED)).extracting(AuditRecord::getDetailJson)
+		assertThat(ofStudent(student.id(), MemberAuditAction.GUARDIAN_LINKED.code())).extracting(AuditRecord::getDetailJson)
 				.contains("{\"guardianId\":" + othersGuardian + ",\"linkedToExisting\":true}");
 		// 거부된 수정은 "수정했다"로 남지 않는다.
-		assertThat(ofGuardian(guardianId, MemberAudit.GUARDIAN_UPDATED)).isEmpty();
+		assertThat(ofGuardian(guardianId, MemberAuditAction.GUARDIAN_UPDATED.code())).isEmpty();
 	}
 
 	@Test
@@ -202,7 +225,7 @@ class MemberAuditTest {
 		guardianService.update(guardianId, "박어머니", original);
 		guardianService.update(guardianId, "박어머니", randomPhone());
 
-		assertThat(ofGuardian(guardianId, MemberAudit.GUARDIAN_UPDATED)).extracting(AuditRecord::getDetailJson)
+		assertThat(ofGuardian(guardianId, MemberAuditAction.GUARDIAN_UPDATED.code())).extracting(AuditRecord::getDetailJson)
 				.containsExactlyInAnyOrder("{\"phoneChanged\":false}", "{\"phoneChanged\":false}",
 						"{\"phoneChanged\":true}");
 	}
@@ -222,8 +245,8 @@ class MemberAuditTest {
 		await().atMost(TIMEOUT).untilAsserted(() -> assertThat(registeredEventOf(student.id())).hasSize(1));
 
 		List<AuditRecord> all = new java.util.ArrayList<>(registeredEventOf(student.id()));
-		all.addAll(auditLogService.search(null, null, "student", student.id(), null, null, 0, 100).getContent());
-		all.addAll(auditLogService.search(null, null, "guardian", guardianId, null, null, 0, 100).getContent());
+		all.addAll(auditLogService.search(null, null, null, "student", student.id(), null, null, 0, 100).getContent());
+		all.addAll(auditLogService.search(null, null, null, "guardian", guardianId, null, null, 0, 100).getContent());
 
 		assertThat(all).hasSizeGreaterThanOrEqualTo(4);
 		assertThat(all).extracting(each -> String.valueOf(each.getDetailJson()))
@@ -234,17 +257,17 @@ class MemberAuditTest {
 	}
 
 	private List<AuditRecord> ofStudent(long studentId, String action) {
-		return auditLogService.search(null, action, MemberAudit.STUDENT, studentId, null, null, 0, 100).getContent();
+		return auditLogService.search(null, action, null, MemberAuditAction.STUDENT, studentId, null, null, 0, 100).getContent();
 	}
 
 	private List<AuditRecord> ofGuardian(long guardianId, String action) {
-		return auditLogService.search(null, action, MemberAudit.GUARDIAN, guardianId, null, null, 0, 100)
+		return auditLogService.search(null, action, null, MemberAuditAction.GUARDIAN, guardianId, null, null, 0, 100)
 				.getContent();
 	}
 
 	// 이벤트 기록에는 대상 컬럼이 없다. 내용에 실린 학생 ID로 찾는다.
 	private List<AuditRecord> registeredEventOf(long studentId) {
-		return auditLogService.search(STAFF, StudentRegistered.TYPE, null, null, null, null, 0, 100)
+		return auditLogService.search(STAFF, StudentRegistered.TYPE, null, null, null, null, null, 0, 100)
 				.getContent()
 				.stream()
 				.filter(each -> ("{\"studentId\":" + studentId + "}").equals(each.getDetailJson()))

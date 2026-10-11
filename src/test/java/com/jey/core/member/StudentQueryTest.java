@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -31,6 +32,7 @@ import static com.jey.core.member.MemberFixtures.uniqueName;
 import static com.jey.core.member.StudentRegistrationTest.assertFails;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.awaitility.Awaitility.await;
 
 // 목록은 다른 테스트가 넣은 학생과 섞인다. 테스트마다 이름의 앞부분을 새로 만들어 그 이름으로 걸러서 본다.
 @Import(TestcontainersConfiguration.class)
@@ -43,6 +45,9 @@ class StudentQueryTest {
 
 	@Autowired
 	EntityManagerFactory entityManagerFactory;
+
+	@Autowired
+	JdbcTemplate jdbc;
 
 	@Test
 	void 상세에_학부모와_대표_연락처가_나온다() {
@@ -208,6 +213,12 @@ class StudentQueryTest {
 		for (int i = 1; i <= 8; i++) {
 			studentService.register(registration(many + "-" + i, mother(randomPhone()), father(randomPhone())));
 		}
+
+		// 방금 등록한 학생들의 이벤트를 리스너가 다 적을 때까지 기다린다. 그 쿼리가 측정에 섞이지 않게 한다.
+		await().atMost(java.time.Duration.ofSeconds(20))
+				.untilAsserted(() -> assertThat(jdbc.queryForObject(
+						"SELECT COUNT(*) FROM event_publication WHERE completion_date IS NULL", Integer.class))
+						.isZero());
 
 		long forOne = statementsDuring(() -> assertThat(studentService.search(null, few, null, 0, 20)).hasSize(1));
 		long forEight = statementsDuring(() -> assertThat(studentService.search(null, many, null, 0, 20)).hasSize(8));

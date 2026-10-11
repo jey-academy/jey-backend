@@ -6,7 +6,9 @@ import java.util.UUID;
 import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
 import com.jey.core.audit.api.AuditLog;
-import com.jey.core.audit.api.AuditTarget;
+import com.jey.core.audit.TestAuditAction;
+import com.jey.core.audit.api.AuditEntry;
+import com.jey.core.audit.api.AuditOutcome;
 import com.jey.core.auth.api.UserRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +18,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.everyItem;
@@ -45,12 +48,19 @@ class AuditLogApiTest {
 	@Autowired
 	JdbcTemplate jdbc;
 
+	@Autowired
+	TransactionTemplate transaction;
+
 	@Test
 	@WithJeyUser(role = UserRole.ADMIN, id = ADMIN)
 	void 관리자가_기록을_최신순으로_본다() throws Exception {
 		String action = newAction();
-		auditLog.record(action, AuditTarget.of("student", 11), Map.of("guardianId", 5, "linkedToExisting", true));
-		auditLog.record(action, null, Map.of());
+		transaction.executeWithoutResult(status -> auditLog.record(AuditEntry.of(done(action))
+				.target("student", 11)
+				.campus(2)
+				.with("guardianId", 5)
+				.with("linkedToExisting", true)));
+		record(action);
 
 		mockMvc.perform(get(AUDIT_LOGS).param("action", action))
 				.andExpect(status().isOk())
@@ -68,6 +78,8 @@ class AuditLogApiTest {
 				.andExpect(jsonPath("$.items[1].occurredAt").isString())
 				.andExpect(jsonPath("$.items[1].actorId").value(ADMIN))
 				.andExpect(jsonPath("$.items[1].action").value(action))
+				.andExpect(jsonPath("$.items[1].outcome").value("DONE"))
+				.andExpect(jsonPath("$.items[1].campusId").value(2))
 				.andExpect(jsonPath("$.items[1].targetType").value("student"))
 				.andExpect(jsonPath("$.items[1].targetId").value(11))
 				// 상세는 문자열이 아니라 JSON 객체로 나간다.
@@ -80,9 +92,9 @@ class AuditLogApiTest {
 	void 행위자와_대상으로_거른다() throws Exception {
 		String action = newAction();
 		long otherActor = 9002;
-		auditLog.record(action, AuditTarget.of("student", 21), Map.of());
-		auditLog.record(action, AuditTarget.of("student", 22), Map.of());
-		auditLog.record(action, AuditTarget.of("guardian", 21), Map.of());
+		record(action, "student", 21);
+		record(action, "student", 22);
+		record(action, "guardian", 21);
 		jdbc.update("UPDATE core_audit_log SET actor_id = ? WHERE action = ? AND target_id = 22", otherActor, action);
 
 		mockMvc.perform(get(AUDIT_LOGS).param("action", action).param("actorId", String.valueOf(otherActor)))
@@ -90,8 +102,10 @@ class AuditLogApiTest {
 		mockMvc.perform(get(AUDIT_LOGS).param("action", action).param("targetType", "student").param("targetId", "21"))
 				.andExpect(jsonPath("$.items.length()").value(1))
 				.andExpect(jsonPath("$.items[0].targetType").value("student"));
+		// 대상 ID만 주면 학생 21번과 학부모 21번의 기록이 섞인다. 종류를 같이 주게 한다.
 		mockMvc.perform(get(AUDIT_LOGS).param("action", action).param("targetId", "21"))
-				.andExpect(jsonPath("$.totalElements").value(2));
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("AUDIT_TARGET_TYPE_REQUIRED"));
 		mockMvc.perform(get(AUDIT_LOGS).param("action", action).param("targetType", "guardian"))
 				.andExpect(jsonPath("$.items[*].targetType", everyItem(is("guardian"))))
 				.andExpect(jsonPath("$.totalElements").value(1));
@@ -100,14 +114,35 @@ class AuditLogApiTest {
 				.andExpect(jsonPath("$.items").isEmpty());
 	}
 
+	// 가린 전화번호를 대입으로 알아내려는 시도는 거부된 기록으로 쌓인다. 거부만 골라 볼 수 있어야 한다.
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN, id = ADMIN)
+	void 한_일과_거부된_시도를_골라_본다() throws Exception {
+		String action = newAction();
+		record(action, "student", 1);
+		auditLog.record(AuditEntry.of(new TestAuditAction(action, AuditOutcome.DENIED)).target("student", 2));
+		auditLog.record(AuditEntry.of(new TestAuditAction(action, AuditOutcome.DENIED)).target("student", 3));
+
+		mockMvc.perform(get(AUDIT_LOGS).param("action", action).param("outcome", "DENIED"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.items[*].targetId", contains(3, 2)))
+				.andExpect(jsonPath("$.items[*].outcome", everyItem(is("DENIED"))))
+				.andExpect(jsonPath("$.totalElements").value(2));
+		mockMvc.perform(get(AUDIT_LOGS).param("action", action).param("outcome", "DONE"))
+				.andExpect(jsonPath("$.items[*].targetId", contains(1)));
+		mockMvc.perform(get(AUDIT_LOGS).param("action", action))
+				.andExpect(jsonPath("$.totalElements").value(3));
+		mockMvc.perform(get(AUDIT_LOGS).param("outcome", "FAILED")).andExpect(status().isBadRequest());
+	}
+
 	// 한 계정이 같은 응답을 되풀이해 받았는지는 기간을 좁혀 전체 건수로 본다.
 	@Test
 	@WithJeyUser(role = UserRole.ADMIN, id = ADMIN)
 	void 기간으로_거른다_시작은_포함하고_끝은_제외한다() throws Exception {
 		String action = newAction();
-		auditLog.record(action, AuditTarget.of("student", 1), Map.of());
-		auditLog.record(action, AuditTarget.of("student", 2), Map.of());
-		auditLog.record(action, AuditTarget.of("student", 3), Map.of());
+		record(action, "student", 1);
+		record(action, "student", 2);
+		record(action, "student", 3);
 		setOccurredAt(action, 1, "2026-11-01 00:00:00.000000");
 		setOccurredAt(action, 2, "2026-11-15 12:00:00.000000");
 		setOccurredAt(action, 3, "2026-12-01 00:00:00.000000");
@@ -131,7 +166,7 @@ class AuditLogApiTest {
 	void 페이지로_나눈다() throws Exception {
 		String action = newAction();
 		for (int i = 1; i <= 5; i++) {
-			auditLog.record(action, AuditTarget.of("student", i), Map.of());
+			record(action, "student", i);
 		}
 
 		mockMvc.perform(get(AUDIT_LOGS).param("action", action).param("size", "2"))
@@ -197,6 +232,19 @@ class AuditLogApiTest {
 	private void setOccurredAt(String action, long targetId, String koreanTime) {
 		jdbc.update("UPDATE core_audit_log SET occurred_at = ? WHERE action = ? AND target_id = ?", koreanTime, action,
 				targetId);
+	}
+
+	private void record(String code) {
+		transaction.executeWithoutResult(status -> auditLog.record(AuditEntry.of(done(code))));
+	}
+
+	private void record(String code, String targetType, long targetId) {
+		transaction.executeWithoutResult(
+				status -> auditLog.record(AuditEntry.of(done(code)).target(targetType, targetId)));
+	}
+
+	private static TestAuditAction done(String code) {
+		return new TestAuditAction(code, AuditOutcome.DONE);
 	}
 
 	private static String newAction() {

@@ -1,7 +1,7 @@
 package com.jey.core.member;
 
-import java.util.Map;
-
+import com.jey.core.audit.api.AuditEntry;
+import com.jey.core.audit.api.AuditLog;
 import com.jey.core.member.domain.Guardian;
 import com.jey.core.member.domain.GuardianRepository;
 import com.jey.core.shared.BusinessException;
@@ -12,7 +12,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -27,15 +27,18 @@ public class GuardianService {
 
 	private final PhoneProtector protector;
 
+	private final TransactionTemplate transaction;
+
 	private final TransactionTemplate newTransaction;
 
-	private final MemberAudit audit;
+	private final AuditLog auditLog;
 
 	GuardianService(GuardianRepository guardians, PhoneProtector protector,
-			PlatformTransactionManager transactionManager, MemberAudit audit) {
+			PlatformTransactionManager transactionManager, AuditLog auditLog) {
 		this.guardians = guardians;
 		this.protector = protector;
-		this.audit = audit;
+		this.auditLog = auditLog;
+		this.transaction = new TransactionTemplate(transactionManager);
 		this.newTransaction = new TransactionTemplate(transactionManager);
 		this.newTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 	}
@@ -69,11 +72,29 @@ public class GuardianService {
 	}
 
 	/**
+	 * 학부모의 이름과 번호를 고친다. 트랜잭션 안에서 부르지 않는다.
+	 * 다른 학부모가 쓰는 번호라서 거부될 때, 그 사실을 수정의 트랜잭션이 끝난 뒤에 감사 로그에 남기기 때문이다.
+	 *
 	 * @param phone 새 번호. {@code null}이면 그대로 둔다
 	 * @throws BusinessException 없는 학부모이거나, 다른 학부모가 쓰는 번호일 때
 	 */
-	@Transactional
 	public GuardianProfile update(long id, String name, PhoneNumber phone) {
+		if (TransactionSynchronizationManager.isActualTransactionActive()) {
+			throw new IllegalStateException("GuardianService#update는 트랜잭션 밖에서 불러야 한다");
+		}
+		try {
+			return transaction.execute(status -> updateInTransaction(id, name, phone));
+		}
+		catch (BusinessException ex) {
+			if (ex.getErrorCode() == MemberErrorCode.GUARDIAN_PHONE_DUPLICATED) {
+				DeniedAttempts.record(auditLog, AuditEntry.of(MemberAuditAction.GUARDIAN_PHONE_DUPLICATED)
+						.target(MemberAuditAction.GUARDIAN, id), ex);
+			}
+			throw ex;
+		}
+	}
+
+	private GuardianProfile updateInTransaction(long id, String name, PhoneNumber phone) {
 		Guardian found = guardians.findById(id)
 				.orElseThrow(() -> new BusinessException(MemberErrorCode.GUARDIAN_NOT_FOUND));
 		boolean phoneChanged = false;
@@ -81,7 +102,6 @@ public class GuardianService {
 			String index = protector.fullIndex(phone);
 			// 값을 바꾸기 전에 확인한다. 바꾼 뒤에 조회하면 조회 직전에 변경이 DB로 나가서 유니크 키 오류가 여기서 먼저 난다.
 			if (guardians.existsOtherByPhoneIndex(index, id)) {
-				audit.guardianAttempt(MemberAudit.GUARDIAN_PHONE_DUPLICATED, id);
 				throw new BusinessException(MemberErrorCode.GUARDIAN_PHONE_DUPLICATED);
 			}
 			// 같은 번호를 다시 보낸 것이면 암호문을 새로 만들지 않는다.
@@ -95,13 +115,15 @@ public class GuardianService {
 			guardians.saveAndFlush(found);
 		}
 		catch (DataIntegrityViolationException ex) {
+			// 위의 확인과 저장 사이에 다른 학부모가 같은 번호로 바뀐 경우다.
 			if (UniqueKeys.isViolationOf(ex, PHONE_UNIQUE_KEY)) {
-				audit.guardianAttempt(MemberAudit.GUARDIAN_PHONE_DUPLICATED, id);
 				throw new BusinessException(MemberErrorCode.GUARDIAN_PHONE_DUPLICATED, null, ex);
 			}
 			throw ex;
 		}
-		audit.guardian(MemberAudit.GUARDIAN_UPDATED, id, Map.of("phoneChanged", phoneChanged));
+		auditLog.record(AuditEntry.of(MemberAuditAction.GUARDIAN_UPDATED)
+				.target(MemberAuditAction.GUARDIAN, id)
+				.with("phoneChanged", phoneChanged));
 		return new GuardianProfile(found.getId(), found.getName(), protector.reveal(found.getPhone()));
 	}
 
