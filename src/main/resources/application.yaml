@@ -65,6 +65,14 @@ jey:
       max-failures-per-ip: 30
       # hmac-key(아이디를 Redis 키에 넣을 때 쓰는 비밀키)는 기본값이 없다. 프로필마다 넣어야 하고, 없으면 서버가 뜨지 않는다.
 
+  web:
+    # 부작용 있는 POST는 Idempotency-Key로 한 번만 실행한다 (ADR-0027).
+    idempotency:
+      # 끝난 요청의 응답을 보관하는 기간. 이 동안 같은 키의 요청은 다시 실행되지 않고 보관한 응답을 받는다.
+      retention: 24h
+      # 처리 중이라고 표시해 두는 기간. 처리하던 서버가 죽으면 이 시간 뒤에 같은 키로 다시 실행할 수 있다.
+      processing-lease: 2m
+
   member:
     # 전체 전화번호 보기 (ADR-0026). 계정마다 window 동안 max번까지 본다. 넘으면 429로 응답한다.
     phone-reveal-limit:
