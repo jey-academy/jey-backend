@@ -23,7 +23,7 @@
             "type" : "string"
           },
           "password" : {
-            "description" : "처음 비밀번호. 10자 이상이고(한글은 24자까지) 아이디와 달라야 한다. 받은 사람이 로그인한 뒤 직접 바꾼다",
+            "description" : "처음 비밀번호. 10자 이상 72자 이하이고(한글은 24자까지) 아이디와 달라야 한다. 받은 사람이 로그인한 뒤 직접 바꾼다",
             "maxLength" : 100,
             "minLength" : 0,
             "type" : "string"
@@ -569,7 +569,7 @@
             "type" : "string"
           },
           "newPassword" : {
-            "description" : "새 비밀번호. 10자 이상이고(한글은 24자까지) 아이디, 지금 비밀번호와 달라야 한다",
+            "description" : "새 비밀번호. 10자 이상 72자 이하이고(한글은 24자까지) 아이디, 지금 비밀번호와 달라야 한다",
             "maxLength" : 100,
             "minLength" : 0,
             "type" : "string"
@@ -582,7 +582,7 @@
         "description" : "관리자가 다른 계정의 비밀번호를 다시 정한다",
         "properties" : {
           "password" : {
-            "description" : "새 비밀번호. 10자 이상이고(한글은 24자까지) 아이디와 달라야 한다",
+            "description" : "새 비밀번호. 10자 이상 72자 이하이고(한글은 24자까지) 아이디와 달라야 한다",
             "maxLength" : 100,
             "minLength" : 0,
             "type" : "string"
@@ -1292,7 +1292,7 @@
     },
     "/api/v1/auth/password" : {
       "post" : {
-        "description" : "지금 화면은 로그인된 채로 남고, 같은 계정으로 로그인된 다른 화면은 로그아웃된다. 지금 비밀번호를 여러 번 틀리면 429와 Retry-After(초)가 온다",
+        "description" : "지금 화면은 로그인된 채로 남고, 같은 계정으로 로그인된 다른 화면은 로그아웃된다. 지금 비밀번호를 여러 번 틀리면 429와 Retry-After(초)가 온다. 503(AUTH_SESSION_TERMINATION_FAILED)이면 비밀번호는 바뀌었고 다른 화면만 로그아웃시키지 못한 것이다",
         "operationId" : "changePassword",
         "requestBody" : {
           "content" : {

@@ -13,6 +13,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -26,6 +28,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/auth")
 class AuthController {
+
+	private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
 	private final LoginService loginService;
 
@@ -70,7 +74,8 @@ class AuthController {
 
 	@Operation(summary = "자기 비밀번호 바꾸기",
 			description = "지금 화면은 로그인된 채로 남고, 같은 계정으로 로그인된 다른 화면은 로그아웃된다. "
-					+ "지금 비밀번호를 여러 번 틀리면 429와 Retry-After(초)가 온다")
+					+ "지금 비밀번호를 여러 번 틀리면 429와 Retry-After(초)가 온다. "
+					+ "503(AUTH_SESSION_TERMINATION_FAILED)이면 비밀번호는 바뀌었고 다른 화면만 로그아웃시키지 못한 것이다")
 	@AnyRole
 	@NotIdempotent("비밀번호가 실린 본문의 지문을 저장하지 않는다. 다시 보내면 지금 비밀번호가 맞지 않아 거부된다")
 	@PostMapping("/password")
@@ -78,6 +83,8 @@ class AuthController {
 		// 세션을 새로 만들지 않는다. 로그인한 요청에는 세션이 이미 있다.
 		HttpSession session = request.getSession(false);
 		if (session == null) {
+			// 로그인 확인을 통과한 요청에 세션이 없는 것은 있을 수 없는 상태다. 조용히 넘기지 않는다.
+			log.warn("로그인한 요청인데 세션이 없다. 비밀번호를 바꾸지 않는다");
 			throw new BusinessException(CommonErrorCode.UNAUTHENTICATED);
 		}
 		accountService.changeOwnPassword(body.currentPassword(), body.newPassword(), session.getId());

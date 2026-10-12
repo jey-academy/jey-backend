@@ -20,6 +20,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.test.context.TestSecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -73,6 +74,9 @@ class AccountApiTest {
 
 	@BeforeEach
 	void setUp() throws Exception {
+		// 앞에서 돈 테스트가 이 스레드에 로그인 정보를 남겼으면 MockMvc가 그것을 모든 요청의 로그인 정보로 쓴다.
+		// 이 클래스는 실제 세션 쿠키로만 로그인하므로 비우고 시작한다.
+		TestSecurityContextHolder.clearContext();
 		// 이 클래스의 요청은 모두 127.0.0.1에서 온다. 앞 테스트의 로그인 실패 횟수와 한도 횟수가 남으면 뒤 테스트가 429를 받는다.
 		redis.delete(redis.keys("jey:auth:login-attempts:*"));
 		redis.delete(redis.keys("jey:auth:account-limit:*"));
@@ -392,6 +396,115 @@ class AccountApiTest {
 			.exec()
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("AUTH_PASSWORD_NOT_ACCEPTABLE"));
+	}
+
+	// 가장 위험한 방향이다. 관리자에서 내려간 사람의 세션이 관리자 권한으로 남으면 안 된다.
+	@Test
+	void 관리자를_직원으로_내리면_로그아웃되고_다시_로그인해도_계정을_관리할_수_없다() throws Exception {
+		User other = saved("admin", "최원장", UserRole.ADMIN, null);
+		Cookie otherSession = login(other.getLoginId(), PASSWORD);
+		as(otherSession, get("/api/v1/accounts")).exec().andExpect(status().isOk());
+
+		asAdmin(put("/api/v1/accounts/" + other.getId())).content(updateJson("최원장", "STAFF", "1"))
+			.exec()
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.role").value("STAFF"))
+			.andExpect(jsonPath("$.campusId").value(1));
+
+		as(otherSession, get("/api/v1/accounts")).exec().andExpect(status().isUnauthorized());
+		Cookie again = login(other.getLoginId(), PASSWORD);
+		mockMvc.perform(get("/api/v1/auth/me").cookie(again)).andExpect(jsonPath("$.role").value("STAFF"));
+		as(again, get("/api/v1/accounts")).exec().andExpect(status().isForbidden());
+	}
+
+	// 비밀번호를 바꾸면 남긴 세션의 ID가 바뀐다. ID가 바뀐 세션도 그 계정의 세션으로 찾아져서 차단할 때 끊겨야 한다.
+	@Test
+	void 비밀번호를_바꿔_ID가_바뀐_세션도_차단하면_끊긴다() throws Exception {
+		User staff = saved("desk", "김직원", UserRole.STAFF, 1L);
+		Cookie before = login(staff.getLoginId(), PASSWORD);
+		Cookie renewed = as(before, post("/api/v1/auth/password")).content(changeJson(PASSWORD, "my-new-password-1"))
+			.exec()
+			.andExpect(status().isNoContent())
+			.andReturn()
+			.getResponse()
+			.getCookie(SESSION);
+		mockMvc.perform(get("/api/v1/auth/me").cookie(renewed)).andExpect(status().isOk());
+
+		asAdmin(post("/api/v1/accounts/" + staff.getId() + "/disable")).exec().andExpect(status().isOk());
+
+		mockMvc.perform(get("/api/v1/auth/me").cookie(renewed)).andExpect(status().isUnauthorized());
+	}
+
+	// 형식이 틀린 값은 요청을 받는 자리에서 걸러낸다. 거르지 못하면 엔티티가 예외를 던져 500이 된다.
+	@Test
+	void 형식이_틀린_아이디와_이름과_페이지는_400이다() throws Exception {
+		for (String loginId : new String[] { "ab", "a".repeat(51), ".desk", "Desk", "desk kim", "데스크" }) {
+			asAdmin(post("/api/v1/accounts")).content(createJson(loginId, "김직원", "desk-password-123", "STAFF", "1"))
+				.exec()
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"));
+		}
+		for (String name : new String[] { "", " ", "가".repeat(51) }) {
+			asAdmin(post("/api/v1/accounts"))
+				.content(createJson(newLoginId("desk"), name, "desk-password-123", "STAFF", "1"))
+				.exec()
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"));
+			asAdmin(put("/api/v1/accounts/" + admin.getId())).content(updateJson(name, "ADMIN", "null"))
+				.exec()
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"));
+		}
+		asAdmin(post("/api/v1/accounts"))
+			.content(createJson("abc", "가".repeat(50), "desk-password-123", "PARTNER", "null"))
+			.exec()
+			.andExpect(jsonPath("$.code").value("AUTH_PARTNER_ACCOUNT_NOT_SUPPORTED"));
+		asAdmin(get("/api/v1/accounts").param("page", "-1")).exec().andExpect(status().isBadRequest());
+		asAdmin(get("/api/v1/accounts").param("size", "0")).exec().andExpect(status().isBadRequest());
+		asAdmin(get("/api/v1/accounts").param("status", "DELETED")).exec().andExpect(status().isBadRequest());
+	}
+
+	// 비밀번호를 바꾸거나 다시 정하다 거부된 응답에도 보낸 비밀번호가 실리지 않는다.
+	@Test
+	void 비밀번호_변경이_거부된_응답에_비밀번호가_없다() throws Exception {
+		User staff = saved("desk", "김직원", UserRole.STAFF, 1L);
+		Cookie session = login(staff.getLoginId(), PASSWORD);
+		String wrong = "wrong-current-password";
+		String rejectedNew = "rejected\\nnew-password";
+
+		String mismatch = as(session, post("/api/v1/auth/password")).content(changeJson(wrong, "my-new-password-1"))
+			.exec()
+			.andExpect(status().isBadRequest())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String notAcceptable = as(session, post("/api/v1/auth/password")).content(changeJson(PASSWORD, rejectedNew))
+			.exec()
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("AUTH_PASSWORD_NOT_ACCEPTABLE"))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String blank = as(session, post("/api/v1/auth/password")).content(changeJson(PASSWORD, ""))
+			.exec()
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		String reset = asAdmin(post("/api/v1/accounts/" + staff.getId() + "/password"))
+			.content("{\"password\":\"short-pw\"}")
+			.exec()
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("AUTH_PASSWORD_NOT_ACCEPTABLE"))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+
+		assertThat(mismatch + notAcceptable + blank + reset).doesNotContain(wrong)
+			.doesNotContain("new-password")
+			.doesNotContain(PASSWORD)
+			.doesNotContain("short-pw");
 	}
 
 	@Test

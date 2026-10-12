@@ -22,8 +22,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 // 계정 관리는 관리자만 한다 (ADR-0030). 자기 비밀번호를 바꾸는 것은 AuthController에 있다.
-// 비밀번호가 실린 POST는 Idempotency-Key를 받지 않는다. 그 장치는 본문의 지문(SHA-256)을 저장소에 하루 동안 두는데,
-// 비밀번호가 든 본문의 빠른 해시를 그렇게 두지 않는다.
+// 계정 API의 POST는 Idempotency-Key를 받지 않는다. 그 장치는 본문의 지문(SHA-256)을 저장소에 하루 동안 두는데,
+// 비밀번호가 든 본문의 빠른 해시를 그렇게 두지 않는다. 비밀번호가 없는 차단과 풀기는 다시 보내도 결과가 같아 받지 않는다.
+// 503(AUTH_SESSION_TERMINATION_FAILED)은 "저장은 됐고 그 계정을 로그아웃시키지 못했다"이다. 같은 요청을 다시 보내면 끊는다.
 @RestController
 @RequestMapping("/api/v1/accounts")
 @AllowedRoles(UserRole.ADMIN)
