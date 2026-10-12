@@ -13,6 +13,9 @@ public sealed interface Recipient
 	 *
 	 * <p>맡기는 쪽은 학생만 알면 된다. 그 학생의 누구에게 가는지(어머니, 먼저 연결된 학부모, 학부모가 없으면 학생 본인)는
 	 * 보내는 쪽이 보내는 시점에 고른다. 그래서 맡긴 뒤에 학부모가 바뀌어도 다시 맡긴 요청은 같은 알림이다.
+	 *
+	 * <p>연락처가 하나도 없는 학생이면 보낼 곳이 없다. 그때 보내는 쪽은 조용히 건너뛰지 않고
+	 * 보내지 못했다는 사실(무슨 알림을, 어느 학생에게)을 기록으로 남긴다.
 	 */
 	static Recipient primaryContactOf(long studentId) {
 		return new PrimaryContact(studentId);
