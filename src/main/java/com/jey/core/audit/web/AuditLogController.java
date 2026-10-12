@@ -51,7 +51,7 @@ class AuditLogController {
 			@Parameter(description = "이 시각 전까지(제외). 시간대를 붙인 ISO 8601 형식",
 					example = "2026-12-01T00:00:00+09:00") @RequestParam(required = false) @DateTimeFormat(
 							iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
-			@Parameter(description = "0부터 10000까지") @RequestParam(defaultValue = "0") @Min(0) @Max(
+			@Parameter(description = PageLimits.PAGE_DESCRIPTION) @RequestParam(defaultValue = "0") @Min(0) @Max(
 					PageLimits.MAX_PAGE) int page,
 			@RequestParam(defaultValue = "20") @Min(1) @Max(MAX_PAGE_SIZE) int size) {
 		return AuditLogPageResponse.from(

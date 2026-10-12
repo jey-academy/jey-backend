@@ -42,7 +42,7 @@ class AccountController {
 	@GetMapping
 	AccountPageResponse accounts(@RequestParam(required = false) UserRole role,
 			@RequestParam(required = false) Long campusId, @RequestParam(required = false) UserStatus status,
-			@Parameter(description = "0부터 10000까지") @RequestParam(defaultValue = "0") @Min(0) @Max(
+			@Parameter(description = PageLimits.PAGE_DESCRIPTION) @RequestParam(defaultValue = "0") @Min(0) @Max(
 					PageLimits.MAX_PAGE) int page,
 			@RequestParam(defaultValue = "20") @Min(1) @Max(MAX_PAGE_SIZE) int size) {
 		return AccountPageResponse.from(accountService.search(role, campusId, status, page, size));

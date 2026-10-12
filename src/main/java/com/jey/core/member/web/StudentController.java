@@ -51,7 +51,7 @@ class StudentController {
 					max = Student.MAX_NAME_LENGTH) String name,
 			@Parameter(description = "학부모나 학생 본인 전화번호의 뒷자리 4자리. 같은 뒷자리를 가진 학생이 모두 나온다") @RequestParam(
 					required = false) @Pattern(regexp = "\\d{4}", message = "숫자 4자리여야 합니다.") String phoneLast4,
-			@Parameter(description = "0부터 10000까지") @RequestParam(defaultValue = "0") @Min(0) @Max(
+			@Parameter(description = PageLimits.PAGE_DESCRIPTION) @RequestParam(defaultValue = "0") @Min(0) @Max(
 					PageLimits.MAX_PAGE) int page,
 			@RequestParam(defaultValue = "20") @Min(1) @Max(MAX_PAGE_SIZE) int size) {
 		return StudentPageResponse.from(studentService.search(campusId, name, phoneLast4, page, size));

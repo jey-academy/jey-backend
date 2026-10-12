@@ -13,6 +13,9 @@ public final class PageLimits {
 	 */
 	public static final int MAX_PAGE = 10_000;
 
+	/** API 명세에 적는 설명. 숫자를 손으로 적지 않는다. */
+	public static final String PAGE_DESCRIPTION = "0부터 " + MAX_PAGE + "까지";
+
 	private PageLimits() {
 	}
 
