@@ -9,6 +9,11 @@ package com.jey.core.notification.api;
  *
  * <p><b>다시 맡겨도 된다</b>: 리스너는 실패하면 같은 이벤트로 다시 돈다. 같은 알림({@link NotificationRequest#isSameNotificationAs})을
  * 다시 맡기는 것은 정상이고, 한 번만 보내는 것은 구현체의 몫이다. 맡기는 쪽이 "이미 맡겼는지"를 따로 기억하지 않는다.
+ *
+ * <p><b>리스너의 실패는 둘로 나뉜다</b>: 잠깐의 장애로 맡기지 못한 것은 그대로 던진다. 이벤트가 다시 실행되어 낫는다.
+ * 요청을 만들지 못하는 것({@link NotificationRequest#causedBy}의 예외, 0 이하의 ID)은 코드가 틀린 것이라 다시 실행해도 같다.
+ * 그대로 두면 그 이벤트는 고칠 때까지 계속 다시 실행되고, 알 수 있는 길은 오류 로그뿐이다. 배포 전에 리스너의 테스트로 잡는다.
+ * 어느 쪽이든 리스너에서 예외를 잡아 조용히 넘기지 않는다(이벤트가 끝난 것으로 적히고 알림은 흔적 없이 사라진다).
  */
 public interface NotificationSender {
 

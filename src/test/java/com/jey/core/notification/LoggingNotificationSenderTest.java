@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class LoggingNotificationSenderTest {
 
@@ -56,6 +57,28 @@ class LoggingNotificationSenderTest {
 
 		assertThat(logged.list).singleElement()
 			.satisfies(line -> assertThat(line.getFormattedMessage()).contains(" recipient=admins "));
+	}
+
+	@Test
+	void 학생의_대표_연락처로_가는_알림은_학생_ID로_적는다() {
+		sender.send(request(Recipient.primaryContactOf(3)));
+
+		assertThat(logged.list).singleElement()
+			.satisfies(line -> assertThat(line.getFormattedMessage()).contains(" recipient=student-primary-contact:3 "));
+	}
+
+	// 로그 한 줄이 맡겨진 알림의 유일한 기록이다. 그 줄이 꺼진 채로 뜨면 알림을 맡긴 것은 성공으로 끝나는데 기록이 없다.
+	@Test
+	void 기록이_꺼지는_로그_수준이면_뜨지_않는다() {
+		Level before = logger.getLevel();
+		logger.setLevel(Level.WARN);
+		try {
+			assertThatThrownBy(LoggingNotificationSender::new).isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("INFO");
+		}
+		finally {
+			logger.setLevel(before);
+		}
 	}
 
 	// 1차 구현체는 걸러내지 않는다. 걸러내려면 보낸 것을 기억할 곳(2차의 발송 이력)이 있어야 한다.

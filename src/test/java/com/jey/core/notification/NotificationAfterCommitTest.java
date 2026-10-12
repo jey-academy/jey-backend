@@ -21,6 +21,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.events.IncompleteEventPublications;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -49,6 +50,9 @@ class NotificationAfterCommitTest {
 
 	@Autowired
 	IncompleteEventPublications incompletePublications;
+
+	@Autowired
+	JdbcTemplate jdbc;
 
 	@Autowired
 	Clock clock;
@@ -93,29 +97,38 @@ class NotificationAfterCommitTest {
 		transaction.executeWithoutResult(status -> publisher.publishEvent(committed));
 
 		await().atMost(TIMEOUT).untilAsserted(() -> assertThat(linesFor(output, committed)).hasSize(1));
+		// 발행 기록도 같이 되돌려졌다. 기록이 없으면 리스너로 넘어갈 것도, 나중에 다시 실행될 것도 없다.
+		assertThat(publications(rolledBack, false)).isZero();
 		assertThat(linesFor(output, rolledBack)).isEmpty();
 		assertThat(listener.requestedFor(rolledBack.metadata().eventId())).isEmpty();
 	}
 
 	// 리스너가 알림을 맡긴 뒤에 실패하면 같은 이벤트로 다시 돈다. 다시 맡겨진 요청은 앞의 것과 같은 알림이어야
 	// 보내는 쪽이 가려낼 수 있다. 1차 구현체는 가려내지 않으므로 줄이 하나 더 남는다.
+	// (주기적으로 다시 보내는 작업은 발행된 지 몇 분 지난 것만 집으므로 여기에 끼어들지 않는다.)
 	@Test
-	void 리스너가_다시_돌면_같은_알림을_다시_맡긴다(CapturedOutput output) {
+	void 리스너가_다시_돌면_같은_알림을_다시_맡기고_그_뒤에는_끝난다(CapturedOutput output) {
 		TestNotifyingEvent event = newEvent(64);
 		UUID eventId = event.metadata().eventId();
 		listener.failOnceAfterSendFor(eventId);
 		transaction.executeWithoutResult(status -> publisher.publishEvent(event));
-		await().atMost(TIMEOUT).untilAsserted(() -> assertThat(listener.requestedFor(eventId)).isNotEmpty());
+		// 이 이벤트를 받는 다른 리스너(감사 로그 등)는 끝나고, 실패한 이 리스너의 기록 하나만 남는다.
+		await().atMost(TIMEOUT).untilAsserted(() -> {
+			assertThat(listener.requestedFor(eventId)).hasSize(1);
+			assertThat(publications(event, true)).isEqualTo(1);
+		});
 
 		incompletePublications.resubmitIncompletePublications(publication -> event.equals(publication.getEvent()));
 
-		// 주기적으로 다시 보내는 작업이 먼저 집어 갔을 수도 있다. 어느 쪽이든 두 번 이상 맡겨진다.
-		await().atMost(TIMEOUT)
-			.untilAsserted(() -> assertThat(listener.requestedFor(eventId)).hasSizeGreaterThanOrEqualTo(2));
+		await().atMost(TIMEOUT).untilAsserted(() -> {
+			assertThat(listener.requestedFor(eventId)).hasSize(2);
+			assertThat(publications(event, true)).isZero();
+		});
+		// 끝난 뒤에 본다. 세 번째로 돌지 않았다.
 		List<NotificationRequest> requests = listener.requestedFor(eventId);
-		assertThat(requests).allSatisfy(request -> assertThat(request.isSameNotificationAs(requests.get(0))).isTrue());
-		await().atMost(TIMEOUT)
-			.untilAsserted(() -> assertThat(linesFor(output, event)).hasSizeGreaterThanOrEqualTo(2));
+		assertThat(requests).hasSize(2);
+		assertThat(requests.get(1).isSameNotificationAs(requests.get(0))).isTrue();
+		assertThat(linesFor(output, event)).hasSize(2);
 	}
 
 	private static List<String> linesFor(CapturedOutput output, TestNotifyingEvent event) {
@@ -123,6 +136,13 @@ class NotificationAfterCommitTest {
 			.lines()
 			.filter(line -> line.contains("알림 요청") && line.contains("event=" + event.metadata().eventId()))
 			.toList();
+	}
+
+	// 이 이벤트의 발행 기록 수(리스너마다 하나). incompleteOnly면 아직 끝나지 않은 것만 센다.
+	private int publications(TestNotifyingEvent event, boolean incompleteOnly) {
+		String sql = "SELECT COUNT(*) FROM event_publication WHERE serialized_event LIKE ?"
+				+ (incompleteOnly ? " AND completion_date IS NULL" : "");
+		return jdbc.queryForObject(sql, Integer.class, "%" + event.metadata().eventId() + "%");
 	}
 
 	private TestNotifyingEvent newEvent(long targetId) {

@@ -19,9 +19,9 @@ class NotificationRequestTest {
 
 	private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-10-12T03:00:00Z"), ZoneId.of("Asia/Seoul"));
 
-	private static final NotificationType PASS_ISSUED = () -> "dongtanpass.pass-issued";
+	private static final NotificationType PASS_ISSUED = PassNotification.PASS_ISSUED;
 
-	private static final NotificationType PASS_EXPIRING = () -> "dongtanpass.pass-expiring";
+	private static final NotificationType PASS_EXPIRING = PassNotification.PASS_EXPIRING;
 
 	private static final EntityRef PASS = EntityRef.of("pass", 5);
 
@@ -47,6 +47,8 @@ class NotificationRequestTest {
 		NotificationRequest again = NotificationRequest.causedBy(event, PASS_ISSUED, Recipient.guardian(12));
 
 		assertThat(again.isSameNotificationAs(first)).isTrue();
+		// 이벤트에서 만든 요청끼리는 record의 비교도 같은 답을 낸다.
+		assertThat(again).isEqualTo(first).hasSameHashCodeAs(first);
 	}
 
 	@Test
@@ -63,13 +65,47 @@ class NotificationRequestTest {
 	}
 
 	// 종류는 이름으로 가린다. 같은 이름을 돌려주는 다른 객체여도 같은 알림이다.
+	// (이름이 같은 종류 둘은 규칙 테스트가 막는다. 여기서는 가리는 기준이 이름이라는 것만 본다.)
 	@Test
 	void 종류는_객체가_아니라_이름으로_가린다() {
 		PassIssued event = passIssued();
-		NotificationType sameName = () -> "dongtanpass.pass-issued";
+		NotificationType sameName = SameNameElsewhere.PASS_ISSUED;
 
 		assertThat(NotificationRequest.causedBy(event, sameName, Recipient.guardian(12))
 				.isSameNotificationAs(NotificationRequest.causedBy(event, PASS_ISSUED, Recipient.guardian(12)))).isTrue();
+	}
+
+	// 대상은 이벤트가 정하므로 같은 알림인지 가릴 때 보지 않는다. 이벤트가 대상을 적는 모양이 배포 사이에 달라져도
+	// 다시 실행된 리스너의 요청은 같은 알림이어야 한다(달리 보면 두 번 나간다).
+	@Test
+	void 대상은_같은_알림인지_가릴_때_보지_않는다() {
+		UUID eventId = passIssued().metadata().eventId();
+		NotificationRequest request = new NotificationRequest(PASS_ISSUED, Recipient.guardian(12),
+				EntityRef.of("pass", 5), eventId);
+		NotificationRequest otherAbout = new NotificationRequest(PASS_ISSUED, Recipient.guardian(12),
+				EntityRef.of("pass", 6), eventId);
+
+		assertThat(otherAbout.isSameNotificationAs(request)).isTrue();
+	}
+
+	// 람다는 이름을 실행 중에 지어낼 수 있고(자유 문자열 칸이 된다), 종류의 규칙 테스트에도 보이지 않는다.
+	@Test
+	void enum이_아닌_종류로는_만들_수_없다() {
+		PassIssued event = passIssued();
+		NotificationType lambda = () -> "dongtanpass.pass-issued";
+		NotificationType anonymous = new NotificationType() {
+			@Override
+			public String code() {
+				return "dongtanpass.pass-issued";
+			}
+		};
+
+		assertThatThrownBy(() -> NotificationRequest.causedBy(event, lambda, Recipient.guardian(12)))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("enum");
+		assertThatThrownBy(() -> NotificationRequest.causedBy(event, anonymous, Recipient.guardian(12)))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("enum");
 	}
 
 	// 무엇에 대한 알림인지 모르면 보내는 쪽이 문구에 넣을 값을 찾을 수 없다. 조용히 대상 없는 알림이 되지 않게 한다.
@@ -87,7 +123,8 @@ class NotificationRequestTest {
 		UUID eventId = passIssued().metadata().eventId();
 
 		assertThatThrownBy(() -> new NotificationRequest(null, Recipient.admins(), PASS, eventId))
-				.isInstanceOf(NullPointerException.class);
+				.isInstanceOf(NullPointerException.class)
+				.hasMessage("type");
 		assertThatThrownBy(() -> new NotificationRequest(PASS_ISSUED, null, PASS, eventId))
 				.isInstanceOf(NullPointerException.class);
 		assertThatThrownBy(() -> new NotificationRequest(PASS_ISSUED, Recipient.admins(), null, eventId))
@@ -101,11 +138,11 @@ class NotificationRequestTest {
 	void 종류의_이름이_형식에_맞지_않으면_만들_수_없다() {
 		UUID eventId = passIssued().metadata().eventId();
 
-		for (String code : new String[] { null, "", "pass-issued", "Dongtanpass.PassIssued", "dongtanpass.김도윤 학생",
-				"dongtanpass.010-1234-5678" }) {
-			NotificationType invalid = () -> code;
-			assertThatThrownBy(() -> new NotificationRequest(invalid, Recipient.admins(), PASS, eventId)).as(code)
-					.isInstanceOf(IllegalArgumentException.class);
+		for (InvalidName invalid : InvalidName.values()) {
+			assertThatThrownBy(() -> new NotificationRequest(invalid, Recipient.admins(), PASS, eventId))
+					.as(invalid.name())
+					.isInstanceOf(IllegalArgumentException.class)
+					.hasMessageContaining("형식");
 		}
 	}
 
@@ -122,6 +159,52 @@ class NotificationRequestTest {
 
 	private static PassIssued passIssued() {
 		return new PassIssued(EventMetadata.create("dongtanpass.pass-issued", 1, 1L, Actor.user(7), CLOCK), 5);
+	}
+
+	private enum PassNotification implements NotificationType {
+
+		PASS_ISSUED("dongtanpass.pass-issued"), PASS_EXPIRING("dongtanpass.pass-expiring");
+
+		private final String code;
+
+		PassNotification(String code) {
+			this.code = code;
+		}
+
+		@Override
+		public String code() {
+			return code;
+		}
+
+	}
+
+	private enum SameNameElsewhere implements NotificationType {
+
+		PASS_ISSUED;
+
+		@Override
+		public String code() {
+			return "dongtanpass.pass-issued";
+		}
+
+	}
+
+	private enum InvalidName implements NotificationType {
+
+		MISSING(null), EMPTY(""), WITHOUT_MODULE("pass-issued"), UPPER_CASE("Dongtanpass.PassIssued"),
+		PERSON_NAME("dongtanpass.김도윤 학생"), PHONE_NUMBER("dongtanpass.010-1234-5678");
+
+		private final String code;
+
+		InvalidName(String code) {
+			this.code = code;
+		}
+
+		@Override
+		public String code() {
+			return code;
+		}
+
 	}
 
 	private record PassIssued(EventMetadata metadata, long passId) implements DomainEvent {
