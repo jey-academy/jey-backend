@@ -211,7 +211,7 @@ class AccountServiceTest {
 		assertThat(user.getCampusId()).isEqualTo(2L);
 		InOrder order = inOrder(transactionManager, userSessions);
 		order.verify(transactionManager).commit(any());
-		order.verify(userSessions).terminateOutdated(USER_ID, UserRole.STAFF, 2L);
+		order.verify(userSessions).terminateAll(USER_ID);
 		assertThat(recorded()).isEqualTo(Kind.UPDATED);
 	}
 

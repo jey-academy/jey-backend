@@ -130,11 +130,11 @@ public class AccountService {
 	}
 
 	/**
-	 * 이름, 역할, 소속 지점을 고친다. 고친 뒤의 역할·지점과 다른 세션을 끊는다(세션에 로그인할 때의 역할과 지점이 들어 있다).
+	 * 이름, 역할, 소속 지점을 고친다. 역할이나 지점이 바뀌면 그 계정의 세션을 모두 끊는다(세션에 로그인할 때의 역할과 지점이 들어 있다).
 	 * 이름만 바뀌면 끊기는 세션이 없다. 세션에 든 이름은 다음 로그인 때 바뀐다.
 	 *
-	 * <p>세션을 끊는 데 실패하면 예외가 난다. 그때 변경은 이미 반영돼 있다. 같은 내용으로 다시 고치면 "바뀐 것이 없다"로 끝나지만
-	 * 남아 있던 옛 세션은 그때 끊긴다(바뀐 것이 있었는지와 무관하게 옛 세션을 찾아 끊는다).
+	 * <p>세션을 끊는 데 실패하면 예외가 난다. 그때 변경은 이미 반영돼 있다. 같은 내용으로 다시 고치면 "바뀐 것이 없다"로 끝나지만,
+	 * 그때도 역할·지점이 지금과 다른 세션을 찾아 끊으므로 남아 있던 옛 세션은 끊긴다.
 	 *
 	 * @throws BusinessException 계정이 없거나, 연계 학원 역할과 얽힌 변경이거나, 역할과 지점의 조합이 맞지 않거나, 없는 지점이거나,
 	 * 자기 자신의 역할·지점을 바꾸려 하거나, 마지막 남은 활성 관리자를 다른 역할로 바꾸려 할 때
@@ -150,9 +150,15 @@ public class AccountService {
 				throw campusNotFoundOr(ex, change.campusId());
 			}
 		});
-		// 바뀐 것이 없어도 부른다. 앞선 요청이 고치기만 하고 세션을 끊지 못했을 수 있다.
 		AccountView account = updated.account();
-		userSessions.terminateOutdated(userId, account.role(), account.campusId());
+		if (updated.affiliationChanged()) {
+			// 권한이 바뀌었다. 세션에 무엇이 들었는지 따지지 않고 모두 끊는다.
+			userSessions.terminateAll(userId);
+		}
+		else {
+			// 바뀐 것이 없어도 옛 권한의 세션이 남아 있을 수 있다(앞선 요청이 고치기만 하고 세션을 끊지 못했다). 그런 세션만 찾아 끊는다.
+			userSessions.terminateOutdated(userId, account.role(), account.campusId());
+		}
 		return account;
 	}
 
