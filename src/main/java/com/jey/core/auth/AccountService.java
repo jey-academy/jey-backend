@@ -130,11 +130,11 @@ public class AccountService {
 	}
 
 	/**
-	 * 이름, 역할, 소속 지점을 고친다. 역할이나 지점이 바뀌면 그 계정의 세션을 모두 끊는다(세션에 옛 역할과 지점이 들어 있다).
-	 * 이름만 바뀌면 끊지 않는다. 세션에 든 이름은 다음 로그인 때 바뀐다.
+	 * 이름, 역할, 소속 지점을 고친다. 고친 뒤의 역할·지점과 다른 세션을 끊는다(세션에 로그인할 때의 역할과 지점이 들어 있다).
+	 * 이름만 바뀌면 끊기는 세션이 없다. 세션에 든 이름은 다음 로그인 때 바뀐다.
 	 *
-	 * <p>세션을 끊는 데 실패하면 예외가 난다. 그때 변경은 이미 반영돼 있어서, 같은 내용으로 다시 고쳐도 "바뀐 것이 없다"로 끝나고 세션은 끊기지 않는다.
-	 * 남은 세션은 {@link #disable}이나 {@link #resetPassword}로 끊는다(둘은 부를 때마다 끊는다).
+	 * <p>세션을 끊는 데 실패하면 예외가 난다. 그때 변경은 이미 반영돼 있다. 같은 내용으로 다시 고치면 "바뀐 것이 없다"로 끝나지만
+	 * 남아 있던 옛 세션은 그때 끊긴다(바뀐 것이 있었는지와 무관하게 옛 세션을 찾아 끊는다).
 	 *
 	 * @throws BusinessException 계정이 없거나, 연계 학원 역할과 얽힌 변경이거나, 역할과 지점의 조합이 맞지 않거나, 없는 지점이거나,
 	 * 자기 자신의 역할·지점을 바꾸려 하거나, 마지막 남은 활성 관리자를 다른 역할로 바꾸려 할 때
@@ -150,10 +150,10 @@ public class AccountService {
 				throw campusNotFoundOr(ex, change.campusId());
 			}
 		});
-		if (updated.affiliationChanged()) {
-			userSessions.terminateAll(userId);
-		}
-		return updated.account();
+		// 바뀐 것이 없어도 부른다. 앞선 요청이 고치기만 하고 세션을 끊지 못했을 수 있다.
+		AccountView account = updated.account();
+		userSessions.terminateOutdated(userId, account.role(), account.campusId());
+		return account;
 	}
 
 	private Updated updateInTransaction(long userId, AccountChange change) {
@@ -280,8 +280,10 @@ public class AccountService {
 		// 확인하기 전에 센다. 확인한 뒤에 세면 동시에 보낸 요청이 모두 한도 확인을 통과한다.
 		Permit permit = limiter.acquire(passwordChangeLimit, self, AuthErrorCode.TOO_MANY_PASSWORD_ATTEMPTS,
 				denial -> trail.denied(AccountActivity.of(Kind.PASSWORD_CHANGE_LIMITED, userId), denial));
-		User found = users.findById(userId).orElseThrow(AccountService::notFound);
-		if (currentPassword == null || !passwordEncoder.matches(currentPassword, found.getPasswordHash())) {
+		User found = users.findById(userId).filter(User::isActive).orElseThrow(AccountService::loggedOut);
+		// 확인에 쓴 해시. 저장할 때 이 값이 그대로인지 다시 본다.
+		String verifiedHash = found.getPasswordHash();
+		if (currentPassword == null || !passwordEncoder.matches(currentPassword, verifiedHash)) {
 			BusinessException mismatch = new BusinessException(AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
 			trail.denied(AccountActivity.of(Kind.PASSWORD_CHANGE_MISMATCH, userId), mismatch);
 			throw mismatch;
@@ -289,12 +291,17 @@ public class AccountService {
 		// 지금 비밀번호가 맞았다. 대입이 아니므로 센 것을 되돌린다. 아래에서 거부되더라도(규칙에 안 맞는 새 비밀번호) 세지 않는다.
 		limiter.refund(permit);
 		requireAcceptable(newPassword, found.getLoginId());
-		if (passwordEncoder.matches(newPassword, found.getPasswordHash())) {
+		if (passwordEncoder.matches(newPassword, verifiedHash)) {
 			throw new BusinessException(AuthErrorCode.PASSWORD_UNCHANGED);
 		}
 		String passwordHash = passwordEncoder.encode(newPassword);
 		transaction.executeWithoutResult(status -> {
-			User user = users.findByIdForUpdate(userId).orElseThrow(AccountService::notFound);
+			User user = users.findByIdForUpdate(userId).filter(User::isActive).orElseThrow(AccountService::loggedOut);
+			// 위에서 확인한 뒤에 비밀번호가 바뀌었을 수 있다(관리자가 다시 정했거나, 다른 세션에서 본인이 바꿨다).
+			// 그러면 방금 확인한 "지금 비밀번호"는 더는 지금 비밀번호가 아니다. 옛 비밀번호만 아는 요청이 새 비밀번호를 덮어쓰지 못하게 한다.
+			if (!user.getPasswordHash().equals(verifiedHash)) {
+				throw new BusinessException(AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
+			}
 			user.changePassword(passwordHash);
 			trail.done(AccountActivity.of(Kind.PASSWORD_CHANGED, userId));
 		});
@@ -375,6 +382,11 @@ public class AccountService {
 
 	private static BusinessException notFound() {
 		return new BusinessException(CommonErrorCode.NOT_FOUND);
+	}
+
+	// 요청을 처리하는 사이에 차단됐거나 사라진 계정. 세션은 곧 끊긴다(끊겼다). 로그인하지 않은 것으로 답한다.
+	private static BusinessException loggedOut() {
+		return new BusinessException(CommonErrorCode.UNAUTHENTICATED);
 	}
 
 	private record Updated(AccountView account, boolean affiliationChanged) {

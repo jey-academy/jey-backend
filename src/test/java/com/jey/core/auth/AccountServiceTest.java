@@ -211,30 +211,32 @@ class AccountServiceTest {
 		assertThat(user.getCampusId()).isEqualTo(2L);
 		InOrder order = inOrder(transactionManager, userSessions);
 		order.verify(transactionManager).commit(any());
-		order.verify(userSessions).terminateAll(USER_ID);
+		order.verify(userSessions).terminateOutdated(USER_ID, UserRole.STAFF, 2L);
 		assertThat(recorded()).isEqualTo(Kind.UPDATED);
 	}
 
-	// 이름은 권한과 무관하다. 일하던 사람을 내보내지 않는다.
+	// 이름은 권한과 무관하다. 일하던 사람을 내보내지 않는다. 끊는 것은 역할·지점이 지금과 다른 세션뿐이다.
 	@Test
-	void 이름만_고치면_세션을_끊지_않는다() {
+	void 이름만_고치면_지금의_역할과_지점인_세션은_남는다() {
 		existing(account(USER_ID, UserRole.STAFF, 1L));
 
 		AccountView updated = accountService.update(USER_ID, new AccountChange("김데스크", UserRole.STAFF, 1L));
 
 		assertThat(updated.name()).isEqualTo("김데스크");
-		verifyNoInteractions(userSessions);
+		verify(userSessions).terminateOutdated(USER_ID, UserRole.STAFF, 1L);
+		verify(userSessions, never()).terminateAll(USER_ID);
 		assertThat(recorded()).isEqualTo(Kind.UPDATED);
 	}
 
+	// 앞선 요청이 지점을 바꾸고 세션을 끊다가 실패했을 수 있다. 같은 요청을 다시 보내면 바뀐 것은 없지만 남은 옛 세션은 끊겨야 한다.
 	@Test
-	void 바뀐_것이_없으면_기록하지_않고_세션도_끊지_않는다() {
+	void 바뀐_것이_없으면_기록하지_않지만_옛_세션은_다시_찾아_끊는다() {
 		existing(account(USER_ID, UserRole.STAFF, 1L));
 
 		accountService.update(USER_ID, new AccountChange("김직원", UserRole.STAFF, 1L));
 
 		verifyNoInteractions(trail);
-		verifyNoInteractions(userSessions);
+		verify(userSessions).terminateOutdated(USER_ID, UserRole.STAFF, 1L);
 	}
 
 	@Test
@@ -246,7 +248,7 @@ class AccountServiceTest {
 				AuthErrorCode.SELF_CHANGE_NOT_ALLOWED);
 		assertThat(accountService.update(ACTOR_ID, new AccountChange("박대표", UserRole.ADMIN, null)).name())
 			.isEqualTo("박대표");
-		verifyNoInteractions(userSessions);
+		verify(userSessions, never()).terminateAll(ACTOR_ID);
 	}
 
 	@Test
@@ -304,6 +306,39 @@ class AccountServiceTest {
 		assertDenied(() -> accountService.resetPassword(USER_ID, "가".repeat(25)), AuthErrorCode.PASSWORD_NOT_ACCEPTABLE);
 		assertDenied(() -> accountService.resetPassword(USER_ID, user.getLoginId()),
 				AuthErrorCode.PASSWORD_NOT_ACCEPTABLE);
+
+		verifyNoInteractions(passwordEncoder, userSessions, transactionManager);
+	}
+
+	// 지금 비밀번호를 확인한 뒤에 비밀번호가 바뀌었다(관리자가 다시 정했다). 옛 비밀번호만 아는 요청이 그것을 덮어쓰면 안 된다.
+	@Test
+	void 지금_비밀번호를_확인한_뒤에_비밀번호가_바뀌었으면_바꾸지_않는다() {
+		User verified = account(ACTOR_ID, UserRole.STAFF, 1L);
+		User resetMeanwhile = account(ACTOR_ID, UserRole.STAFF, 1L);
+		resetMeanwhile.changePassword("{noop}reset-by-admin");
+		when(users.findById(ACTOR_ID)).thenReturn(Optional.of(verified));
+		when(users.findByIdForUpdate(ACTOR_ID)).thenReturn(Optional.of(resetMeanwhile));
+		when(passwordEncoder.matches("old-password-1", verified.getPasswordHash())).thenReturn(true);
+		when(passwordEncoder.encode("new-password-1")).thenReturn("{noop}new-hash");
+
+		assertDenied(() -> accountService.changeOwnPassword("old-password-1", "new-password-1", "session"),
+				AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
+
+		assertThat(resetMeanwhile.getPasswordHash()).isEqualTo("{noop}reset-by-admin");
+		verify(transactionManager).rollback(any());
+		verify(trail, never()).done(any());
+		verifyNoInteractions(userSessions);
+	}
+
+	// 차단은 세션을 끊지만, 이미 들어와 처리 중이던 요청은 끝까지 간다. 그 요청이 비밀번호를 바꾸게 두지 않는다.
+	@Test
+	void 차단된_계정은_자기_비밀번호를_바꿀_수_없다() {
+		User disabled = account(ACTOR_ID, UserRole.STAFF, 1L);
+		disabled.disable();
+		when(users.findById(ACTOR_ID)).thenReturn(Optional.of(disabled));
+
+		assertDenied(() -> accountService.changeOwnPassword("old-password-1", "new-password-1", "session"),
+				CommonErrorCode.UNAUTHENTICATED);
 
 		verifyNoInteractions(passwordEncoder, userSessions, transactionManager);
 	}
