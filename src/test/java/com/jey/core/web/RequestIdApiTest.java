@@ -1,6 +1,7 @@
 package com.jey.core.web;
 
 import java.util.List;
+import java.util.UUID;
 
 import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
@@ -45,6 +46,9 @@ class RequestIdApiTest {
 	private static final String HEADER = "X-Request-Id";
 
 	private static final String SENT = "sent-by-proxy-0123456789";
+
+	// 검색어 자리에 실어 보내는 표시. 로그 어디에도 나오면 안 된다.
+	private static final String SEARCHED = "query-marker-searched-name";
 
 	@Autowired
 	MockMvc mockMvc;
@@ -165,6 +169,33 @@ class RequestIdApiTest {
 				.isNotEmpty()
 				.allSatisfy(line -> assertThat(line).contains("[" + id + "|] "));
 		assertThat(output).contains("|9602] ");
+	}
+
+	// 쿼리 문자열에는 검색어(학생 이름, 전화번호 뒷자리)가 실린다. 로그에는 경로만 남긴다.
+	// 로그를 남기는 갈래를 하나씩 지난다: 서버 오류, 접근 거부, CSRF 거부, 멱등 키 필터의 거부.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = 9603)
+	void 쿼리_문자열은_로그에_남지_않는다(CapturedOutput output) throws Exception {
+		mockMvc.perform(get("/api/v1/test-errors/unexpected").queryParam("name", SEARCHED))
+				.andExpect(status().isInternalServerError());
+		mockMvc.perform(get("/api/v1/audit-logs").queryParam("name", SEARCHED))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(post("/api/v1/test-errors/validated").queryParam("name", SEARCHED))
+				.andExpect(status().isForbidden());
+		String key = UUID.randomUUID().toString();
+		mockMvc.perform(post("/api/v1/test-idempotency/things").queryParam("note", SEARCHED)
+						.with(csrfToken(mockMvc)).header("Idempotency-Key", key)
+						.contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"first\"}"))
+				.andExpect(status().isCreated());
+		mockMvc.perform(post("/api/v1/test-idempotency/things").queryParam("note", SEARCHED)
+						.with(csrfToken(mockMvc)).header("Idempotency-Key", key)
+						.contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"second\"}"))
+				.andExpect(status().isUnprocessableEntity());
+
+		// 각 갈래가 실제로 로그를 남겼는지 먼저 본다. 남긴 것이 없으면 아래 확인은 뜻이 없다.
+		assertThat(output).contains("서버 오류 응답").contains("접근 거부").contains("CSRF 토큰 거부")
+				.contains("이미 다른 내용에 쓴 멱등 키가 왔다");
+		assertThat(output).doesNotContain(SEARCHED);
 	}
 
 	private static String expectSameIdInHeaderAndBody(ResultActions result) throws Exception {
