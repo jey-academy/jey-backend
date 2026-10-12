@@ -26,11 +26,17 @@ class AuditLogAccountTrail implements AccountAuditTrail {
 
 	@Override
 	public void done(AccountActivity activity) {
+		if (activity.kind().denied()) {
+			throw new IllegalArgumentException("거부된 시도를 한 일로 적을 수 없다: " + activity.kind());
+		}
 		auditLog.record(entryOf(activity));
 	}
 
 	@Override
 	public void denied(AccountActivity activity, BusinessException denial) {
+		if (!activity.kind().denied()) {
+			throw new IllegalArgumentException("한 일을 거부된 시도로 적을 수 없다: " + activity.kind());
+		}
 		DeniedAttempts.record(auditLog, () -> entryOf(activity), denial);
 	}
 

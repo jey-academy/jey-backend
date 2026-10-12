@@ -169,7 +169,13 @@ public class LoginService {
 	private void requireUnchanged(AccountUserDetails account) {
 		long userId = account.toAuthenticatedUser().id();
 		User reloaded = users.findById(userId).orElse(null);
-		if (reloaded == null || !reloaded.isActive()) {
+		if (reloaded == null) {
+			// 계정은 지우지 않는다. 방금 비밀번호를 검증한 계정이 없다면 차단이 아니라 자료가 이상한 것이다.
+			log.error("로그인 실패: 비밀번호를 검증한 계정이 다시 읽을 때 없다 userId={}", userId);
+			countAttempt("failure", NO_SCOPE);
+			throw new BusinessException(AuthErrorCode.INVALID_CREDENTIALS);
+		}
+		if (!reloaded.isActive()) {
 			log.info("로그인 실패: 비활성 계정 userId={}", userId);
 			countAttempt("failure", NO_SCOPE);
 			throw new BusinessException(AuthErrorCode.INVALID_CREDENTIALS);

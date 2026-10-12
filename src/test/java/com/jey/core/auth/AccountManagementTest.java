@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -206,6 +207,11 @@ class AccountManagementTest {
 		User staff = saved("desk", "김직원", UserRole.STAFF, DONGTAN);
 
 		AccountView moved = accountService.update(staff.getId(), new AccountChange("김직원", UserRole.STAFF, NEUNGDONG));
+		// 어느 지점으로 옮겼는지가 기록에 있다.
+		assertThat(jdbc.queryForObject(
+				"SELECT campus_id FROM core_audit_log WHERE action = 'account.updated' AND target_id = ?", Long.class,
+				staff.getId()))
+			.isEqualTo(NEUNGDONG);
 		AccountView promoted = accountService.update(staff.getId(), new AccountChange("김실장", UserRole.ADMIN, null));
 
 		assertThat(moved.campusId()).isEqualTo(NEUNGDONG);
@@ -369,22 +375,126 @@ class AccountManagementTest {
 		assertThat(recordsOf("account.password-change-limited", staff.getId())).isEqualTo(1);
 	}
 
+	// 조건마다 그 조건이 없으면 딸려 나올 계정을 이 테스트 안에서 만든다. 앞 테스트가 남긴 계정에 기대지 않는다.
 	@Test
 	void 조건으로_계정을_찾는다() {
 		User dongtan = saved("desk", "김직원", UserRole.STAFF, DONGTAN);
 		User neungdong = saved("desk", "이직원", UserRole.STAFF, NEUNGDONG);
-		accountService.disable(neungdong.getId());
+		User leftNeungdong = saved("desk", "퇴사자", UserRole.STAFF, NEUNGDONG);
+		User leftAdmin = saved("admin", "전 원장", UserRole.ADMIN, null);
+		accountService.disable(leftNeungdong.getId());
+		accountService.disable(leftAdmin.getId());
 
-		assertThat(accountService.search(UserRole.ADMIN, null, UserStatus.ACTIVE, 0, 100).getContent())
-			.extracting(AccountView::id)
+		assertThat(ids(accountService.search(UserRole.ADMIN, null, UserStatus.ACTIVE, 0, 100)))
 			.containsExactly(admin.getId());
-		assertThat(accountService.search(UserRole.STAFF, NEUNGDONG, UserStatus.DISABLED, 0, 100).getContent())
-			.extracting(AccountView::id)
+		assertThat(ids(accountService.search(UserRole.ADMIN, null, UserStatus.DISABLED, 0, 100)))
+			.contains(leftAdmin.getId())
+			.doesNotContain(admin.getId());
+		assertThat(ids(accountService.search(UserRole.STAFF, NEUNGDONG, UserStatus.ACTIVE, 0, 100)))
 			.contains(neungdong.getId())
-			.doesNotContain(dongtan.getId());
-		assertThat(accountService.search(null, null, null, 0, 100).getContent()).extracting(AccountView::loginId)
-			.isSorted();
+			.doesNotContain(dongtan.getId(), leftNeungdong.getId(), admin.getId());
+		assertThat(ids(accountService.search(null, NEUNGDONG, null, 0, 100)))
+			.contains(neungdong.getId(), leftNeungdong.getId())
+			.doesNotContain(dongtan.getId(), admin.getId());
+		assertThat(ids(accountService.search(null, null, null, 0, 100))).contains(admin.getId(), dongtan.getId(),
+				neungdong.getId(), leftNeungdong.getId(), leftAdmin.getId());
 		assertThat(accountService.get(dongtan.getId()).name()).isEqualTo("김직원");
+	}
+
+	// 아이디 순이다. 직접 만든 두 계정의 앞뒤만 본다(전체가 자바의 글자 순서와 같은지는 DB의 정렬 규칙에 달렸다).
+	@Test
+	void 목록은_아이디_순이고_페이지로_나눈다() {
+		String suffix = UUID.randomUUID().toString().substring(0, 8);
+		User second = users.saveAndFlush(User.create("order-b-" + suffix, passwordHash, "나", UserRole.STAFF, DONGTAN, null));
+		User first = users.saveAndFlush(User.create("order-a-" + suffix, passwordHash, "가", UserRole.STAFF, DONGTAN, null));
+
+		List<Long> all = ids(accountService.search(UserRole.STAFF, DONGTAN, UserStatus.ACTIVE, 0, 100));
+
+		assertThat(all.indexOf(first.getId())).isNotNegative().isLessThan(all.indexOf(second.getId()));
+		Page<AccountView> onePerPage = accountService.search(UserRole.STAFF, DONGTAN, UserStatus.ACTIVE, 0, 1);
+		assertThat(onePerPage.getContent()).hasSize(1);
+		assertThat(onePerPage.getTotalElements()).isGreaterThanOrEqualTo(2);
+	}
+
+	// ADR: 연계 학원 계정은 여기서 만들지 않고 역할도 바꾸지 않지만, 이름 고치기·차단·비밀번호 다시 정하기는 된다.
+	@Test
+	void 연계_학원_계정은_차단하고_비밀번호를_다시_정할_수_있지만_역할은_바꿀_수_없다() {
+		User partner = users
+			.saveAndFlush(User.create(newLoginId("partner"), passwordHash, "연계학원", UserRole.PARTNER, null, 7L));
+
+		assertDenied(() -> accountService.update(partner.getId(), new AccountChange("연계학원", UserRole.STAFF, DONGTAN)),
+				AuthErrorCode.PARTNER_ACCOUNT_NOT_SUPPORTED);
+		assertThat(accountService.update(partner.getId(), new AccountChange("새 이름", UserRole.PARTNER, null)).name())
+			.isEqualTo("새 이름");
+		accountService.resetPassword(partner.getId(), "partner-new-password");
+		assertThat(accountService.disable(partner.getId()).status()).isEqualTo(UserStatus.DISABLED);
+
+		User stored = users.findById(partner.getId()).orElseThrow();
+		assertThat(stored.getRole()).isEqualTo(UserRole.PARTNER);
+		assertThat(stored.getPartnerId()).isEqualTo(7L);
+		assertThat(stored.isActive()).isFalse();
+		assertThat(passwordEncoder.matches("partner-new-password", stored.getPasswordHash())).isTrue();
+	}
+
+	// 해시 함수는 널 문자에서 읽기를 멈춘다. 받아 주면 그 앞부분만으로 로그인된다.
+	@Test
+	void 제어_문자가_든_비밀번호로는_만들거나_바꿀_수_없다() {
+		String loginId = newLoginId("desk");
+		User staff = saved("desk", "김직원", UserRole.STAFF, DONGTAN);
+
+		assertDenied(() -> accountService
+			.create(new NewAccount(loginId, "김직원", "abcd\u0000abcd\u0000abcd", UserRole.STAFF, DONGTAN)),
+				AuthErrorCode.PASSWORD_NOT_ACCEPTABLE);
+		assertDenied(() -> accountService.resetPassword(staff.getId(), "first-line\nsecond-line"),
+				AuthErrorCode.PASSWORD_NOT_ACCEPTABLE);
+		actAs(staff);
+		assertDenied(() -> accountService.changeOwnPassword(PASSWORD, "\u200B".repeat(12), "this-session"),
+				AuthErrorCode.PASSWORD_NOT_ACCEPTABLE);
+
+		assertThat(users.findByLoginId(loginId)).isEmpty();
+		assertThat(passwordEncoder.matches(PASSWORD, users.findById(staff.getId()).orElseThrow().getPasswordHash()))
+			.isTrue();
+	}
+
+	// 둘 다 같은 "지금 비밀번호"를 확인하고 통과한다. 계정 행을 잠그고 확인한 해시가 그대로인지 다시 보지 않으면 둘 다 바꾼다.
+	// 뒤에 온 쪽은 앞에 온 쪽이 바꾼 비밀번호를, 이제는 옛것이 된 비밀번호만 알고 덮어쓰게 된다.
+	@Test
+	void 같은_계정의_비밀번호를_동시에_바꾸면_하나만_바뀐다() throws Exception {
+		User staff = saved("desk", "김직원", UserRole.STAFF, DONGTAN);
+
+		List<Object> results = concurrently(2, index -> () -> {
+			actAs(staff);
+			accountService.changeOwnPassword(PASSWORD, "changed-by-request-" + index, "session-" + index);
+			return "changed-by-request-" + index;
+		});
+
+		assertThat(results).filteredOn(String.class::isInstance).hasSize(1);
+		assertThat(results).filteredOn(result -> !(result instanceof String))
+			.singleElement()
+			.isInstanceOfSatisfying(BusinessException.class,
+					ex -> assertThat(ex.getErrorCode()).isEqualTo(AuthErrorCode.CURRENT_PASSWORD_MISMATCH));
+		String winner = (String) results.stream().filter(String.class::isInstance).findFirst().orElseThrow();
+		assertThat(passwordEncoder.matches(winner, users.findById(staff.getId()).orElseThrow().getPasswordHash()))
+			.isTrue();
+		assertThat(recordsOf("account.password-changed", staff.getId())).isEqualTo(1);
+		assertThat(recordsOf("account.password-change-mismatch", staff.getId())).isEqualTo(1);
+	}
+
+	// 비밀번호가 얽힌 기록에는 대상 말고 아무것도 싣지 않는다.
+	@Test
+	void 비밀번호를_바꾸거나_틀린_기록에는_상세가_없다() {
+		User staff = saved("desk", "김직원", UserRole.STAFF, DONGTAN);
+		actAs(staff);
+		assertDenied(() -> accountService.changeOwnPassword("wrong-password-1", "my-new-password-1", "this-session"),
+				AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
+		accountService.changeOwnPassword(PASSWORD, "my-new-password-1", "this-session");
+
+		assertThat(detailOf("account.password-change-mismatch", staff.getId())).isNullOrEmpty();
+		assertThat(detailOf("account.password-changed", staff.getId())).isNullOrEmpty();
+	}
+
+	private static List<Long> ids(Page<AccountView> page) {
+		return page.getContent().stream().map(AccountView::id).toList();
 	}
 
 	private User saved(String prefix, String name, UserRole role, Long campusId) {

@@ -9,17 +9,35 @@ import java.util.Objects;
  * @param kind 무슨 일인지
  * @param accountId 대상 계정. 만들어지지 않은 계정에 대한 거부(아이디 중복)는 {@code null}이다
  * @param role 만든 계정 또는 고친 뒤의 역할. 그 밖의 일에서는 {@code null}이다
- * @param campusId 만든 계정의 소속 지점. 지점이 없거나 그 밖의 일이면 {@code null}이다
+ * @param campusId 만든 계정 또는 고친 뒤의 소속 지점. 지점이 없거나 그 밖의 일이면 {@code null}이다
  * @param nameChanged 고치기에서 이름이 바뀌었는지
  * @param affiliationChanged 고치기에서 역할이나 지점이 바뀌었는지
  */
 public record AccountActivity(Kind kind, Long accountId, UserRole role, Long campusId, boolean nameChanged,
 		boolean affiliationChanged) {
 
+	/**
+	 * @throws IllegalArgumentException 종류에 맞지 않는 값의 조합일 때. 그럴듯하지만 틀린 기록이 남지 않게 한다
+	 * (무엇을 고쳤는지 없는 "고쳤다", 역할 없는 "만들었다", 만들어지지 않은 계정을 가리키는 "아이디 중복")
+	 */
 	public AccountActivity {
 		Objects.requireNonNull(kind, "kind");
+		boolean describesAccount = kind == Kind.CREATED || kind == Kind.UPDATED;
+		if ((accountId == null) != (kind == Kind.LOGIN_ID_DUPLICATED)) {
+			throw new IllegalArgumentException(kind + ": 대상 계정이 있어야 하는지 없어야 하는지와 맞지 않는다");
+		}
+		if ((role != null) != describesAccount) {
+			throw new IllegalArgumentException(kind + ": 역할이 있어야 하는지 없어야 하는지와 맞지 않는다");
+		}
+		if (campusId != null && !describesAccount) {
+			throw new IllegalArgumentException(kind + ": 지점을 실을 수 없는 종류다");
+		}
+		if (kind == Kind.UPDATED != (nameChanged || affiliationChanged)) {
+			throw new IllegalArgumentException(kind + ": 무엇을 고쳤는지는 고치기에만, 그리고 반드시 싣는다");
+		}
 	}
 
+	/** 계정 하나를 가리키는 것 말고는 덧붙일 값이 없는 종류에 쓴다(차단, 풀기, 비밀번호 변경, 거부된 시도). */
 	public static AccountActivity of(Kind kind, long accountId) {
 		return new AccountActivity(kind, accountId, null, null, false, false);
 	}
@@ -29,10 +47,14 @@ public record AccountActivity(Kind kind, Long accountId, UserRole role, Long cam
 				false);
 	}
 
-	public static AccountActivity updated(long accountId, UserRole role, boolean nameChanged,
+	/**
+	 * @param role 고친 뒤의 역할
+	 * @param campusId 고친 뒤의 소속 지점. 없으면 {@code null}
+	 */
+	public static AccountActivity updated(long accountId, UserRole role, Long campusId, boolean nameChanged,
 			boolean affiliationChanged) {
-		return new AccountActivity(Kind.UPDATED, accountId, Objects.requireNonNull(role, "role"), null, nameChanged,
-				affiliationChanged);
+		return new AccountActivity(Kind.UPDATED, accountId, Objects.requireNonNull(role, "role"), campusId,
+				nameChanged, affiliationChanged);
 	}
 
 	/** 이미 쓰는 아이디로 계정을 만들려 했다. 대상 계정이 없다. */

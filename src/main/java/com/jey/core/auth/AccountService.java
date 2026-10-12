@@ -19,6 +19,9 @@ import com.jey.core.shared.Actor;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.CommonErrorCode;
 import com.jey.core.shared.ErrorCode;
+import com.jey.core.shared.UniqueKeys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -32,10 +35,14 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * 계정을 만들고, 고치고, 막는다 (ADR-0030).
  *
- * <p>계정을 바꾸는 메서드는 모두 같은 순서로 일한다: 트랜잭션에서 고치고, 커밋한 뒤, 그 계정의 세션을 끊는다.
+ * <p>계정을 바꾸는 메서드는 같은 순서로 일한다: 트랜잭션에서 고치고, 커밋한 뒤, 그 계정의 세션을 끊는다
+ * (차단을 푸는 것만 끊을 세션이 없다).
  * 순서가 반대면, 세션을 끊은 직후 변경이 반영되기 전에 다시 로그인한 세션이 옛 권한으로 살아남는다.
  * 그래서 바깥 트랜잭션 안에서는 부를 수 없다(합류하면 커밋되기 전에 세션을 끊게 된다).
  * 거부된 시도를 감사 로그에 적는 것도 트랜잭션이 끝난 뒤여야 한다.
+ *
+ * <p>세션을 끊는 것은 커밋한 뒤의 별도 단계라서 따로 실패할 수 있다(세션 저장소 장애). 그때는 계정이 이미 바뀌어 있다.
+ * 일반 오류로 답하면 부른 쪽이 "실패했다"고 읽으므로, {@code SESSION_TERMINATION_FAILED}로 "저장은 됐고 로그아웃만 못 시켰다"고 알린다.
  *
  * <p>감사 로그와 지점 목록은 직접 부르지 않는다(둘 다 이 패키지를 쓰고 있어 서로 물린다).
  * 기록은 {@link AccountAuditTrail}에 맡기고, 없는 지점은 DB의 외래 키가 걸러낸 것을 받아 알린다.
@@ -45,6 +52,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 @EnableConfigurationProperties(PasswordChangeLimitProperties.class)
 public class AccountService {
+
+	private static final Logger log = LoggerFactory.getLogger(AccountService.class);
+
+	// 마이그레이션에 적은 제약 이름. 저장이 어느 제약에 걸렸는지 이것으로 가린다.
+	private static final String LOGIN_ID_UNIQUE_KEY = "uk_core_user_login_id";
+
+	private static final String CAMPUS_FOREIGN_KEY = "fk_core_user_campus";
 
 	private final UserRepository users;
 
@@ -121,10 +135,10 @@ public class AccountService {
 			}
 			catch (DataIntegrityViolationException ex) {
 				// 같은 아이디로 동시에 만들면 위의 확인을 둘 다 통과하고 유니크 제약에서 하나가 걸린다.
-				if (users.findByLoginId(loginId).isPresent()) {
-					throw new BusinessException(AuthErrorCode.LOGIN_ID_DUPLICATED);
+				if (UniqueKeys.isViolationOf(ex, LOGIN_ID_UNIQUE_KEY)) {
+					throw new BusinessException(AuthErrorCode.LOGIN_ID_DUPLICATED, null, ex);
 				}
-				throw campusNotFoundOr(ex, account.campusId());
+				throw campusNotFoundOr(ex);
 			}
 		});
 	}
@@ -133,11 +147,12 @@ public class AccountService {
 	 * 이름, 역할, 소속 지점을 고친다. 역할이나 지점이 바뀌면 그 계정의 세션을 모두 끊는다(세션에 로그인할 때의 역할과 지점이 들어 있다).
 	 * 이름만 바뀌면 끊기는 세션이 없다. 세션에 든 이름은 다음 로그인 때 바뀐다.
 	 *
-	 * <p>세션을 끊는 데 실패하면 예외가 난다. 그때 변경은 이미 반영돼 있다. 같은 내용으로 다시 고치면 "바뀐 것이 없다"로 끝나지만,
-	 * 그때도 역할·지점이 지금과 다른 세션을 찾아 끊으므로 남아 있던 옛 세션은 끊긴다.
+	 * <p>세션을 끊는 데 실패하면 {@code SESSION_TERMINATION_FAILED}가 난다. 그때 변경은 이미 반영돼 있다.
+	 * 같은 내용으로 다시 고치면 "바뀐 것이 없다"로 끝나지만, 그때도 역할·지점이 지금과 다른 세션을 찾아 끊으므로 남아 있던 옛 세션은 끊긴다.
 	 *
 	 * @throws BusinessException 계정이 없거나, 연계 학원 역할과 얽힌 변경이거나, 역할과 지점의 조합이 맞지 않거나, 없는 지점이거나,
-	 * 자기 자신의 역할·지점을 바꾸려 하거나, 마지막 남은 활성 관리자를 다른 역할로 바꾸려 할 때
+	 * 자기 자신의 역할·지점을 바꾸려 하거나, 마지막 남은 활성 관리자를 다른 역할로 바꾸려 할 때.
+	 * 고친 뒤 세션을 끊지 못했을 때도 난다(변경은 반영돼 있다)
 	 * @throws IllegalStateException 다른 트랜잭션 안에서 호출했을 때
 	 */
 	public AccountView update(long userId, AccountChange change) {
@@ -147,17 +162,17 @@ public class AccountService {
 				return updateInTransaction(userId, change);
 			}
 			catch (DataIntegrityViolationException ex) {
-				throw campusNotFoundOr(ex, change.campusId());
+				throw campusNotFoundOr(ex);
 			}
 		});
 		AccountView account = updated.account();
 		if (updated.affiliationChanged()) {
 			// 권한이 바뀌었다. 세션에 무엇이 들었는지 따지지 않고 모두 끊는다.
-			userSessions.terminateAll(userId);
+			afterCommit(() -> userSessions.terminateAll(userId));
 		}
 		else {
 			// 바뀐 것이 없어도 옛 권한의 세션이 남아 있을 수 있다(앞선 요청이 고치기만 하고 세션을 끊지 못했다). 그런 세션만 찾아 끊는다.
-			userSessions.terminateOutdated(userId, account.role(), account.campusId());
+			afterCommit(() -> userSessions.terminateOutdated(userId, account.role(), account.campusId()));
 		}
 		return account;
 	}
@@ -185,7 +200,8 @@ public class AccountService {
 			if (nameChanged || affiliationChanged) {
 				// 없는 지점이면 여기서 외래 키에 걸린다. 커밋 때까지 미루면 기록을 적은 뒤에야 드러난다.
 				users.flush();
-				trail.done(AccountActivity.updated(userId, user.getRole(), nameChanged, affiliationChanged));
+				trail.done(AccountActivity.updated(userId, user.getRole(), user.getCampusId(), nameChanged,
+						affiliationChanged));
 			}
 			return new Updated(AccountView.from(user), affiliationChanged);
 		});
@@ -193,9 +209,10 @@ public class AccountService {
 
 	/**
 	 * 계정을 차단한다. 다음 로그인을 막고, 이미 로그인된 세션도 모두 끊는다.
-	 * 이미 처리 중이던 요청은 끝까지 처리된다. 세션을 끊는 데 실패하면 예외가 나며, 다시 호출해도 안전하다(이미 차단된 계정이어도 세션을 다시 끊는다).
+	 * 이미 처리 중이던 요청은 끝까지 처리된다. 세션을 끊는 데 실패하면 {@code SESSION_TERMINATION_FAILED}가 나며,
+	 * 다시 호출해도 안전하다(이미 차단된 계정이어도 세션을 다시 끊는다).
 	 *
-	 * @throws BusinessException 계정이 없거나, 자기 자신이거나, 마지막 남은 활성 관리자일 때
+	 * @throws BusinessException 계정이 없거나, 자기 자신이거나, 마지막 남은 활성 관리자일 때. 차단한 뒤 세션을 끊지 못했을 때도 난다(차단은 반영돼 있다)
 	 * @throws IllegalStateException 다른 트랜잭션 안에서 호출했을 때
 	 */
 	public AccountView disable(long userId) {
@@ -217,7 +234,7 @@ public class AccountService {
 		// 차단이 DB에 반영된 뒤에 세션을 끊는다. 순서가 반대면, 세션을 끊은 직후 반영 전에 다시 로그인한 세션이 살아남는다.
 		// 이 순서로도 틈이 완전히 닫히지는 않는다. 차단 직전에 로그인을 시작한 요청이 세션을 늦게 저장하면 살아남을 수 있어서,
 		// LoginService가 세션을 만들기 직전에 계정 상태를 다시 읽어 그 틈을 수 밀리초로 줄인다(ADR-0019).
-		userSessions.terminateAll(userId);
+		afterCommit(() -> userSessions.terminateAll(userId));
 		return disabled;
 	}
 
@@ -243,7 +260,8 @@ public class AccountService {
 	 * 관리자가 다른 계정의 비밀번호를 다시 정한다. 그 계정의 세션을 모두 끊는다. 차단된 계정은 차단된 채로 비밀번호만 바뀐다.
 	 * 자기 비밀번호는 지금 비밀번호를 확인하는 {@link #changeOwnPassword}로 바꾼다.
 	 *
-	 * @throws BusinessException 계정이 없거나, 자기 자신이거나, 비밀번호가 규칙에 맞지 않을 때
+	 * @throws BusinessException 계정이 없거나, 자기 자신이거나, 비밀번호가 규칙에 맞지 않을 때.
+	 * 바꾼 뒤 세션을 끊지 못했을 때도 난다(비밀번호는 바뀌어 있다. 다시 부르면 끊는다)
 	 * @throws IllegalStateException 다른 트랜잭션 안에서 호출했을 때
 	 */
 	public void resetPassword(long userId, String newPassword) {
@@ -263,7 +281,7 @@ public class AccountService {
 			});
 			return null;
 		});
-		userSessions.terminateAll(userId);
+		afterCommit(() -> userSessions.terminateAll(userId));
 	}
 
 	/**
@@ -272,9 +290,14 @@ public class AccountService {
 	 * <p>지금 비밀번호를 틀린 횟수를 계정별로 센다. 한도를 넘으면 맞는 비밀번호로도 구간이 끝날 때까지 바꿀 수 없다.
 	 * 로그인된 세션을 손에 넣은 사람이 지금 비밀번호를 대입으로 알아내는 것을 느리게 한다. 지금 비밀번호가 맞은 요청은 세지 않는다.
 	 *
+	 * <p>다른 세션을 끊다 실패하면 {@code SESSION_TERMINATION_FAILED}가 난다. 그때 비밀번호는 이미 바뀌어 있어서 같은 요청을 다시 보내면
+	 * "지금 비밀번호가 틀리다"로 거부된다. 새 비밀번호를 지금 비밀번호 자리에 넣어 다시 보내면 된다:
+	 * 새 비밀번호가 지금 비밀번호와 같은 요청은 바꿀 것이 없어 거부되지만, 거부하기 전에 다른 세션을 끊는다.
+	 *
 	 * @param currentSessionId 이 요청의 세션 ID. 이 세션은 끊지 않는다
 	 * @throws com.jey.core.shared.RateLimitedException 틀린 횟수가 한도를 넘었을 때
-	 * @throws BusinessException 지금 비밀번호가 틀리거나, 새 비밀번호가 규칙에 맞지 않거나, 지금 비밀번호와 같을 때
+	 * @throws BusinessException 지금 비밀번호가 틀리거나, 새 비밀번호가 규칙에 맞지 않거나, 지금 비밀번호와 같을 때.
+	 * 바꾼 뒤 다른 세션을 끊지 못했을 때도 난다(비밀번호는 바뀌어 있다)
 	 * @throws IllegalStateException 로그인한 계정을 알 수 없거나, 다른 트랜잭션 안에서 호출했을 때
 	 */
 	public void changeOwnPassword(String currentPassword, String newPassword, String currentSessionId) {
@@ -286,32 +309,85 @@ public class AccountService {
 		// 확인하기 전에 센다. 확인한 뒤에 세면 동시에 보낸 요청이 모두 한도 확인을 통과한다.
 		Permit permit = limiter.acquire(passwordChangeLimit, self, AuthErrorCode.TOO_MANY_PASSWORD_ATTEMPTS,
 				denial -> trail.denied(AccountActivity.of(Kind.PASSWORD_CHANGE_LIMITED, userId), denial));
-		User found = users.findById(userId).filter(User::isActive).orElseThrow(AccountService::loggedOut);
+		User found = users.findById(userId).filter(User::isActive).orElseThrow(() -> loggedOut(userId));
 		// 확인에 쓴 해시. 저장할 때 이 값이 그대로인지 다시 본다.
 		String verifiedHash = found.getPasswordHash();
 		if (currentPassword == null || !passwordEncoder.matches(currentPassword, verifiedHash)) {
-			BusinessException mismatch = new BusinessException(AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
-			trail.denied(AccountActivity.of(Kind.PASSWORD_CHANGE_MISMATCH, userId), mismatch);
-			throw mismatch;
+			throw recordedMismatch(userId);
 		}
 		// 지금 비밀번호가 맞았다. 대입이 아니므로 센 것을 되돌린다. 아래에서 거부되더라도(규칙에 안 맞는 새 비밀번호) 세지 않는다.
-		limiter.refund(permit);
+		refund(permit);
 		requireAcceptable(newPassword, found.getLoginId());
 		if (passwordEncoder.matches(newPassword, verifiedHash)) {
+			// 바꿀 것은 없다. 다만 앞선 요청이 비밀번호를 바꾸고 다른 세션을 끊다 실패했을 수 있다. 그 요청을 다시 보내는 길이 이것이다.
+			afterOwnPasswordChange(() -> userSessions.terminateOthers(userId, currentSessionId));
 			throw new BusinessException(AuthErrorCode.PASSWORD_UNCHANGED);
 		}
 		String passwordHash = passwordEncoder.encode(newPassword);
-		transaction.executeWithoutResult(status -> {
-			User user = users.findByIdForUpdate(userId).filter(User::isActive).orElseThrow(AccountService::loggedOut);
-			// 위에서 확인한 뒤에 비밀번호가 바뀌었을 수 있다(관리자가 다시 정했거나, 다른 세션에서 본인이 바꿨다).
-			// 그러면 방금 확인한 "지금 비밀번호"는 더는 지금 비밀번호가 아니다. 옛 비밀번호만 아는 요청이 새 비밀번호를 덮어쓰지 못하게 한다.
-			if (!user.getPasswordHash().equals(verifiedHash)) {
-				throw new BusinessException(AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
+		try {
+			transaction.executeWithoutResult(status -> {
+				User user = users.findByIdForUpdate(userId)
+					.filter(User::isActive)
+					.orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHENTICATED));
+				// 위에서 확인한 뒤에 비밀번호가 바뀌었을 수 있다(관리자가 다시 정했거나, 다른 세션에서 본인이 바꿨다).
+				// 그러면 방금 확인한 "지금 비밀번호"는 더는 지금 비밀번호가 아니다. 옛 비밀번호만 아는 요청이 새 비밀번호를 덮어쓰지 못하게 한다.
+				if (!user.getPasswordHash().equals(verifiedHash)) {
+					throw new BusinessException(AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
+				}
+				user.changePassword(passwordHash);
+				trail.done(AccountActivity.of(Kind.PASSWORD_CHANGED, userId));
+			});
+		}
+		catch (BusinessException ex) {
+			// 트랜잭션은 끝났다. 거부를 적고 뒤처리를 하는 것은 여기서 한다.
+			if (ex.getErrorCode() == AuthErrorCode.CURRENT_PASSWORD_MISMATCH) {
+				throw recordedMismatch(userId);
 			}
-			user.changePassword(passwordHash);
-			trail.done(AccountActivity.of(Kind.PASSWORD_CHANGED, userId));
-		});
-		userSessions.terminateOthers(userId, currentSessionId);
+			if (ex.getErrorCode() == CommonErrorCode.UNAUTHENTICATED) {
+				throw loggedOut(userId);
+			}
+			throw ex;
+		}
+		afterOwnPasswordChange(() -> userSessions.terminateOthers(userId, currentSessionId));
+	}
+
+	// 지금 비밀번호가 틀렸다(또는 확인한 뒤에 바뀌어 더는 맞지 않는다). 트랜잭션 밖에서 부른다.
+	private BusinessException recordedMismatch(long userId) {
+		BusinessException mismatch = new BusinessException(AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
+		trail.denied(AccountActivity.of(Kind.PASSWORD_CHANGE_MISMATCH, userId), mismatch);
+		return mismatch;
+	}
+
+	// 되돌리지 못해도 변경은 계속한다. 횟수가 더 남을 뿐이라 안전한 쪽이다(세지 못하면 막는 것은 셀 때의 규칙이다).
+	private void refund(Permit permit) {
+		try {
+			limiter.refund(permit);
+		}
+		catch (RuntimeException ex) {
+			log.error("비밀번호 변경 횟수를 되돌리지 못했다. 맞은 요청이 한 번으로 세어진 채 남는다: userId={}",
+					permit.account().accountId(), ex);
+		}
+	}
+
+	// 계정을 바꾸고 커밋한 뒤의 세션 끊기. 실패해도 계정은 이미 바뀌어 있으므로 일반 오류로 내보내지 않는다.
+	private static void afterCommit(Runnable terminateSessions) {
+		try {
+			terminateSessions.run();
+		}
+		catch (RuntimeException ex) {
+			throw new BusinessException(AuthErrorCode.SESSION_TERMINATION_FAILED, null, ex);
+		}
+	}
+
+	// 본인 비밀번호 변경은 같은 요청을 다시 보내는 것으로는 복구되지 않는다(지금 비밀번호가 이미 바뀌었다). 무엇을 하면 되는지를 문구로 알린다.
+	private static void afterOwnPasswordChange(Runnable terminateOtherSessions) {
+		try {
+			terminateOtherSessions.run();
+		}
+		catch (RuntimeException ex) {
+			throw new BusinessException(AuthErrorCode.SESSION_TERMINATION_FAILED,
+					"비밀번호는 바뀌었지만 다른 기기를 로그아웃시키지 못했습니다. 새 비밀번호로 비밀번호 변경을 한 번 더 해 주세요.", ex);
+		}
 	}
 
 	// 활성 관리자를 잠그고 읽는다. 관리자 수를 줄일 수 있는 변경의 첫 조회다(잠그는 순서가 같아야 서로 물려 멈추지 않는다).
@@ -348,12 +424,14 @@ public class AccountService {
 		}
 	}
 
-	// 지점이 실린 저장이 DB 제약에 걸렸으면 없는 지점이다(계정의 지점에는 외래 키가 걸려 있다). 지점이 없었다면 다른 문제다.
-	private static RuntimeException campusNotFoundOr(DataIntegrityViolationException ex, Long campusId) {
-		return (campusId != null) ? new BusinessException(AuthErrorCode.CAMPUS_NOT_FOUND) : ex;
+	// 계정의 지점에 걸린 외래 키에 걸렸으면 없는 지점이다. 다른 제약에 걸린 것은 그대로 던진다(서버 오류로 드러나야 한다).
+	// 이름을 가리는 방식은 유니크 키와 같다(MySQL은 외래 키 위반에도 제약 이름을 준다).
+	private static RuntimeException campusNotFoundOr(DataIntegrityViolationException ex) {
+		return UniqueKeys.isViolationOf(ex, CAMPUS_FOREIGN_KEY)
+				? new BusinessException(AuthErrorCode.CAMPUS_NOT_FOUND, null, ex) : ex;
 	}
 
-	// 무엇을 어겼는지는 응답의 문구가 알려 준다. 비밀번호는 어디에도 싣지 않는다.
+	// 무엇을 지켜야 하는지는 응답의 문구가 알려 준다(어느 것을 어겼는지는 가리지 않는다). 비밀번호는 어디에도 싣지 않는다.
 	private static void requireAcceptable(String password, String loginId) {
 		if (PasswordPolicy.check(password, loginId).isPresent()) {
 			throw new BusinessException(AuthErrorCode.PASSWORD_NOT_ACCEPTABLE);
@@ -376,10 +454,10 @@ public class AccountService {
 			if (code == AuthErrorCode.LOGIN_ID_DUPLICATED) {
 				trail.denied(AccountActivity.loginIdDuplicated(), ex);
 			}
-			else if (code == AuthErrorCode.SELF_CHANGE_NOT_ALLOWED) {
+			else if (userId != null && code == AuthErrorCode.SELF_CHANGE_NOT_ALLOWED) {
 				trail.denied(AccountActivity.of(Kind.SELF_CHANGE_DENIED, userId), ex);
 			}
-			else if (code == AuthErrorCode.LAST_ADMIN) {
+			else if (userId != null && code == AuthErrorCode.LAST_ADMIN) {
 				trail.denied(AccountActivity.of(Kind.LAST_ADMIN_DENIED, userId), ex);
 			}
 			throw ex;
@@ -390,8 +468,17 @@ public class AccountService {
 		return new BusinessException(CommonErrorCode.NOT_FOUND);
 	}
 
-	// 요청을 처리하는 사이에 차단됐거나 사라진 계정. 세션은 곧 끊긴다(끊겼다). 로그인하지 않은 것으로 답한다.
-	private static BusinessException loggedOut() {
+	// 차단됐거나 사라진 계정인데 그 계정의 세션으로 요청이 왔다. 차단할 때 세션을 끊지 못했거나, 끊기 직전에 들어온 요청이다.
+	// 남은 세션을 여기서 끊고 로그인하지 않은 것으로 답한다. 트랜잭션 밖에서 부른다.
+	private BusinessException loggedOut(long userId) {
+		log.warn("차단됐거나 없는 계정의 세션으로 요청이 왔다. 그 계정의 세션을 끊는다: userId={}", userId);
+		try {
+			userSessions.terminateAll(userId);
+		}
+		catch (RuntimeException ex) {
+			// 왜 못 끊었는지는 UserSessions가 남겼다. 이 요청은 어차피 거부한다.
+			log.warn("차단됐거나 없는 계정의 세션을 끊지 못했다: userId={}", userId);
+		}
 		return new BusinessException(CommonErrorCode.UNAUTHENTICATED);
 	}
 
