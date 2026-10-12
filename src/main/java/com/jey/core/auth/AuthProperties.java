@@ -1,7 +1,6 @@
 package com.jey.core.auth;
 
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -116,11 +115,6 @@ record AuthProperties(List<String> allowedOrigins, @DefaultValue("false") boolea
 	 */
 	record InitialAdmin(String loginId, String password, String name, @DefaultValue("false") boolean required) {
 
-		private static final int MIN_PASSWORD_LENGTH = 10;
-
-		// BCrypt는 72바이트까지만 받는다. 한글은 한 글자가 3바이트다.
-		private static final int MAX_PASSWORD_BYTES = 72;
-
 		boolean hasLoginId() {
 			return hasText(loginId);
 		}
@@ -134,9 +128,9 @@ record AuthProperties(List<String> allowedOrigins, @DefaultValue("false") boolea
 			return hasText(loginId) != hasText(password);
 		}
 
+		// 화면에서 만드는 계정과 같은 규칙이다.
 		boolean hasAcceptablePassword() {
-			return hasText(password) && password.length() >= MIN_PASSWORD_LENGTH
-					&& password.getBytes(StandardCharsets.UTF_8).length <= MAX_PASSWORD_BYTES;
+			return PasswordPolicy.check(password, loginId).isEmpty();
 		}
 
 		private static boolean hasText(String value) {

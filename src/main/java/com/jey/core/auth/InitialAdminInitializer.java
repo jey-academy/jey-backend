@@ -64,7 +64,7 @@ class InitialAdminInitializer implements ApplicationRunner {
 		}
 		if (!initialAdmin.hasAcceptablePassword()) {
 			throw new IllegalStateException(
-					"첫 관리자 비밀번호(jey.auth.initial-admin.password)는 10자 이상, 72바이트 이하여야 한다(한글은 한 글자가 3바이트).");
+					"첫 관리자 비밀번호(jey.auth.initial-admin.password)는 10자 이상, 72바이트 이하여야 하고(한글은 한 글자가 3바이트) 아이디와 달라야 한다.");
 		}
 		String name = (initialAdmin.name() == null || initialAdmin.name().isBlank()) ? DEFAULT_NAME
 				: initialAdmin.name();

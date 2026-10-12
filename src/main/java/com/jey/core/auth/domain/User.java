@@ -1,6 +1,7 @@
 package com.jey.core.auth.domain;
 
 import java.util.Locale;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 import com.jey.core.auth.api.UserRole;
@@ -88,10 +89,7 @@ public class User extends BaseEntity {
 			throw new IllegalArgumentException("loginId는 영문 소문자, 숫자, '.', '_', '-'로 3~50자여야 한다");
 		}
 		requireMaxLength(name, MAX_NAME_LENGTH, "name");
-		// 인코더가 만든 해시는 {bcrypt}처럼 알고리즘 이름으로 시작한다. 원문 비밀번호를 그대로 넘기는 실수를 여기서 막는다.
-		if (!passwordHash.startsWith("{")) {
-			throw new IllegalArgumentException("passwordHash는 해시된 값이어야 한다");
-		}
+		requireHash(passwordHash);
 		role.validateAffiliation(campusId, partnerId);
 		return new User(normalizedLoginId, passwordHash, name, role, campusId, partnerId);
 	}
@@ -121,8 +119,61 @@ public class User extends BaseEntity {
 		this.status = UserStatus.DISABLED;
 	}
 
+	/** 차단을 푼다. 다시 로그인할 수 있다. */
+	public void enable() {
+		this.status = UserStatus.ACTIVE;
+	}
+
 	public boolean isActive() {
 		return status == UserStatus.ACTIVE;
+	}
+
+	/**
+	 * 화면에 보일 이름을 고친다. 이미 로그인된 세션에 든 이름은 다음 로그인 때 바뀐다.
+	 *
+	 * @return 실제로 바뀌었는지
+	 * @throws IllegalArgumentException 비었거나 길이가 넘을 때
+	 */
+	public boolean rename(String name) {
+		requireText(name, "name");
+		requireMaxLength(name, MAX_NAME_LENGTH, "name");
+		if (name.equals(this.name)) {
+			return false;
+		}
+		this.name = name;
+		return true;
+	}
+
+	/**
+	 * 역할과 소속 지점을 바꾼다. 이미 로그인된 세션은 이 메서드만으로는 옛 역할과 지점을 그대로 쓴다.
+	 * 바꿀 때는 세션까지 끊는 {@code AccountService#update}를 쓴다.
+	 *
+	 * @return 실제로 바뀌었는지
+	 * @throws IllegalArgumentException 역할이 비었거나, 역할과 지점·연계 학원 식별자의 조합이 맞지 않을 때
+	 */
+	public boolean changeAffiliation(UserRole role, Long campusId) {
+		if (role == null) {
+			throw new IllegalArgumentException("role은 비울 수 없다");
+		}
+		role.validateAffiliation(campusId, this.partnerId);
+		if (role == this.role && Objects.equals(campusId, this.campusId)) {
+			return false;
+		}
+		this.role = role;
+		this.campusId = campusId;
+		return true;
+	}
+
+	/**
+	 * 비밀번호를 바꾼다. 이미 로그인된 세션은 이 메서드만으로는 끊기지 않는다.
+	 *
+	 * @param passwordHash 해시된 비밀번호. 원문을 넘기지 않는다.
+	 * @throws IllegalArgumentException 비었거나 해시가 아닐 때
+	 */
+	public void changePassword(String passwordHash) {
+		requireText(passwordHash, "passwordHash");
+		requireHash(passwordHash);
+		this.passwordHash = passwordHash;
 	}
 
 	public Long getId() {
@@ -151,6 +202,17 @@ public class User extends BaseEntity {
 
 	public Long getPartnerId() {
 		return partnerId;
+	}
+
+	public UserStatus getStatus() {
+		return status;
+	}
+
+	// 인코더가 만든 해시는 {bcrypt}처럼 알고리즘 이름으로 시작한다. 원문 비밀번호를 그대로 넘기는 실수를 여기서 막는다.
+	private static void requireHash(String passwordHash) {
+		if (!passwordHash.startsWith("{")) {
+			throw new IllegalArgumentException("passwordHash는 해시된 값이어야 한다");
+		}
 	}
 
 	private static void requireText(String value, String field) {

@@ -104,6 +104,84 @@ class UserTest {
 		assertThat(user.isActive()).isFalse();
 	}
 
+	@Test
+	void 차단을_풀면_다시_활성이_된다() {
+		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
+		user.disable();
+
+		user.enable();
+
+		assertThat(user.isActive()).isTrue();
+		assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
+	}
+
+	@Test
+	void 이름을_고치면_바뀌었는지_알려_준다() {
+		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
+
+		assertThat(user.rename("김데스크")).isTrue();
+		assertThat(user.getName()).isEqualTo("김데스크");
+		assertThat(user.rename("김데스크")).isFalse();
+	}
+
+	@Test
+	void 이름은_비우거나_50자를_넘길_수_없다() {
+		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
+
+		assertThatIllegalArgumentException().isThrownBy(() -> user.rename(" "));
+		assertThatIllegalArgumentException().isThrownBy(() -> user.rename(null));
+		assertThatIllegalArgumentException().isThrownBy(() -> user.rename("가".repeat(51)));
+		assertThat(user.rename("가".repeat(50))).isTrue();
+	}
+
+	@Test
+	void 역할과_지점을_바꾸면_바뀌었는지_알려_준다() {
+		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
+
+		assertThat(user.changeAffiliation(UserRole.STAFF, 1L)).isFalse();
+		assertThat(user.changeAffiliation(UserRole.STAFF, 2L)).isTrue();
+		assertThat(user.getCampusId()).isEqualTo(2L);
+		assertThat(user.changeAffiliation(UserRole.ADMIN, null)).isTrue();
+		assertThat(user.getRole()).isEqualTo(UserRole.ADMIN);
+		assertThat(user.getCampusId()).isNull();
+	}
+
+	// 지점 없는 직원은 "지점이 없으면 전 지점"으로 해석하는 곳에서 전 지점 권한이 된다. 고칠 때도 만들 때와 같은 검사를 거친다.
+	@Test
+	void 역할과_지점의_조합이_맞지_않으면_바꿀_수_없고_값은_그대로다() {
+		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
+
+		assertThatIllegalArgumentException().isThrownBy(() -> user.changeAffiliation(UserRole.STAFF, null));
+		assertThatIllegalArgumentException().isThrownBy(() -> user.changeAffiliation(UserRole.ADMIN, 1L));
+		assertThatIllegalArgumentException().isThrownBy(() -> user.changeAffiliation(UserRole.PARTNER, null));
+		assertThatIllegalArgumentException().isThrownBy(() -> user.changeAffiliation(null, 1L));
+		assertThat(user.getRole()).isEqualTo(UserRole.STAFF);
+		assertThat(user.getCampusId()).isEqualTo(1L);
+	}
+
+	// 연계 학원 식별자를 가진 계정은 다른 역할이 될 수 없다(그 역할은 식별자를 가질 수 없다).
+	@Test
+	void 연계_학원_계정은_다른_역할로_바꿀_수_없다() {
+		User partner = User.create("partner", HASH, "연계학원", UserRole.PARTNER, null, 7L);
+
+		assertThatIllegalArgumentException().isThrownBy(() -> partner.changeAffiliation(UserRole.STAFF, 1L));
+		assertThatIllegalArgumentException().isThrownBy(() -> partner.changeAffiliation(UserRole.ADMIN, null));
+		assertThat(partner.changeAffiliation(UserRole.PARTNER, null)).isFalse();
+	}
+
+	@Test
+	void 비밀번호는_해시된_값으로만_바꿀_수_있다() {
+		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
+
+		assertThatIllegalArgumentException().isThrownBy(() -> user.changePassword("plain-password"));
+		assertThatIllegalArgumentException().isThrownBy(() -> user.changePassword(" "));
+		assertThat(user.getPasswordHash()).isEqualTo(HASH);
+
+		user.changePassword("{noop}another-hash");
+
+		assertThat(user.getPasswordHash()).isEqualTo("{noop}another-hash");
+	}
+
 	// 식별자가 빈 연계 학원 계정은 "자기 발급분" 조건을 걸 수 없다.
 	@Test
 	void 연계_학원_계정은_연계_학원_식별자가_있어야_한다() {
