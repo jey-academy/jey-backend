@@ -8,6 +8,7 @@ import com.jey.core.audit.domain.AuditRecord;
 import com.jey.core.auth.api.AllowedRoles;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.shared.EntityRef;
+import com.jey.core.shared.PageLimits;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -50,7 +51,8 @@ class AuditLogController {
 			@Parameter(description = "이 시각 전까지(제외). 시간대를 붙인 ISO 8601 형식",
 					example = "2026-12-01T00:00:00+09:00") @RequestParam(required = false) @DateTimeFormat(
 							iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
-			@Parameter(description = "0부터") @RequestParam(defaultValue = "0") @Min(0) int page,
+			@Parameter(description = "0부터 10000까지") @RequestParam(defaultValue = "0") @Min(0) @Max(
+					PageLimits.MAX_PAGE) int page,
 			@RequestParam(defaultValue = "20") @Min(1) @Max(MAX_PAGE_SIZE) int size) {
 		return AuditLogPageResponse.from(
 				auditLogService.search(actorId, action, outcome, targetType, targetId, from, to, page, size),

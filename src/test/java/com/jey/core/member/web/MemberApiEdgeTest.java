@@ -262,6 +262,21 @@ class MemberApiEdgeTest {
 		assertThat(body).doesNotContain("0199");
 	}
 
+	// 아주 큰 페이지는 건너뛸 줄 수가 정수 범위를 넘어 조회가 서버 오류(500)로 끝났다. 상한을 넘으면 조회하지 않고 거부한다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 목록의_page는_만까지만_받는다() throws Exception {
+		mockMvc.perform(get(STUDENTS).param("page", "10000"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.items.length()").value(0));
+		for (String tooDeep : new String[] { "2147483647", "10001" }) {
+			mockMvc.perform(get(STUDENTS).param("page", tooDeep))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+					.andExpect(jsonPath("$.errors[?(@.field == 'page')]").isNotEmpty());
+		}
+	}
+
 	private ResultActions send(MockHttpServletRequestBuilder request, String json) throws Exception {
 		return mockMvc.perform(request.with(csrfToken(mockMvc)).with(idempotencyKey()).contentType(MediaType.APPLICATION_JSON).content(json));
 	}

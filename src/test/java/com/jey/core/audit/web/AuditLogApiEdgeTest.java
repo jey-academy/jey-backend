@@ -47,6 +47,19 @@ class AuditLogApiEdgeTest {
 	TransactionTemplate transaction;
 
 	// 이벤트가 한꺼번에 들어오면 같은 시각의 기록이 여럿 생긴다. 순서가 정해져 있지 않으면 페이지 사이에서 겹치거나 빠진다.
+	// 아주 큰 페이지는 건너뛸 줄 수가 정수 범위를 넘어 조회가 서버 오류로 끝난다. 상한을 넘으면 조회하지 않고 거부한다.
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 목록의_page는_만까지만_받는다() throws Exception {
+		mockMvc.perform(get(AUDIT_LOGS).param("page", "10000")).andExpect(status().isOk());
+		for (String tooDeep : new String[] { "10001", "2147483647" }) {
+			mockMvc.perform(get(AUDIT_LOGS).param("page", tooDeep))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+					.andExpect(jsonPath("$.errors[?(@.field == 'page')]").isNotEmpty());
+		}
+	}
+
 	@Test
 	@WithJeyUser(role = UserRole.ADMIN)
 	void 시각이_같은_기록은_나중에_적힌_것이_먼저이고_페이지_사이에서_겹치지_않는다() throws Exception {
