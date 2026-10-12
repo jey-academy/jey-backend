@@ -1,6 +1,135 @@
 {
   "components" : {
     "schemas" : {
+      "AccountCreateRequest" : {
+        "description" : "계정 만들기. 관리자와 직원만 만들 수 있다",
+        "properties" : {
+          "campusId" : {
+            "description" : "소속 지점. STAFF면 반드시 넣고 ADMIN이면 넣지 않는다",
+            "format" : "int64",
+            "type" : [ "integer", "null" ]
+          },
+          "loginId" : {
+            "description" : "로그인 아이디. 영문 소문자, 숫자, 점, 밑줄, 하이픈으로 3~50자이고 첫 글자는 영문이나 숫자다. 만든 뒤에는 바꿀 수 없다",
+            "example" : "desk.dongtan",
+            "minLength" : 1,
+            "pattern" : "[a-z0-9][a-z0-9._-]{2,49}",
+            "type" : "string"
+          },
+          "name" : {
+            "description" : "화면에 보일 이름",
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "password" : {
+            "description" : "처음 비밀번호. 10자 이상이고(한글은 24자까지) 아이디와 달라야 한다. 받은 사람이 로그인한 뒤 직접 바꾼다",
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "role" : {
+            "description" : "ADMIN 또는 STAFF. PARTNER는 만들 수 없다",
+            "enum" : [ "ADMIN", "STAFF", "PARTNER" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "loginId", "name", "password", "role" ],
+        "type" : "object"
+      },
+      "AccountPageResponse" : {
+        "description" : "계정 목록의 한 페이지. 아이디 순이고 차단된 계정도 포함한다",
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AccountResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "description" : "지금 페이지. 0부터",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "size" : {
+            "description" : "한 페이지의 크기",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "totalElements" : {
+            "description" : "조건에 맞는 전체 계정 수",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalPages" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "items", "page", "size", "totalElements", "totalPages" ],
+        "type" : "object"
+      },
+      "AccountResponse" : {
+        "description" : "로그인 계정 하나. 비밀번호는 어떤 응답에도 없다",
+        "properties" : {
+          "campusId" : {
+            "description" : "소속 지점. 직원만 값이 있고 관리자와 연계 학원은 null이다. 필드는 항상 있다",
+            "format" : "int64",
+            "type" : [ "integer", "null" ]
+          },
+          "createdAt" : {
+            "description" : "계정을 만든 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "loginId" : {
+            "description" : "로그인 아이디. 만든 뒤에는 바꿀 수 없다",
+            "type" : "string"
+          },
+          "name" : {
+            "description" : "화면에 보일 이름",
+            "type" : "string"
+          },
+          "role" : {
+            "enum" : [ "ADMIN", "STAFF", "PARTNER" ],
+            "type" : "string"
+          },
+          "status" : {
+            "description" : "DISABLED면 차단된 계정이다. 로그인할 수 없다",
+            "enum" : [ "ACTIVE", "DISABLED" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "campusId", "createdAt", "id", "loginId", "name", "role", "status" ],
+        "type" : "object"
+      },
+      "AccountUpdateRequest" : {
+        "description" : "계정 고치기. 통째로 바꾼다: 그대로 둘 값도 지금 값을 넣어 보낸다. 아이디와 비밀번호는 여기서 바꾸지 않는다",
+        "properties" : {
+          "campusId" : {
+            "description" : "소속 지점. STAFF면 반드시 넣고 그 밖의 역할이면 넣지 않는다. 바꾸면 그 계정은 로그아웃된다",
+            "format" : "int64",
+            "type" : [ "integer", "null" ]
+          },
+          "name" : {
+            "description" : "화면에 보일 이름. 로그인돼 있는 화면에는 다음 로그인부터 보인다",
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "role" : {
+            "description" : "바꾸면 그 계정은 로그아웃된다. PARTNER로 바꾸거나 PARTNER에서 바꿀 수 없다",
+            "enum" : [ "ADMIN", "STAFF", "PARTNER" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "name", "role" ],
+        "type" : "object"
+      },
       "AuditLogPageResponse" : {
         "description" : "감사 로그의 한 페이지. 최신순이다",
         "properties" : {
@@ -430,6 +559,38 @@
         "required" : [ "campusId", "id", "loginId", "name", "role" ],
         "type" : "object"
       },
+      "PasswordChangeRequest" : {
+        "description" : "로그인한 사람이 자기 비밀번호를 바꾼다",
+        "properties" : {
+          "currentPassword" : {
+            "description" : "지금 비밀번호",
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "newPassword" : {
+            "description" : "새 비밀번호. 10자 이상이고(한글은 24자까지) 아이디, 지금 비밀번호와 달라야 한다",
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "currentPassword", "newPassword" ],
+        "type" : "object"
+      },
+      "PasswordResetRequest" : {
+        "description" : "관리자가 다른 계정의 비밀번호를 다시 정한다",
+        "properties" : {
+          "password" : {
+            "description" : "새 비밀번호. 10자 이상이고(한글은 24자까지) 아이디와 달라야 한다",
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "password" ],
+        "type" : "object"
+      },
       "PhoneRevealResponse" : {
         "properties" : {
           "phone" : {
@@ -701,6 +862,250 @@
   },
   "openapi" : "3.1.0",
   "paths" : {
+    "/api/v1/accounts" : {
+      "get" : {
+        "operationId" : "accounts",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "role",
+          "required" : false,
+          "schema" : {
+            "enum" : [ "ADMIN", "STAFF", "PARTNER" ],
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "campusId",
+          "required" : false,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "status",
+          "required" : false,
+          "schema" : {
+            "enum" : [ "ACTIVE", "DISABLED" ],
+            "type" : "string"
+          }
+        }, {
+          "description" : "0부터",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "format" : "int32",
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AccountPageResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "account-controller" ]
+      },
+      "post" : {
+        "operationId" : "create_2",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AccountCreateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AccountResponse"
+                }
+              }
+            },
+            "description" : "Created"
+          }
+        },
+        "tags" : [ "account-controller" ]
+      }
+    },
+    "/api/v1/accounts/{id}" : {
+      "get" : {
+        "operationId" : "account",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AccountResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "account-controller" ]
+      },
+      "put" : {
+        "description" : "역할이나 지점을 바꾸면 그 계정은 로그아웃된다. 자기 자신의 역할·지점은 바꿀 수 없다",
+        "operationId" : "update_4",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AccountUpdateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AccountResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "이름·역할·지점 고치기",
+        "tags" : [ "account-controller" ]
+      }
+    },
+    "/api/v1/accounts/{id}/disable" : {
+      "post" : {
+        "description" : "로그인을 막고 그 계정을 로그아웃시킨다. 자기 자신은 차단할 수 없다",
+        "operationId" : "disable",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AccountResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "차단",
+        "tags" : [ "account-controller" ]
+      }
+    },
+    "/api/v1/accounts/{id}/enable" : {
+      "post" : {
+        "operationId" : "enable",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AccountResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "차단 풀기",
+        "tags" : [ "account-controller" ]
+      }
+    },
+    "/api/v1/accounts/{id}/password" : {
+      "post" : {
+        "description" : "그 계정은 로그아웃된다. 차단된 계정은 차단된 채로 비밀번호만 바뀐다. 자기 비밀번호는 /auth/password로 바꾼다",
+        "operationId" : "resetPassword",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PasswordResetRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        },
+        "summary" : "비밀번호 다시 정하기",
+        "tags" : [ "account-controller" ]
+      }
+    },
     "/api/v1/audit-logs" : {
       "get" : {
         "operationId" : "auditLogs",
@@ -882,6 +1287,29 @@
             "description" : "OK"
           }
         },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/api/v1/auth/password" : {
+      "post" : {
+        "description" : "지금 화면은 로그인된 채로 남고, 같은 계정으로 로그인된 다른 화면은 로그아웃된다. 지금 비밀번호를 여러 번 틀리면 429와 Retry-After(초)가 온다",
+        "operationId" : "changePassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PasswordChangeRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "summary" : "자기 비밀번호 바꾸기",
         "tags" : [ "auth-controller" ]
       }
     },
