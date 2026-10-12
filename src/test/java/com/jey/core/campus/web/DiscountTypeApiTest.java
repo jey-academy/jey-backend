@@ -20,6 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 import static com.jey.TestCsrf.csrfToken;
+import static com.jey.TestIdempotency.idempotencyKey;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -196,7 +197,7 @@ class DiscountTypeApiTest {
 	}
 
 	private ResultActions create(String code, String name, String rate) throws Exception {
-		return mockMvc.perform(post("/api/v1/discount-types").with(csrfToken(mockMvc))
+		return mockMvc.perform(post("/api/v1/discount-types").with(csrfToken(mockMvc)).with(idempotencyKey())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"code\": \"%s\", \"name\": \"%s\", \"rate\": %s}".formatted(code, name, rate)));
 	}

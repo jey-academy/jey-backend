@@ -5,6 +5,7 @@ import java.util.List;
 import com.jey.core.auth.api.AllowedRoles;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.campus.ClassService;
+import com.jey.core.shared.Idempotent;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,6 +43,7 @@ class ClassController {
 	}
 
 	@AllowedRoles(UserRole.ADMIN)
+	@Idempotent
 	@PostMapping("/classes")
 	@ResponseStatus(HttpStatus.CREATED)
 	ClassFeeResponse create(@Valid @RequestBody ClassCreateRequest body) {

@@ -156,8 +156,9 @@ class SecurityConfig {
 		configuration.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN", "Idempotency-Key"));
 		// 세션 쿠키를 실은 요청을 받아야 한다. 이 경우 허용 출처에 *를 쓸 수 없어 목록으로 받는다.
 		configuration.setAllowCredentials(true);
-		// 다른 출처의 응답 헤더는 여기에 적어야 프론트가 읽을 수 있다. 로그인 시도 제한(429)의 남은 시간이다.
-		configuration.setExposedHeaders(List.of("Retry-After"));
+		// 다른 출처의 응답 헤더는 여기에 적어야 프론트가 읽을 수 있다.
+		// 횟수 한도(429)의 남은 시간과, 멱등 키로 처음의 응답을 다시 돌려준 것이라는 표시다.
+		configuration.setExposedHeaders(List.of("Retry-After", "Idempotency-Replayed"));
 		configuration.setMaxAge(Duration.ofHours(1));
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/api/**", configuration);

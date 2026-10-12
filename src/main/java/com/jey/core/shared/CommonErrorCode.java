@@ -16,6 +16,16 @@ public enum CommonErrorCode implements ErrorCode {
 	NOT_FOUND(HttpStatus.NOT_FOUND, "대상을 찾을 수 없습니다."),
 	METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "지원하지 않는 요청 방식입니다."),
 	CONFLICT(HttpStatus.CONFLICT, "현재 상태에서는 처리할 수 없습니다."),
+
+	// Idempotency-Key (ADR-0027). 키가 없거나 형식이 틀리다.
+	IDEMPOTENCY_KEY_REQUIRED(HttpStatus.BAD_REQUEST, "Idempotency-Key 헤더가 필요합니다."),
+
+	// 같은 키로 다른 내용의 요청이 이미 왔다. 새 요청에는 새 키를 쓴다.
+	IDEMPOTENCY_KEY_REUSED(HttpStatus.UNPROCESSABLE_ENTITY, "이미 다른 요청에 쓴 Idempotency-Key입니다."),
+
+	// 같은 키의 요청이 아직 끝나지 않았다. 잠시 뒤 같은 키로 다시 보내면 그 결과를 받는다.
+	IDEMPOTENCY_IN_PROGRESS(HttpStatus.CONFLICT, "같은 요청을 처리하고 있습니다. 잠시 후 다시 시도해 주세요."),
+
 	INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
 
 	private final HttpStatus status;

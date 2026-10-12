@@ -38,6 +38,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import static com.jey.TestCsrf.csrfToken;
+import static com.jey.TestIdempotency.idempotencyKey;
 import static com.jey.core.member.MemberFixtures.DONGTAN;
 import static com.jey.core.member.MemberFixtures.father;
 import static com.jey.core.member.MemberFixtures.mother;
@@ -233,7 +234,7 @@ class PhoneProbeLimitApiTest {
 	}
 
 	private ResultActions send(MockHttpServletRequestBuilder request, String json) throws Exception {
-		return mockMvc.perform(request.with(csrfToken(mockMvc)).contentType(MediaType.APPLICATION_JSON).content(json));
+		return mockMvc.perform(request.with(csrfToken(mockMvc)).with(idempotencyKey()).contentType(MediaType.APPLICATION_JSON).content(json));
 	}
 
 	// 성공한 호출은 돌려준 값을, 실패한 호출은 예외를 담는다. 로그인 정보는 스레드마다 따로라서 넘겨 준다.

@@ -21,6 +21,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import static com.jey.TestCsrf.csrfToken;
+import static com.jey.TestIdempotency.idempotencyKey;
 import static com.jey.core.member.MemberFixtures.DONGTAN;
 import static com.jey.core.member.MemberFixtures.NEUNGDONG;
 import static com.jey.core.member.MemberFixtures.father;
@@ -461,7 +462,7 @@ class MemberApiTest {
 	}
 
 	private ResultActions send(MockHttpServletRequestBuilder request, String json) throws Exception {
-		return mockMvc.perform(request.with(csrfToken(mockMvc)).contentType(MediaType.APPLICATION_JSON).content(json));
+		return mockMvc.perform(request.with(csrfToken(mockMvc)).with(idempotencyKey()).contentType(MediaType.APPLICATION_JSON).content(json));
 	}
 
 	private static void forbidden(ResultActions result) throws Exception {

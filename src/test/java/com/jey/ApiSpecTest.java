@@ -84,6 +84,37 @@ class ApiSpecTest {
 				"/api/v1/classes", "/api/v1/class-fees", "/api/v1/discount-types");
 	}
 
+	// Idempotency-Key는 필터가 읽으므로 컨트롤러의 인자에 없다. 명세에 싣는 설정이 빠지면 프론트의 타입에서 헤더가 사라지고,
+	// 저장된 파일까지 같이 다시 쓰면 위의 비교는 통과한다.
+	@Test
+	void 키를_받는_경로의_명세에는_필수_헤더가_있다() throws Exception {
+		Map<String, Object> paths = paths(currentSpec());
+
+		for (String path : List.of("/api/v1/students", "/api/v1/students/{id}/guardians", "/api/v1/classes",
+				"/api/v1/discount-types")) {
+			assertThat(headerParameters(paths, path)).as(path).anySatisfy(parameter -> {
+				assertThat(parameter.get("name")).isEqualTo("Idempotency-Key");
+				assertThat(parameter.get("required")).isEqualTo(true);
+			});
+		}
+		assertThat(headerParameters(paths, "/api/v1/auth/login")).isEmpty();
+		assertThat(headerParameters(paths, "/api/v1/students/{id}/phone/reveal")).isEmpty();
+	}
+
+	@SuppressWarnings("unchecked")
+	private static List<Map<String, Object>> headerParameters(Map<String, Object> paths, String path) {
+		Map<String, Object> operation = child(child(paths, path), "post");
+		assertThat(operation).as("POST " + path).isNotEmpty();
+		Object parameters = operation.get("parameters");
+		if (!(parameters instanceof List<?> list)) {
+			return List.of();
+		}
+		return list.stream()
+				.map(each -> (Map<String, Object>) each)
+				.filter(each -> "header".equals(each.get("in")))
+				.toList();
+	}
+
 	private Map<String, Object> currentSpec() throws Exception {
 		String body = mockMvc.perform(get("/v3/api-docs"))
 				.andExpect(status().isOk())

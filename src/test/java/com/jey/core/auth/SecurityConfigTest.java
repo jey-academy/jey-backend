@@ -132,6 +132,25 @@ class SecurityConfigTest {
 				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
 	}
 
+	// 브라우저는 Idempotency-Key를 실은 요청을 보내기 전에 그 헤더를 실어도 되는지 묻는다. 허용하지 않으면 요청이 나가지도 않는다.
+	@Test
+	void 사전_요청에서_멱등_키_헤더를_허용한다() throws Exception {
+		mockMvc.perform(options("/api/v1/students")
+						.header(HttpHeaders.ORIGIN, ALLOWED_ORIGIN)
+						.header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+						.header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "content-type, idempotency-key, x-xsrf-token"))
+				.andExpect(status().isOk())
+				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED_ORIGIN))
+				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS,
+						org.hamcrest.Matchers.containsStringIgnoringCase("idempotency-key")));
+		// 허용하지 않은 헤더를 물으면 거부한다. 위의 통과가 "무엇이든 허용"이 아님을 본다.
+		mockMvc.perform(options("/api/v1/students")
+						.header(HttpHeaders.ORIGIN, ALLOWED_ORIGIN)
+						.header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+						.header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "x-not-allowed"))
+				.andExpect(status().isForbidden());
+	}
+
 	@Test
 	void 허용한_출처의_요청에는_CORS_헤더를_붙인다() throws Exception {
 		mockMvc.perform(get("/api/v1/auth/csrf").header(HttpHeaders.ORIGIN, ALLOWED_ORIGIN))

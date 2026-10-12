@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import static com.jey.TestCsrf.csrfToken;
+import static com.jey.TestIdempotency.idempotencyKey;
 import static com.jey.core.member.MemberFixtures.DONGTAN;
 import static com.jey.core.member.MemberFixtures.mother;
 import static com.jey.core.member.MemberFixtures.randomPhone;
@@ -161,7 +162,7 @@ class MemberApiEdgeTest {
 	}
 
 	private ResultActions send(MockHttpServletRequestBuilder request, String json) throws Exception {
-		return mockMvc.perform(request.with(csrfToken(mockMvc)).contentType(MediaType.APPLICATION_JSON).content(json));
+		return mockMvc.perform(request.with(csrfToken(mockMvc)).with(idempotencyKey()).contentType(MediaType.APPLICATION_JSON).content(json));
 	}
 
 	private static String createBody(String name, String guardiansJson) {

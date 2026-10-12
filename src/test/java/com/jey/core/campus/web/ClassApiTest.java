@@ -24,6 +24,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 import static com.jey.TestCsrf.csrfToken;
+import static com.jey.TestIdempotency.idempotencyKey;
 import static org.hamcrest.Matchers.startsWith;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -291,7 +292,7 @@ class ClassApiTest {
 	@Test
 	@WithJeyUser(role = UserRole.ADMIN)
 	void 필수값이_빠지면_어느_필드인지_알려준다() throws Exception {
-		mockMvc.perform(post("/api/v1/classes").with(csrfToken(mockMvc))
+		mockMvc.perform(post("/api/v1/classes").with(csrfToken(mockMvc)).with(idempotencyKey())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"name\": \" \"}"))
 				.andExpect(status().isBadRequest())
@@ -369,7 +370,7 @@ class ClassApiTest {
 	}
 
 	private ResultActions create(long campusId, String name, String baseFee8, String bookFee) throws Exception {
-		return mockMvc.perform(post("/api/v1/classes").with(csrfToken(mockMvc))
+		return mockMvc.perform(post("/api/v1/classes").with(csrfToken(mockMvc)).with(idempotencyKey())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"campusId\": %d, \"name\": \"%s\", \"baseFee8\": %s, \"bookFee\": %s}".formatted(campusId,
 						name, baseFee8, bookFee)));
