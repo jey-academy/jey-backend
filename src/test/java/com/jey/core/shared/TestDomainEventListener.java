@@ -1,11 +1,13 @@
 package com.jey.core.shared;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import org.slf4j.MDC;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
 
@@ -18,12 +20,21 @@ class TestDomainEventListener {
 
 	private final Set<UUID> failOnce = ConcurrentHashMap.newKeySet();
 
+	private final Map<UUID, Map<String, String>> logContexts = new ConcurrentHashMap<>();
+
 	@ApplicationModuleListener
 	void on(DomainEvent event) {
 		if (failOnce.remove(event.metadata().eventId())) {
 			throw new IllegalStateException("테스트를 위해 일부러 낸 실패");
 		}
+		Map<String, String> logContext = MDC.getCopyOfContextMap();
+		logContexts.put(event.metadata().eventId(), (logContext != null) ? logContext : Map.of());
 		received.add(event);
+	}
+
+	// 리스너가 돌 때 그 스레드의 로그 문맥(MDC). 받은 적 없는 이벤트면 null
+	Map<String, String> logContextOf(UUID eventId) {
+		return logContexts.get(eventId);
 	}
 
 	List<DomainEvent> received() {

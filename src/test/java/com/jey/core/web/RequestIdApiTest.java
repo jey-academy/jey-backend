@@ -1,6 +1,11 @@
 package com.jey.core.web;
 
+import java.util.List;
+
 import com.jey.TestcontainersConfiguration;
+import com.jey.WithJeyUser;
+import com.jey.core.auth.api.AuthenticatedUser;
+import com.jey.core.auth.api.UserRole;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,6 +15,8 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -18,6 +25,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import static com.jey.TestCsrf.csrfToken;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.matchesPattern;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -124,6 +132,39 @@ class RequestIdApiTest {
 				.andExpect(status().isConflict()));
 
 		assertThat(id).matches("[0-9a-f]{32}");
+	}
+
+	// 계정 ID만 넣는다. 아이디와 이름은 로그에 남기지 않는다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = 9601)
+	void 로그인한_요청의_로그에는_계정_ID가_찍힌다(CapturedOutput output) throws Exception {
+		String id = expectSameIdInHeaderAndBody(mockMvc.perform(get("/api/v1/test-errors/unexpected"))
+				.andExpect(status().isInternalServerError()));
+
+		assertThat(output.getOut().lines().filter(line -> line.contains("서버 오류 응답")))
+				.isNotEmpty()
+				.allSatisfy(line -> assertThat(line).contains("[" + id + "|9601] ")
+						.doesNotContain("test-staff").doesNotContain("테스트 사용자"));
+	}
+
+	// 스레드는 다음 요청이 다시 쓴다. 앞 요청의 계정이 남아 있으면 로그인하지 않은 요청이 그 계정의 것으로 보인다.
+	// MockMvc는 요청을 모두 이 테스트의 스레드에서 처리하므로 같은 스레드를 다시 쓰는 경우와 같다.
+	@Test
+	void 앞_요청의_계정_ID가_다음_요청의_로그에_남지_않는다(CapturedOutput output) throws Exception {
+		mockMvc.perform(get("/api/v1/test-errors/unexpected")
+						.with(authentication(UsernamePasswordAuthenticationToken.authenticated(
+								new AuthenticatedUser(9602L, "test-staff", "테스트 사용자", UserRole.STAFF, 1L, null), null,
+								List.of(new SimpleGrantedAuthority(UserRole.STAFF.authority()))))))
+				.andExpect(status().isInternalServerError());
+
+		String id = mockMvc.perform(post("/api/v1/test-errors/validated"))
+				.andExpect(status().isForbidden())
+				.andReturn().getResponse().getHeader(HEADER);
+
+		assertThat(output.getOut().lines().filter(line -> line.contains("CSRF 토큰 거부")))
+				.isNotEmpty()
+				.allSatisfy(line -> assertThat(line).contains("[" + id + "|] "));
+		assertThat(output).contains("|9602] ");
 	}
 
 	private static String expectSameIdInHeaderAndBody(ResultActions result) throws Exception {
