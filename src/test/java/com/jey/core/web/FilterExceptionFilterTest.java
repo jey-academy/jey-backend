@@ -96,7 +96,7 @@ class FilterExceptionFilterTest {
 	// 버려진 응답의 Content-Length가 남으면 오류 본문이 잘리고, Retry-After가 남으면 500에 엉뚱한 안내가 붙는다.
 	// CORS 헤더는 남겨야 다른 출처의 프론트가 오류 응답을 읽는다.
 	@Test
-	void 쓰다_만_본문과_헤더는_버리고_CORS_헤더만_남긴다() throws Exception {
+	void 쓰다_만_본문과_헤더는_버리고_CORS_헤더와_요청_ID만_남긴다() throws Exception {
 		when(resolver.resolveException(any(), any(), any(), any())).thenAnswer(invocation -> {
 			HttpServletResponse res = invocation.getArgument(1);
 			res.setStatus(500);
@@ -108,6 +108,7 @@ class FilterExceptionFilterTest {
 			httpResponse.setHeader("Access-Control-Allow-Origin", "http://localhost:5173");
 			httpResponse.setHeader("Access-Control-Allow-Credentials", "true");
 			httpResponse.addHeader("Vary", "Origin");
+			httpResponse.setHeader("X-Request-Id", "0123456789abcdef0123456789abcdef");
 			httpResponse.setHeader("Retry-After", "120");
 			httpResponse.setHeader("Content-Length", "9999");
 			httpResponse.getWriter().write("half-written body");
@@ -121,6 +122,7 @@ class FilterExceptionFilterTest {
 		assertThat(response.getHeader("Access-Control-Allow-Origin")).isEqualTo("http://localhost:5173");
 		assertThat(response.getHeader("Access-Control-Allow-Credentials")).isEqualTo("true");
 		assertThat(response.getHeaders("Vary")).containsExactly("Origin");
+		assertThat(response.getHeader("X-Request-Id")).isEqualTo("0123456789abcdef0123456789abcdef");
 		assertThat(response.getHeader("Retry-After")).isNull();
 		assertThat(response.getHeader("Content-Length")).isNull();
 	}
@@ -151,9 +153,10 @@ class FilterExceptionFilterTest {
 		assertThat(output).contains("처리하다 다시 오류가 났다").contains("original-cause-marker");
 	}
 
+	// 요청 ID를 정하는 필터만 이보다 바깥이다.
 	@Test
-	void 모든_필터보다_앞에서_돈다() {
-		assertThat(filter.getOrder()).isEqualTo(Integer.MIN_VALUE);
+	void 요청_ID_필터_바로_다음에_돈다() {
+		assertThat(filter.getOrder()).isEqualTo(new RequestIdFilter().getOrder() + 1);
 	}
 
 }

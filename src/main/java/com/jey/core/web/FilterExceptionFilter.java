@@ -26,7 +26,7 @@ import org.springframework.web.servlet.ModelAndView;
  *
  * <p>필터에서 난 오류는 컨트롤러의 예외 처리기를 거치지 않는다. 그대로 두면 서블릿 컨테이너가 오류 경로({@code /error})로 다시 보내는데,
  * 그 요청이 인증 검사에 걸려 401이 된다. 세션 저장소 장애가 "로그인이 풀렸다"로 보이게 된다.
- * 그래서 모든 필터의 바깥에서 잡아 MVC 예외 처리기로 넘긴다.
+ * 그래서 다른 필터들의 바깥에서 잡아 MVC 예외 처리기로 넘긴다(이보다 바깥은 요청 ID를 정하는 {@link RequestIdFilter}뿐이다).
  *
  * <p>응답이 이미 나가기 시작한 뒤의 오류는 바꿀 수 없으므로 그대로 다시 던진다.
  * 비동기 처리와 오류 경로로 다시 들어온 요청에는 이 필터가 돌지 않는다({@link OncePerRequestFilter}의 기본 동작).
@@ -45,10 +45,11 @@ class FilterExceptionFilter extends OncePerRequestFilter implements Ordered {
 		this.exceptionResolver = exceptionResolver;
 	}
 
-	// 세션 필터와 보안 필터를 포함한 모든 필터보다 앞이어야 그 필터들의 오류를 잡을 수 있다.
+	// 세션 필터와 보안 필터를 포함한 다른 필터보다 앞이어야 그 필터들의 오류를 잡을 수 있다.
+	// 요청 ID를 정하는 필터(RequestIdFilter)만 이보다 바깥이다. 여기서 남기는 로그에도 ID가 찍혀야 한다.
 	@Override
 	public int getOrder() {
-		return Ordered.HIGHEST_PRECEDENCE;
+		return Ordered.HIGHEST_PRECEDENCE + 1;
 	}
 
 	@Override
@@ -104,15 +105,17 @@ class FilterExceptionFilter extends OncePerRequestFilter implements Ordered {
 
 	// 쓰다 만 응답의 본문과 헤더를 버린다. 남겨 두면 버려진 응답의 Content-Length나 Retry-After가 오류 응답에 섞인다.
 	// CORS 헤더만은 남긴다. 지우면 다른 출처의 프론트가 오류 응답을 읽지 못한다.
+	// 요청 ID도 남긴다. 바깥의 필터가 이미 실어 둔 것이고, 오류 응답이야말로 로그와 이어 볼 값이 필요하다.
 	private static void discardAbandonedResponse(HttpServletResponse response) {
-		Map<String, List<String>> corsHeaders = new LinkedHashMap<>();
+		Map<String, List<String>> kept = new LinkedHashMap<>();
 		for (String name : response.getHeaderNames()) {
-			if (name.toLowerCase(Locale.ROOT).startsWith(CORS_HEADER_PREFIX) || HttpHeaders.VARY.equalsIgnoreCase(name)) {
-				corsHeaders.put(name, List.copyOf(response.getHeaders(name)));
+			if (name.toLowerCase(Locale.ROOT).startsWith(CORS_HEADER_PREFIX) || HttpHeaders.VARY.equalsIgnoreCase(name)
+					|| RequestIdFilter.HEADER.equalsIgnoreCase(name)) {
+				kept.put(name, List.copyOf(response.getHeaders(name)));
 			}
 		}
 		response.reset();
-		corsHeaders.forEach((name, values) -> values.forEach(value -> response.addHeader(name, value)));
+		kept.forEach((name, values) -> values.forEach(value -> response.addHeader(name, value)));
 	}
 
 	private static String shorten(String uri) {

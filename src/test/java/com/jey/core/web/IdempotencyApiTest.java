@@ -159,6 +159,23 @@ class IdempotencyApiTest {
 		assertThat(IdempotencyTestController.EXECUTIONS).hasValue(1);
 	}
 
+	// 다시 나가는 것은 처음의 본문이다. 본문의 요청 ID는 일을 한 처음 요청의 것이고, 헤더는 지금 요청의 것이다 (ADR-0028).
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = SENDER)
+	void 다시_돌려주는_거부의_본문에는_처음_요청의_ID가_있다() throws Exception {
+		MockHttpServletResponse first = send("/rejected", key, null).andExpect(status().isConflict())
+				.andReturn().getResponse();
+		String firstId = first.getHeader("X-Request-Id");
+
+		MockHttpServletResponse replayed = send("/rejected", key, null).andExpect(status().isConflict())
+				.andExpect(header().string("Idempotency-Replayed", "true"))
+				.andExpect(jsonPath("$.requestId").value(firstId))
+				.andReturn().getResponse();
+
+		assertThat(firstId).isNotBlank();
+		assertThat(replayed.getHeaders("X-Request-Id")).hasSize(1).doesNotContain(firstId);
+	}
+
 	// 서버 오류는 일이 됐는지 안 됐는지 모르는 답이다. 보관하면 보관 기간 내내 같은 오류가 나간다.
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = SENDER)

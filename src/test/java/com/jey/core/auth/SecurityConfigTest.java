@@ -129,7 +129,9 @@ class SecurityConfigTest {
 						.header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "content-type, x-xsrf-token"))
 				.andExpect(status().isOk())
 				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED_ORIGIN))
-				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
+				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"))
+				// 사전 요청은 CORS 필터에서 끝난다. 요청 ID를 정하는 필터가 그보다 앞이어야 이 응답에도 ID가 실린다.
+				.andExpect(header().exists("X-Request-Id"));
 	}
 
 	// 브라우저는 Idempotency-Key를 실은 요청을 보내기 전에 그 헤더를 실어도 되는지 묻는다. 허용하지 않으면 요청이 나가지도 않는다.
@@ -157,6 +159,16 @@ class SecurityConfigTest {
 				.andExpect(status().isNoContent())
 				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED_ORIGIN))
 				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
+	}
+
+	// 다른 출처의 응답 헤더는 드러내겠다고 적은 것만 프론트가 읽을 수 있다.
+	@Test
+	void 다른_출처의_프론트가_요청_ID_헤더를_읽을_수_있다() throws Exception {
+		mockMvc.perform(get("/api/v1/auth/csrf").header(HttpHeaders.ORIGIN, ALLOWED_ORIGIN))
+				.andExpect(status().isNoContent())
+				.andExpect(header().exists("X-Request-Id"))
+				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+						org.hamcrest.Matchers.containsString("X-Request-Id")));
 	}
 
 	@Test

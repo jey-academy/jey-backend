@@ -30,6 +30,8 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
 	implementation("org.flywaydb:flyway-mysql")
+	// 다른 스레드로 넘기는 작업에 로그 문맥(MDC)을 같이 넘긴다 (ADR-0028). Spring Modulith가 이미 들여오는 라이브러리이고 버전은 Spring Boot가 정한다.
+	implementation("io.micrometer:context-propagation")
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:${property("springdocVersion")}")
 	implementation("org.springframework.modulith:spring-modulith-observability-api")
 	implementation("org.springframework.modulith:spring-modulith-starter-core")
