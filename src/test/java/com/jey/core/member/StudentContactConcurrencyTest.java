@@ -13,6 +13,7 @@ import com.jey.TestcontainersConfiguration;
 import com.jey.core.member.domain.Grade;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.PhoneNumber;
+import com.jey.core.member.domain.GuardianRelation;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -126,6 +127,27 @@ class StudentContactConcurrencyTest {
 					.isInstanceOfSatisfying(BusinessException.class,
 							ex -> assertThat(ex.getErrorCode()).isEqualTo(MemberErrorCode.GUARDIAN_NOT_FOUND));
 			assertThat(studentService.get(student.id()).guardians()).isEmpty();
+		}
+	}
+
+	// 세 명인 학생에게 동시에 둘을 붙인다. 잠그지 않고 세면 둘 다 "아직 세 명"으로 보고 붙여 다섯 명이 된다.
+	@Test
+	void 학부모가_세_명인_학생에게_동시에_둘을_붙이면_하나만_붙는다() throws Exception {
+		for (int round = 0; round < ROUNDS; round++) {
+			StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone()),
+					father(randomPhone()), new GuardianInput("김할머니", GuardianRelation.GRANDPARENT, randomPhone())));
+
+			List<Object> results = runTogether(
+					() -> studentService.addGuardian(student.id(),
+							new GuardianInput("김고모", GuardianRelation.OTHER, randomPhone())),
+					() -> studentService.addGuardian(student.id(),
+							new GuardianInput("김이모", GuardianRelation.OTHER, randomPhone())));
+
+			assertThat(results).filteredOn(Exception.class::isInstance)
+					.singleElement()
+					.isInstanceOfSatisfying(BusinessException.class,
+							ex -> assertThat(ex.getErrorCode()).isEqualTo(MemberErrorCode.TOO_MANY_GUARDIANS));
+			assertThat(studentService.get(student.id()).guardians()).hasSize(4);
 		}
 	}
 

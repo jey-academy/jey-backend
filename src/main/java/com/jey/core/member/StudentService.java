@@ -253,7 +253,7 @@ public class StudentService {
 	 * 학생에게 학부모를 붙인다. 같은 번호의 학부모가 있으면 그 학부모를, 없으면 새로 만들어 붙인다.
 	 * {@link #register}와 같은 이유로 트랜잭션 안에서 부르지 않는다.
 	 *
-	 * @throws BusinessException 없는 학생이거나 이미 붙어 있는 학부모일 때
+	 * @throws BusinessException 없는 학생이거나, 이미 붙어 있는 학부모이거나, 학부모가 이미 네 명일 때
 	 * @throws RateLimitedException 이 계정이 "그 번호가 이미 있다"는 거부를 한도만큼 받아 막혀 있을 때
 	 */
 	public StudentView addGuardian(long studentId, GuardianInput input) {
@@ -265,6 +265,9 @@ public class StudentService {
 		if (!students.existsById(studentId)) {
 			throw new BusinessException(MemberErrorCode.STUDENT_NOT_FOUND);
 		}
+		// 학부모를 찾거나 만드는 일은 아래 트랜잭션보다 먼저 따로 커밋된다. 이미 꽉 찬 학생이면 그 전에 거부해서,
+		// 어디에도 연결되지 않은 학부모 행이 생기지 않게 한다. 정확한 확인은 학생 행을 잠근 뒤에 한 번 더 한다.
+		requireRoomForGuardian(studentId);
 		EnsuredGuardian ensured = guardianService.findOrCreate(input.name(), input.phone());
 		try {
 			return transaction.execute(status -> linkGuardian(studentId, ensured, input.relation()));
@@ -281,11 +284,19 @@ public class StudentService {
 		}
 	}
 
+	private void requireRoomForGuardian(long studentId) {
+		if (links.countByStudentId(studentId) >= StudentGuardian.MAX_PER_STUDENT) {
+			throw new BusinessException(MemberErrorCode.TOO_MANY_GUARDIANS);
+		}
+	}
+
 	private StudentView linkGuardian(long studentId, EnsuredGuardian ensured, GuardianRelation relation) {
 		Student student = find(studentId);
 		if (links.existsByStudentIdAndGuardianId(studentId, ensured.guardianId())) {
 			throw new BusinessException(MemberErrorCode.GUARDIAN_ALREADY_LINKED);
 		}
+		// 학생 행을 잠근 뒤에 센다. 잠그기 전의 확인은 동시에 온 요청을 둘 다 통과시킨다.
+		requireRoomForGuardian(studentId);
 		try {
 			links.saveAndFlush(StudentGuardian.link(studentId, ensured.guardianId(), relation));
 		}

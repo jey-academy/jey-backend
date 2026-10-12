@@ -6,6 +6,7 @@ import java.util.List;
 import com.jey.core.member.StudentRegistration;
 import com.jey.core.member.domain.Grade;
 import com.jey.core.member.domain.Student;
+import com.jey.core.member.domain.StudentGuardian;
 import com.jey.core.shared.PhoneNumber;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
@@ -22,9 +23,7 @@ record StudentCreateRequest(@NotNull Long campusId,
 		@Schema(description = "등록일. 보내지 않으면 오늘") LocalDate registeredAt,
 		@Schema(description = "학생 본인의 휴대전화 번호. 없으면 보내지 않는다", example = "010-1234-5678") PhoneNumber phone,
 		@Schema(description = "학부모. 같은 전화번호를 두 번 적을 수 없다") @Valid @Size(
-				max = StudentCreateRequest.MAX_GUARDIANS) List<@NotNull @Valid GuardianRequest> guardians) {
-
-	static final int MAX_GUARDIANS = 4;
+				max = StudentGuardian.MAX_PER_STUDENT) List<@NotNull @Valid GuardianRequest> guardians) {
 
 	StudentRegistration toRegistration() {
 		return new StudentRegistration(campusId, classId, name, school, grade, registeredAt, phone,

@@ -69,6 +69,19 @@ class MemberApiEdgeTest {
 
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 학부모가_네_명인_학생에게_한_명을_더_붙이면_409다() throws Exception {
+		String created = send(post(STUDENTS), createBody(uniqueName(), guardians(4))).andExpect(status().isCreated())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+		long id = ((Number) com.jayway.jsonpath.JsonPath.read(created, "$.id")).longValue();
+
+		send(post(STUDENTS + "/" + id + "/guardians"), guardianBody(randomPhone())).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("MEMBER_TOO_MANY_GUARDIANS"));
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
 	void 학부모_목록에_빈_원소가_있으면_400이다() throws Exception {
 		send(post(STUDENTS), createBody(uniqueName(), "null")).andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"));
