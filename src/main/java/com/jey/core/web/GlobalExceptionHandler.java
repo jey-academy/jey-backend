@@ -23,7 +23,6 @@ import org.springframework.validation.Errors;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
@@ -34,7 +33,8 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
 	private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-	private static final String CODE = "code";
+	// 오류 응답 본문의 속성 이름. 오류 경로 컨트롤러(ProblemDetailsErrorController)도 같은 이름으로 싣는다.
+	static final String CODE = "code";
 
 	private static final String ERRORS = "errors";
 
@@ -131,8 +131,9 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 				problem.setDetail(errorCode.message());
 				problem.setProperty(CODE, errorCode.code());
 			}
-			if (request.getAttribute(RequestIdFilter.ATTRIBUTE, RequestAttributes.SCOPE_REQUEST) instanceof String id) {
-				problem.setProperty(REQUEST_ID, id);
+			String requestId = RequestIdFilter.of(request);
+			if (requestId != null) {
+				problem.setProperty(REQUEST_ID, requestId);
 			}
 		}
 		return response;

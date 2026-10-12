@@ -2,6 +2,10 @@ package com.jey.core.shared;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 import com.jey.TestcontainersConfiguration;
 import org.junit.jupiter.api.AfterEach;
@@ -51,26 +55,53 @@ class LogContextPropagationTest {
 
 		publish(event);
 
-		await().atMost(TIMEOUT).untilAsserted(() -> assertThat(listener.received()).contains(event));
+		awaitReceived(event);
 		assertThat(listener.logContextOf(event.metadata().eventId())).containsEntry("requestId", "request-that-published-1")
 				.containsEntry("accountId", "7");
+		assertThat(listener.threadOf(event.metadata().eventId())).isNotEqualTo(Thread.currentThread().getName());
 	}
 
 	// 실행 스레드는 다시 쓰인다. 앞의 일이 남긴 값이 요청 없이 일어난 일(주기 작업 등)의 로그에 찍히면 안 된다.
+	// 여기서는 결과만 본다: 로그 문맥을 받았던 바로 그 스레드에서, 로그 문맥 없이 낸 이벤트의 리스너가 빈 문맥으로 돈다.
+	// 빈 값을 넘기는 방식(null이 아닌 빈 Map)이 깨졌을 때 드러나는 갈래는 LogContextAccessorTest가 본다.
 	@Test
-	void 로그_문맥_없이_낸_이벤트의_리스너에는_앞선_일의_값이_남아_있지_않다() {
-		// 실행 스레드를 모두 한 번씩 쓰게 한다(기본 스레드 수 8).
-		for (int i = 0; i < 16; i++) {
+	void 로그_문맥을_받았던_스레드에서도_로그_문맥_없이_낸_이벤트의_리스너는_빈_문맥에서_돈다() {
+		// 실행 스레드를 모두 여러 번 쓰게 한다(기본 스레드 수 8, 이벤트마다 리스너가 둘).
+		List<TestDomainEvent> earlier = new ArrayList<>();
+		for (int i = 0; i < 48; i++) {
 			MDC.put("requestId", "earlier-request-" + i);
-			publish(newEvent(600 + i));
+			TestDomainEvent event = newEvent(600 + i);
+			earlier.add(event);
+			publish(event);
+		}
+		Set<String> threadsThatHadContext = new HashSet<>();
+		for (int i = 0; i < earlier.size(); i++) {
+			TestDomainEvent event = earlier.get(i);
+			awaitReceived(event);
+			assertThat(listener.logContextOf(event.metadata().eventId())).containsEntry("requestId",
+					"earlier-request-" + i);
+			threadsThatHadContext.add(listener.threadOf(event.metadata().eventId()));
 		}
 		MDC.clear();
-		TestDomainEvent event = newEvent(52);
+		List<TestDomainEvent> withoutContext = new ArrayList<>();
+		for (int i = 0; i < 16; i++) {
+			TestDomainEvent event = newEvent(700 + i);
+			withoutContext.add(event);
+			publish(event);
+		}
 
-		publish(event);
+		Set<String> threadsUsed = new HashSet<>();
+		for (TestDomainEvent event : withoutContext) {
+			awaitReceived(event);
+			assertThat(listener.logContextOf(event.metadata().eventId())).isEmpty();
+			threadsUsed.add(listener.threadOf(event.metadata().eventId()));
+		}
+		// 스레드를 실제로 다시 썼는지 본다. 다시 쓰지 않았다면 위의 확인은 새 스레드가 깨끗하다는 것만 보여 준다.
+		assertThat(threadsUsed).containsAnyElementsOf(threadsThatHadContext);
+	}
 
+	private void awaitReceived(TestDomainEvent event) {
 		await().atMost(TIMEOUT).untilAsserted(() -> assertThat(listener.received()).contains(event));
-		assertThat(listener.logContextOf(event.metadata().eventId())).isEmpty();
 	}
 
 	private TestDomainEvent newEvent(long targetId) {

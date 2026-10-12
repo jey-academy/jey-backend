@@ -8,9 +8,13 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -25,22 +29,30 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 class RequestIdFilter extends OncePerRequestFilter implements Ordered {
 
+	private static final Logger log = LoggerFactory.getLogger(RequestIdFilter.class);
+
 	static final String HEADER = "X-Request-Id";
 
-	static final String MDC_KEY = "requestId";
+	private static final String MDC_KEY = "requestId";
 
-	static final String ATTRIBUTE = RequestIdFilter.class.getName() + ".requestId";
+	// 이 속성에 쓰는 곳은 이 필터뿐이다. 그래서 여기서 읽은 값은 언제나 형식에 맞는 ID다.
+	private static final String ATTRIBUTE = RequestIdFilter.class.getName() + ".requestId";
 
 	// 줄바꿈이나 긴 값이 로그에 그대로 찍히지 않게 좁힌다. Nginx의 $request_id(16진수 32자)가 여기에 든다.
-	static final String FORMAT = "[A-Za-z0-9_-]{8,64}";
-
-	private static final Pattern FORMAT_PATTERN = Pattern.compile(FORMAT);
+	private static final Pattern FORMAT = Pattern.compile("[A-Za-z0-9_-]{8,64}");
 
 	/**
 	 * @return 이 요청의 ID. 이 필터를 거치지 않은 요청이면 {@code null}
 	 */
 	static String of(HttpServletRequest request) {
 		return (request.getAttribute(ATTRIBUTE) instanceof String id) ? id : null;
+	}
+
+	/**
+	 * @return 이 요청의 ID. 이 필터를 거치지 않은 요청이면 {@code null}
+	 */
+	static String of(WebRequest request) {
+		return (request.getAttribute(ATTRIBUTE, RequestAttributes.SCOPE_REQUEST) instanceof String id) ? id : null;
 	}
 
 	// 오류를 잡는 필터(FilterExceptionFilter)보다도 바깥이어야 그 필터가 남기는 로그에 ID가 찍힌다.
@@ -77,9 +89,20 @@ class RequestIdFilter extends OncePerRequestFilter implements Ordered {
 			return existing;
 		}
 		String incoming = request.getHeader(HEADER);
-		if (incoming != null && FORMAT_PATTERN.matcher(incoming).matches()) {
+		if (incoming == null) {
+			return generate();
+		}
+		if (FORMAT.matcher(incoming).matches()) {
 			return incoming;
 		}
+		// 앞단이 형식 밖의 값을 보내면 모든 요청이 새 ID를 받아, 앞단의 로그와 이 서버의 로그가 이어지지 않는다.
+		// 그것을 알아챌 수 있게 흔적을 남기되, 로그인 없이도 보낼 수 있는 값이라 평소에는 찍지 않는 수준(DEBUG)으로 남긴다.
+		// 값은 찍지 않는다. 찍으면 형식을 좁힌 뜻이 없다.
+		log.debug("형식에 맞지 않는 {}를 버리고 새로 만든다: length={}", HEADER, incoming.length());
+		return generate();
+	}
+
+	private static String generate() {
 		return UUID.randomUUID().toString().replace("-", "");
 	}
 

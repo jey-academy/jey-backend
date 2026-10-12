@@ -129,7 +129,9 @@ class SecurityConfigTest {
 						.header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "content-type, x-xsrf-token"))
 				.andExpect(status().isOk())
 				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ALLOWED_ORIGIN))
-				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
+				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"))
+				// 사전 요청은 CORS 필터에서 끝난다. 요청 ID를 정하는 필터가 그보다 앞이어야 이 응답에도 ID가 실린다.
+				.andExpect(header().exists("X-Request-Id"));
 	}
 
 	// 브라우저는 Idempotency-Key를 실은 요청을 보내기 전에 그 헤더를 실어도 되는지 묻는다. 허용하지 않으면 요청이 나가지도 않는다.

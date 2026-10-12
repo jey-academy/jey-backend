@@ -82,6 +82,9 @@ class SecurityConfig {
 				.securityContext(context -> context.securityContextRepository(securityContextRepository))
 				// 로그인 정보를 읽기 전에, 최대 유지 시간이 지난 세션을 먼저 끊는다.
 				.addFilterBefore(new SessionMaxLifetimeFilter(clock), SecurityContextHolderFilter.class)
+				// 로그인 정보를 읽을 수 있게 된 바로 다음에 계정 ID를 로그 문맥에 넣는다 (ADR-0028).
+				// CSRF 검사보다 앞이라, 로그인한 사용자의 요청이 거기서 막혀도 그 로그에 계정 ID가 찍힌다.
+				.addFilterAfter(new AccountLogContextFilter(), SecurityContextHolderFilter.class)
 				// 인증 없는 요청을 로그인 후 다시 실행하려고 세션에 저장하는 기능을 끈다.
 				// 켜 두면 인증 없는 GET마다 Redis에 세션이 생긴다.
 				.requestCache(AbstractHttpConfigurer::disable)

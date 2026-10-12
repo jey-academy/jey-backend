@@ -62,6 +62,17 @@ class RequestIdApiTest {
 				.andExpect(content().string(""));
 	}
 
+	// 요청 ID를 본문에 싣는 것은 오류 응답뿐이다. 성공 응답의 본문은 API 명세 그대로다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = 9605)
+	void 본문이_있는_성공_응답에도_본문에는_싣지_않는다() throws Exception {
+		mockMvc.perform(post("/api/v1/test-idempotency/unguarded").with(csrfToken(mockMvc)))
+				.andExpect(status().isOk())
+				.andExpect(header().string(HEADER, matchesPattern("[0-9a-f]{32}")))
+				.andExpect(jsonPath("$.serial").exists())
+				.andExpect(jsonPath("$.requestId").doesNotExist());
+	}
+
 	@Test
 	@WithMockUser
 	void 업무_예외의_본문에_요청_ID를_싣는다() throws Exception {
@@ -151,6 +162,32 @@ class RequestIdApiTest {
 						.doesNotContain("test-staff").doesNotContain("테스트 사용자"));
 	}
 
+	// CSRF 거부는 프론트가 토큰을 싣지 못할 때의 대표 증상이다. "이 직원의 저장이 왜 안 되나"를 계정 ID로 찾을 수 있어야 한다.
+	// 계정 ID는 CSRF 검사보다 앞에서 넣는다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = 9604)
+	void 로그인한_요청이_보안_필터에서_막혀도_그_로그에_계정_ID가_찍힌다(CapturedOutput output) throws Exception {
+		String id = mockMvc.perform(post("/api/v1/test-errors/validated"))
+				.andExpect(status().isForbidden())
+				.andReturn().getResponse().getHeader(HEADER);
+
+		assertThat(output.getOut().lines().filter(line -> line.contains("CSRF 토큰 거부")))
+				.isNotEmpty()
+				.allSatisfy(line -> assertThat(line).contains("[" + id + "|9604] "));
+	}
+
+	// 로그인은 했는데 누구인지 알 수 없는 로그인 정보다. 요청은 그대로 처리하고, 로그인하지 않은 요청과 구분되게 표시를 넣는다.
+	@Test
+	@WithMockUser
+	void 누구인지_알_수_없는_로그인_정보는_요청을_멈추지_않고_표시만_남긴다(CapturedOutput output) throws Exception {
+		String id = expectSameIdInHeaderAndBody(mockMvc.perform(get("/api/v1/test-errors/unexpected"))
+				.andExpect(status().isInternalServerError()));
+
+		assertThat(output.getOut().lines().filter(line -> line.contains("서버 오류 응답")))
+				.isNotEmpty()
+				.allSatisfy(line -> assertThat(line).contains("[" + id + "|unknown] "));
+	}
+
 	// 스레드는 다음 요청이 다시 쓴다. 앞 요청의 계정이 남아 있으면 로그인하지 않은 요청이 그 계정의 것으로 보인다.
 	// MockMvc는 요청을 모두 이 테스트의 스레드에서 처리하므로 같은 스레드를 다시 쓰는 경우와 같다.
 	@Test
@@ -196,6 +233,10 @@ class RequestIdApiTest {
 		assertThat(output).contains("서버 오류 응답").contains("접근 거부").contains("CSRF 토큰 거부")
 				.contains("이미 다른 내용에 쓴 멱등 키가 왔다");
 		assertThat(output).doesNotContain(SEARCHED);
+		// 멱등 키 필터는 보안 필터 뒤에서 돈다. 그 필터가 남기는 로그에도 계정 ID가 찍힌다.
+		assertThat(output.getOut().lines().filter(line -> line.contains("이미 다른 내용에 쓴 멱등 키가 왔다")))
+				.isNotEmpty()
+				.allSatisfy(line -> assertThat(line).contains("|9603] "));
 	}
 
 	private static String expectSameIdInHeaderAndBody(ResultActions result) throws Exception {

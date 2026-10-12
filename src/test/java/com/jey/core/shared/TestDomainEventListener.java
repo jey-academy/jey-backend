@@ -22,6 +22,8 @@ class TestDomainEventListener {
 
 	private final Map<UUID, Map<String, String>> logContexts = new ConcurrentHashMap<>();
 
+	private final Map<UUID, String> threads = new ConcurrentHashMap<>();
+
 	@ApplicationModuleListener
 	void on(DomainEvent event) {
 		if (failOnce.remove(event.metadata().eventId())) {
@@ -29,12 +31,18 @@ class TestDomainEventListener {
 		}
 		Map<String, String> logContext = MDC.getCopyOfContextMap();
 		logContexts.put(event.metadata().eventId(), (logContext != null) ? logContext : Map.of());
+		threads.put(event.metadata().eventId(), Thread.currentThread().getName());
 		received.add(event);
 	}
 
 	// 리스너가 돌 때 그 스레드의 로그 문맥(MDC). 받은 적 없는 이벤트면 null
 	Map<String, String> logContextOf(UUID eventId) {
 		return logContexts.get(eventId);
+	}
+
+	// 리스너가 돈 스레드의 이름. 받은 적 없는 이벤트면 null
+	String threadOf(UUID eventId) {
+		return threads.get(eventId);
 	}
 
 	List<DomainEvent> received() {
