@@ -11,7 +11,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *
  * <p>로그인된 세션을 손에 넣은 사람이 "지금 비밀번호"를 대입으로 알아내는 것을 느리게 한다. 틀린 것만 센다.
  *
- * @param window 세는 구간. 처음 틀린 때부터 이 시간이 지나면 횟수가 지워진다
+ * @param window 세는 구간. 그 계정이 비밀번호 변경을 처음 시도한 때(맞은 것 포함)부터 이 시간이 지나면 횟수가 지워진다.
+ * 그래서 막힌 뒤 풀릴 때까지의 시간은 이보다 짧을 수 있다
  * @param maxFailures 구간 안에서 지금 비밀번호를 틀릴 수 있는 횟수. 넘으면 맞는 비밀번호로도 바꿀 수 없다
  */
 @ConfigurationProperties("jey.auth.password-change-limit")

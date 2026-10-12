@@ -24,10 +24,16 @@ public class User extends BaseEntity {
 
 	private static final int MAX_LOGIN_ID_LENGTH = 50;
 
-	private static final int MAX_NAME_LENGTH = 50;
+	/** 요청을 받는 쪽의 검증도 이 값을 쓴다. 두 곳에 따로 적으면 한쪽만 바뀌었을 때 검증을 통과한 값이 여기서 예외가 된다. */
+	public static final int MAX_NAME_LENGTH = 50;
 
-	// 영문 소문자, 숫자, 점, 밑줄, 하이픈만. 3~50자, 첫 글자는 영문이나 숫자.
-	private static final Pattern LOGIN_ID = Pattern.compile("[a-z0-9][a-z0-9._-]{2,49}");
+	/** 영문 소문자, 숫자, 점, 밑줄, 하이픈만. 3~50자, 첫 글자는 영문이나 숫자. 요청을 받는 쪽의 검증도 이 값을 쓴다. */
+	public static final String LOGIN_ID_PATTERN = "[a-z0-9][a-z0-9._-]{2,49}";
+
+	private static final Pattern LOGIN_ID = Pattern.compile(LOGIN_ID_PATTERN);
+
+	// 인코더가 만든 해시의 모양: {알고리즘 이름} 뒤에 값이 온다.
+	private static final Pattern ENCODED_PASSWORD = Pattern.compile("\\{[A-Za-z0-9@._-]+\\}.+");
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -208,9 +214,10 @@ public class User extends BaseEntity {
 		return status;
 	}
 
-	// 인코더가 만든 해시는 {bcrypt}처럼 알고리즘 이름으로 시작한다. 원문 비밀번호를 그대로 넘기는 실수를 여기서 막는다.
+	// 인코더가 만든 해시는 {bcrypt}처럼 알고리즘 이름으로 시작하고 그 뒤에 값이 온다. 원문 비밀번호를 그대로 넘기는 실수를 여기서 막는다.
+	// 모양만 본다. 그 모양을 한 원문({a}b 같은 것)까지 가려내지는 못한다.
 	private static void requireHash(String passwordHash) {
-		if (!passwordHash.startsWith("{")) {
+		if (!ENCODED_PASSWORD.matcher(passwordHash).matches()) {
 			throw new IllegalArgumentException("passwordHash는 해시된 값이어야 한다");
 		}
 	}
