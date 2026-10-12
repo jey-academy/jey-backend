@@ -126,6 +126,19 @@ class InitialAdminInitializerTest {
 		verify(users, never()).save(any());
 	}
 
+	// 화면에서 만드는 계정과 같은 규칙이다. 아이디를 그대로 비밀번호로 쓴 관리자 계정으로 뜨지 않는다.
+	@Test
+	void 비밀번호가_아이디와_같으면_서버_시작을_멈춘다() {
+		when(users.count()).thenReturn(0L);
+
+		assertThatIllegalStateException()
+				.isThrownBy(() -> initializer(new InitialAdmin("owner-admin", "Owner-Admin", "박원장", false))
+						.createIfNoAccounts())
+				.withMessageContaining("아이디와 달라야")
+				.withMessageNotContaining("Owner-Admin");
+		verify(users, never()).save(any());
+	}
+
 	private InitialAdminInitializer initializer(InitialAdmin initialAdmin) {
 		var properties = new AuthProperties(List.of(), false, null, false, Map.of(), Map.of(), initialAdmin);
 		return new InitialAdminInitializer(users, passwordEncoder, properties);
