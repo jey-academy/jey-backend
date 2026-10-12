@@ -269,6 +269,30 @@ class StudentRegistrationTest {
 		return com.jey.core.shared.TestPhones.protector().fullIndex(phone);
 	}
 
+	// 화면의 등록은 요청 검증에서 먼저 걸린다. 요청을 거치지 않고 부르는 경로(일괄 등록 등)도 같은 상한을 넘지 못해야 한다.
+	@Test
+	void 학부모를_다섯_명_적은_등록은_거부되고_학생도_학부모도_생기지_않는다() {
+		String name = uniqueName();
+		long guardiansBefore = guardians.count();
+
+		assertFails(() -> studentService.register(registration(name, mother(randomPhone()), father(randomPhone()),
+				new GuardianInput("김할머니", GuardianRelation.GRANDPARENT, randomPhone()),
+				new GuardianInput("김고모", GuardianRelation.OTHER, randomPhone()),
+				new GuardianInput("김이모", GuardianRelation.OTHER, randomPhone()))), MemberErrorCode.TOO_MANY_GUARDIANS);
+
+		assertThat(studentService.search(null, name, null, 0, 20).getContent()).isEmpty();
+		assertThat(guardians.count()).isEqualTo(guardiansBefore);
+	}
+
+	@Test
+	void 학부모를_네_명_적은_등록은_된다() {
+		StudentView created = studentService.register(registration(uniqueName(), mother(randomPhone()),
+				father(randomPhone()), new GuardianInput("김할머니", GuardianRelation.GRANDPARENT, randomPhone()),
+				new GuardianInput("김고모", GuardianRelation.OTHER, randomPhone())));
+
+		assertThat(created.guardians()).hasSize(4);
+	}
+
 	static void assertFails(ThrowingCallable call, ErrorCode expected) {
 		assertThatThrownBy(call).isInstanceOfSatisfying(BusinessException.class,
 				ex -> assertThat(ex.getErrorCode()).isEqualTo(expected));

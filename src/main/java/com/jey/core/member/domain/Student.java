@@ -190,9 +190,10 @@ public class Student extends BaseEntity {
 		return value;
 	}
 
-	/** 등록일로 받을 수 있는 날짜인지. */
+	/** 등록일로 받을 수 있는 날짜인지. 값이 없으면({@code null}) 받을 수 없는 것으로 답한다. */
 	public static boolean isRegisteredAtInRange(LocalDate registeredAt) {
-		return !registeredAt.isBefore(MIN_REGISTERED_AT) && !registeredAt.isAfter(MAX_REGISTERED_AT);
+		return registeredAt != null && !registeredAt.isBefore(MIN_REGISTERED_AT)
+				&& !registeredAt.isAfter(MAX_REGISTERED_AT);
 	}
 
 	private static LocalDate validRegisteredAt(LocalDate registeredAt) {

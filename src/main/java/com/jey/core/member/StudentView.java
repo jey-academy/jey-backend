@@ -2,6 +2,7 @@ package com.jey.core.member;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 
 import com.jey.core.member.domain.Grade;
 import com.jey.core.member.domain.GuardianRelation;
@@ -34,6 +35,13 @@ public record StudentView(long id, long campusId, Long classId, String name, Str
 	 * @param relation 학생 본인 번호면 {@code null}. 본인 번호인지는 {@link #studentOwn()}으로 확인한다
 	 */
 	public record ContactView(String name, GuardianRelation relation, PhoneNumber phone) {
+
+		// 연락처가 없는 학생은 이 값이 아예 없다(null). 값이 있으면 이름과 번호가 반드시 있다.
+		// 번호 없는 연락처를 만들 수 있으면 "연락처 없음"이 두 가지 모양이 된다.
+		public ContactView {
+			Objects.requireNonNull(name, "name");
+			Objects.requireNonNull(phone, "phone");
+		}
 
 		public static ContactView ofGuardian(String name, GuardianRelation relation, PhoneNumber phone) {
 			if (relation == null) {

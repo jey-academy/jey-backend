@@ -19,7 +19,10 @@ import jakarta.persistence.Table;
 @Table(name = "core_student_guardian")
 public class StudentGuardian extends BaseEntity {
 
-	/** 학생 한 명에게 연결할 수 있는 학부모 수. 등록할 때와 나중에 추가할 때 모두 이 값을 넘지 못한다. */
+	/**
+	 * 학생 한 명에게 연결할 수 있는 학부모 수. 등록할 때와 나중에 추가할 때 모두 이 값을 넘지 못한다.
+	 * 연결 하나가 스스로 지킬 수 있는 규칙이 아니라서, 세는 것은 {@code StudentService}가 한다(추가는 학생 행을 잠근 뒤에).
+	 */
 	public static final int MAX_PER_STUDENT = 4;
 
 

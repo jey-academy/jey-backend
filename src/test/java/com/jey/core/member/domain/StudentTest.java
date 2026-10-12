@@ -154,4 +154,13 @@ class StudentTest {
 		assertThat(student.getRegisteredAt()).isEqualTo(LocalDate.of(2026, 3, 2));
 	}
 
+	@Test
+	void 등록일의_범위를_묻는_데_값이_없으면_범위_밖이다() {
+		assertThat(Student.isRegisteredAtInRange(null)).isFalse();
+		assertThat(Student.isRegisteredAtInRange(Student.MIN_REGISTERED_AT)).isTrue();
+		assertThat(Student.isRegisteredAtInRange(Student.MAX_REGISTERED_AT)).isTrue();
+		assertThat(Student.isRegisteredAtInRange(Student.MIN_REGISTERED_AT.minusDays(1))).isFalse();
+		assertThat(Student.isRegisteredAtInRange(Student.MAX_REGISTERED_AT.plusDays(1))).isFalse();
+	}
+
 }

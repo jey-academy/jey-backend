@@ -39,9 +39,9 @@ import com.jey.core.shared.PhoneNumber;
 import com.jey.core.shared.PhoneProtector;
 import com.jey.core.shared.RateLimitedException;
 import com.jey.core.shared.UniqueKeys;
-import org.springframework.context.ApplicationEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -145,6 +145,10 @@ public class StudentService {
 		}
 		if (inputs.stream().map(GuardianInput::phone).distinct().count() != inputs.size()) {
 			throw new BusinessException(MemberErrorCode.GUARDIAN_PHONE_REPEATED);
+		}
+		// 화면에서 온 요청은 요청 검증에서 먼저 걸린다. 여기서도 보는 것은 요청을 거치지 않고 부르는 경로(일괄 등록 등)를 위해서다.
+		if (inputs.size() > StudentGuardian.MAX_PER_STUDENT) {
+			throw new BusinessException(MemberErrorCode.TOO_MANY_GUARDIANS);
 		}
 		requireValidPlacement(registration.campusId(), registration.classId(), null);
 		LocalDate registeredAt = (registration.registeredAt() != null) ? registration.registeredAt()
@@ -253,7 +257,7 @@ public class StudentService {
 	 * 학생에게 학부모를 붙인다. 같은 번호의 학부모가 있으면 그 학부모를, 없으면 새로 만들어 붙인다.
 	 * {@link #register}와 같은 이유로 트랜잭션 안에서 부르지 않는다.
 	 *
-	 * @throws BusinessException 없는 학생이거나, 이미 붙어 있는 학부모이거나, 학부모가 이미 네 명일 때
+	 * @throws BusinessException 없는 학생이거나, 이미 붙어 있는 학부모이거나, 학부모 수가 상한({@link StudentGuardian#MAX_PER_STUDENT})에 찼을 때
 	 * @throws RateLimitedException 이 계정이 "그 번호가 이미 있다"는 거부를 한도만큼 받아 막혀 있을 때
 	 */
 	public StudentView addGuardian(long studentId, GuardianInput input) {
@@ -266,7 +270,8 @@ public class StudentService {
 			throw new BusinessException(MemberErrorCode.STUDENT_NOT_FOUND);
 		}
 		// 학부모를 찾거나 만드는 일은 아래 트랜잭션보다 먼저 따로 커밋된다. 이미 꽉 찬 학생이면 그 전에 거부해서,
-		// 어디에도 연결되지 않은 학부모 행이 생기지 않게 한다. 정확한 확인은 학생 행을 잠근 뒤에 한 번 더 한다.
+		// 어디에도 연결되지 않은 학부모 행이 생기는 일을 줄인다. 정확한 확인은 학생 행을 잠근 뒤에 한 번 더 한다.
+		// 동시에 온 요청은 둘 다 이 확인을 통과할 수 있다. 그때 진 쪽이 만든 학부모는 연결 없이 남는다(아래에서 경고를 남긴다).
 		requireRoomForGuardian(studentId);
 		EnsuredGuardian ensured = guardianService.findOrCreate(input.name(), input.phone());
 		try {
@@ -279,6 +284,12 @@ public class StudentService {
 				DeniedAttempts.record(auditLog, () -> AuditEntry.of(MemberAuditAction.GUARDIAN_ALREADY_LINKED)
 						.target(MemberRefs.student(studentId))
 						.with("guardianId", ensured.guardianId()), ex);
+			}
+			// 방금 만든 학부모인데 붙이지 못했다. 그 행은 어느 학생에게도 연결되지 않은 채 남는다.
+			// 나중에 같은 번호가 들어오면 "이미 있는 학부모"로 나오는데, 어느 학생 화면에서도 찾을 수 없다. 흔적을 남겨 둔다.
+			if (!ensured.existing()) {
+				log.warn("새로 만든 학부모를 학생에게 붙이지 못했다. 연결 없는 학부모가 남는다: guardianId={} studentId={} code={}",
+						ensured.guardianId(), studentId, ex.getErrorCode().code());
 			}
 			throw ex;
 		}
@@ -471,7 +482,8 @@ public class StudentService {
 	// 같은 페이지의 다른 학생까지 볼 수 없게 된다. 조용히 넘기지는 않는다. 만날 때마다 경고를 남긴다.
 	private static ContactView ownContact(Student student, PhoneNumber phone) {
 		if (phone == null) {
-			log.warn("학생에게 연락처가 하나도 없다. 대표 연락처 없이 내보낸다: studentId={}", student.getId());
+			log.warn("학생에게 연락처가 하나도 없다. 대표 연락처 없이 내보낸다. 학부모나 본인 번호를 넣어야 한다: studentId={} campusId={}",
+					student.getId(), student.getCampusId());
 			return null;
 		}
 		return ContactView.ofStudent(student.getName(), phone);

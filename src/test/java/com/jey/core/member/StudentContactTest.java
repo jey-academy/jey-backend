@@ -34,6 +34,7 @@ import static com.jey.core.member.StudentRegistrationTest.assertFails;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
 // 연락처와 대표 연락처, 형제에 관한 규칙 가운데 다른 테스트가 한쪽 방향만 본 것들.
 @Import(TestcontainersConfiguration.class)
@@ -196,8 +197,6 @@ class StudentContactTest {
 		assertThat(studentService.get(student.id()).guardians().getFirst().name()).isEqualTo("김어머니");
 	}
 
-	// 학부모는 따로 커밋된다. 바깥에 트랜잭션이 열려 있으면 방금 만든 학부모가 보이지 않아 엉뚱한 곳에서 실패한다.
-	// 그 전에 무엇이 잘못됐는지 알려 주고 멈춘다.
 	// 등록은 한 번에 네 명까지다. 나중에 한 명씩 붙이는 경로에 같은 상한이 없으면 그 상한은 뜻이 없다.
 	@Test
 	void 학부모가_네_명인_학생에게는_더_붙일_수_없고_학부모도_새로_생기지_않는다() {
@@ -229,6 +228,8 @@ class StudentContactTest {
 		assertFails(() -> studentService.addGuardian(id, mother(motherPhone)), MemberErrorCode.TOO_MANY_GUARDIANS);
 	}
 
+	// 학부모는 따로 커밋된다. 바깥에 트랜잭션이 열려 있으면 방금 만든 학부모가 보이지 않아 엉뚱한 곳에서 실패한다.
+	// 그 전에 무엇이 잘못됐는지 알려 주고 멈춘다.
 	@Test
 	void 등록과_학부모_추가는_트랜잭션_안에서_부를_수_없다() {
 		PhoneNumber phone = randomPhone();
@@ -258,6 +259,19 @@ class StudentContactTest {
 				.isThrownBy(() -> new GuardianInput("김어머니", GuardianRelation.MOTHER, null))
 				.withMessageNotContaining("010");
 		assertThatIllegalArgumentException().isThrownBy(() -> ContactView.ofGuardian("김어머니", null, phone));
+	}
+
+	// 연락처가 없는 학생은 대표 연락처가 아예 없다(null). 번호 없는 연락처 값을 만들 수 있으면 "없음"이 두 가지 모양이 된다.
+	@Test
+	void 대표_연락처에는_이름과_번호가_반드시_있다() {
+		PhoneNumber phone = randomPhone();
+
+		assertThatNullPointerException().isThrownBy(() -> ContactView.ofStudent("김학생", null));
+		assertThatNullPointerException().isThrownBy(() -> ContactView.ofStudent(null, phone));
+		assertThatNullPointerException()
+			.isThrownBy(() -> ContactView.ofGuardian("김어머니", GuardianRelation.MOTHER, null));
+		assertThatNullPointerException().isThrownBy(() -> new ContactView("김어머니", GuardianRelation.MOTHER, null));
+		assertThat(ContactView.ofStudent("김학생", phone).studentOwn()).isTrue();
 	}
 
 	@Test

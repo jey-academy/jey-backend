@@ -18,6 +18,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.test.context.ActiveProfiles;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import static com.jey.core.member.MemberFixtures.DONGTAN;
 import static com.jey.core.member.MemberFixtures.NEUNGDONG;
@@ -39,6 +42,7 @@ import static org.awaitility.Awaitility.await;
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class StudentQueryTest {
 
 	@Autowired
@@ -108,6 +112,24 @@ class StudentQueryTest {
 		assertThat(found.primaryContact()).isNull();
 		assertThat(found.guardians()).isEmpty();
 		assertThat(found.phone()).isNull();
+	}
+
+	// 예외 대신 빈 칸으로 내보내므로, 이 로그가 그런 자료가 있다는 것을 알리는 유일한 통로다.
+	// 어느 학생인지와 어느 지점인지를 ID로 남긴다. 이름은 남기지 않는다.
+	@Test
+	void 연락처가_없는_학생을_만나면_누구인지_경고로_남긴다(CapturedOutput output) {
+		String prefix = uniqueName();
+		long first = studentService.register(registration(prefix + "-가", mother(randomPhone()))).id();
+		long second = studentService.register(registration(prefix + "-나", mother(randomPhone()))).id();
+		removeAllContacts(jdbc, first);
+		removeAllContacts(jdbc, second);
+
+		List<StudentSummaryView> found = studentService.search(null, prefix, null, 0, 20).getContent();
+
+		assertThat(found).hasSize(2).allSatisfy(student -> assertThat(student.primaryContact()).isNull());
+		assertThat(output.getAll()).contains("studentId=" + first + " campusId=" + DONGTAN)
+			.contains("studentId=" + second + " campusId=" + DONGTAN)
+			.doesNotContain(prefix);
 	}
 
 	@Test
