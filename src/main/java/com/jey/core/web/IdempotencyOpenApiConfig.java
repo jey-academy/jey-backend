@@ -22,8 +22,13 @@ class IdempotencyOpenApiConfig {
 					.required(true)
 					.description("이번 시도의 키(UUID). 같은 시도를 다시 보낼 때는 같은 키를, 값을 고쳐 새로 낼 때는 새 키를 쓴다. "
 							+ "같은 키의 같은 요청은 한 번만 실행되고 처음의 응답이 다시 온다(응답 헤더 Idempotency-Replayed: true). "
-							+ "없으면 400, 같은 키에 다른 내용이면 422, 처음 요청이 처리 중이면 409")
-					.schema(new StringSchema().minLength(8).maxLength(128).pattern("^[A-Za-z0-9_-]{8,128}$"))
+							+ "없거나 형식이 틀리면 400(COMMON_IDEMPOTENCY_KEY_REQUIRED), "
+							+ "같은 키에 다른 내용이면 422(COMMON_IDEMPOTENCY_KEY_REUSED), "
+							+ "처음 요청이 처리 중이면 409(COMMON_IDEMPOTENCY_IN_PROGRESS). "
+							+ "409는 업무 규칙의 거부에도 쓰이므로 코드로 가른다. 다시 온 응답에는 상태와 본문만 있다")
+					.schema(new StringSchema().minLength(IdempotencyFilter.KEY_MIN_LENGTH)
+						.maxLength(IdempotencyFilter.KEY_MAX_LENGTH)
+						.pattern("^" + IdempotencyFilter.KEY_FORMAT + "$"))
 					.example("3f2b8c1e-5a7d-4e2f-9b1c-0d6a8e4f2c11"));
 			}
 			return operation;

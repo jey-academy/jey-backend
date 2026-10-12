@@ -216,7 +216,7 @@ class StudentRegistrationTest {
 		assertFails(() -> studentService.register(withClass(999_999_999L)), MemberErrorCode.INVALID_CLASS);
 	}
 
-	// Idempotency-Key가 생기기 전까지, 같은 등록 요청이 두 번 와도 학생이 둘 생기지 않게 한다.
+	// 키가 다른 같은 등록 요청(버튼을 두 번 누름)은 Idempotency-Key가 막지 못한다. 그때도 학생이 둘 생기지 않게 한다.
 	@Test
 	void 같은_학부모에게_같은_이름의_학생을_두_번_등록할_수_없다() {
 		PhoneNumber motherPhone = randomPhone();

@@ -19,11 +19,8 @@ import com.jey.core.web.IdempotencyStore.Claim;
 import com.jey.core.web.IdempotencyStore.StoredResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.system.CapturedOutput;
-import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -35,7 +32,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @ActiveProfiles("test")
-@ExtendWith(OutputCaptureExtension.class)
 class IdempotencyStoreTest {
 
 	private static final AtomicLong ACCOUNT_SEQUENCE = new AtomicLong(
@@ -146,18 +142,84 @@ class IdempotencyStoreTest {
 
 	// 임대가 끝난 뒤 같은 키가 다시 선점됐다. 늦게 끝난 앞의 요청이 그 선점을 덮거나 지우면 안 된다.
 	@Test
-	void 임대가_끝난_뒤_늦게_끝낸_쪽은_새_선점을_건드리지_못한다(CapturedOutput output) throws InterruptedException {
+	void 임대가_끝난_뒤_늦게_끝낸_쪽은_새_선점을_건드리지_못한다() throws InterruptedException {
 		Claim.Acquired slow = acquire(key);
 		expire(key);
 		Claim.Acquired next = acquire(key);
 
-		store.complete(account, key, slow, new StoredResponse(500, null, new byte[0]));
-		store.release(account, key, slow);
+		// 넣지 못했다고 알려 준다. 부른 쪽이 로그를 남긴다.
+		assertThat(store.complete(account, key, slow, new StoredResponse(500, null, new byte[0]))).isFalse();
+		assertThat(store.release(account, key, slow)).isFalse();
 
 		assertThat(store.claim(account, key, FINGERPRINT)).isInstanceOf(Claim.InProgress.class);
-		assertThat(output.getOut()).contains("멱등 키의 응답을 보관하지 못했다");
-		store.complete(account, key, next, CREATED);
+		assertThat(store.complete(account, key, next, CREATED)).isTrue();
 		assertThat(store.claim(account, key, FINGERPRINT)).isInstanceOf(Claim.Completed.class);
+	}
+
+	// 임대가 끝나 키가 사라졌거나 저장소가 비워진 경우다. 없는 선점을 끝내면서 응답만 있는 기록을 만들지 않는다.
+	@Test
+	void 선점이_사라진_뒤에는_끝내거나_풀_수_없다() throws InterruptedException {
+		Claim.Acquired gone = acquire(key);
+		expire(key);
+
+		assertThat(store.complete(account, key, gone, CREATED)).isFalse();
+		assertThat(store.release(account, key, gone)).isFalse();
+
+		assertThat(redis.hasKey(IdempotencyStore.redisKey(account, key))).isFalse();
+	}
+
+	// 끝낸 뒤에 같은 선점으로 푸는 코드가 생기면(예: finally에서 풀기) 보관한 응답이 지워지고 같은 키가 다시 실행된다.
+	@Test
+	void 끝낸_선점은_풀거나_다시_끝낼_수_없다() {
+		Claim.Acquired claim = acquire(key);
+		assertThat(store.complete(account, key, claim, CREATED)).isTrue();
+
+		assertThat(store.release(account, key, claim)).isFalse();
+		assertThat(store.complete(account, key, claim, new StoredResponse(409, "application/problem+json",
+				"{\"code\":\"X\"}".getBytes(StandardCharsets.UTF_8)))).isFalse();
+
+		assertThat(store.claim(account, key, FINGERPRINT)).isInstanceOfSatisfying(Claim.Completed.class,
+				completed -> {
+					assertThat(completed.response().status()).isEqualTo(201);
+					assertThat(completed.response().body()).isEqualTo(CREATED.body());
+				});
+	}
+
+	// 깨진 기록은 보관 기간 내내 같은 오류를 낸다. 어느 키인지 알아야 지울 수 있다.
+	@Test
+	void 보관한_응답을_읽지_못하면_어느_키인지_알려_준다() {
+		String redisKey = IdempotencyStore.redisKey(account, key);
+		store.complete(account, key, acquire(key), CREATED);
+		redis.opsForHash().put(redisKey, "status", "이백일");
+
+		assertThatThrownBy(() -> store.claim(account, key, FINGERPRINT)).isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining(redisKey);
+
+		redis.opsForHash().put(redisKey, "status", "201");
+		redis.opsForHash().put(redisKey, "body", "base64가 아니다!");
+		assertThatThrownBy(() -> store.claim(account, key, FINGERPRINT)).isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining(redisKey);
+	}
+
+	@Test
+	void 로그에_남기는_키의_식별자는_저장소_키에_든_해시의_앞부분이다() {
+		String id = IdempotencyStore.keyId(key);
+
+		assertThat(id).hasSize(12).doesNotContain(key.substring(0, 8));
+		assertThat(IdempotencyStore.redisKey(account, key)).contains(":" + id);
+	}
+
+	@Test
+	void 보관하는_응답의_상태는_HTTP_상태_코드여야_한다() {
+		assertThatThrownBy(() -> new StoredResponse(0, null, new byte[0])).isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> new StoredResponse(99, null, new byte[0]))
+				.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> new StoredResponse(600, null, new byte[0]))
+				.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> new StoredResponse(200, null, null)).isInstanceOf(NullPointerException.class);
+		assertThatThrownBy(() -> new Claim.Acquired(null)).isInstanceOf(NullPointerException.class);
+		assertThat(new StoredResponse(100, null, new byte[0]).status()).isEqualTo(100);
+		assertThat(new StoredResponse(599, null, new byte[0]).status()).isEqualTo(599);
 	}
 
 	// 키는 화면이 만든다. 다른 계정이 같은 키를 쓰면 남의 응답을 받게 된다.
@@ -238,6 +300,12 @@ class IdempotencyStoreTest {
 				.hasMessageContaining("processing-lease");
 		assertThatThrownBy(() -> new IdempotencyProperties(null, Duration.ofMinutes(2)))
 				.isInstanceOf(IllegalArgumentException.class);
+		// "2m"을 "2h"로 잘못 적으면 서버가 죽은 요청의 키가 두 시간 동안 거부된다.
+		assertThatThrownBy(() -> new IdempotencyProperties(Duration.ofHours(24), Duration.ofMinutes(10).plusSeconds(1)))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("processing-lease");
+		assertThat(new IdempotencyProperties(Duration.ofHours(24), Duration.ofMinutes(10)).processingLease())
+				.isEqualTo(Duration.ofMinutes(10));
 		assertThat(new IdempotencyProperties(Duration.ofHours(24), Duration.ofMinutes(2)).retention())
 				.isEqualTo(Duration.ofHours(24));
 	}

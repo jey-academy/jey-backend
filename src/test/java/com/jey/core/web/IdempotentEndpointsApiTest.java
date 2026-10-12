@@ -1,11 +1,13 @@
 package com.jey.core.web;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
 import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
 import com.jey.core.audit.AuditLogService;
+import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.campus.ClassService;
 import com.jey.core.campus.DiscountTypeService;
@@ -19,6 +21,10 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -30,6 +36,7 @@ import static com.jey.core.member.MemberFixtures.randomPhone;
 import static com.jey.core.member.MemberFixtures.registration;
 import static com.jey.core.member.MemberFixtures.uniqueName;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.securityContext;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -163,6 +170,36 @@ class IdempotentEndpointsApiTest {
 		assertThat(studentService.search(null, name, null, 0, 10)).isEmpty();
 	}
 
+	// 다시 돌려주는 것은 접근 규칙(역할)보다 앞이다. 처음의 응답은 지금의 역할을 다시 묻지 않고 그 계정에 돌려준다(ADR-0027).
+	// 받는 것은 그 계정이 이미 받았던 응답이다. 새 키로는 지금의 역할대로 거부된다.
+	@Test
+	void 역할이_바뀐_뒤에도_같은_키로는_처음의_응답을_받고_새_키로는_지금의_역할대로다() throws Exception {
+		long account = ADMIN + 6;
+		SecurityContext asAdmin = login(account, UserRole.ADMIN, null);
+		SecurityContext asStaff = login(account, UserRole.STAFF, 1L);
+		String name = "반-" + UUID.randomUUID().toString().substring(0, 8);
+		String body = "{\"campusId\": 1, \"name\": \"%s\", \"baseFee8\": 280000, \"bookFee\": 0}".formatted(name);
+		String adminKey = UUID.randomUUID().toString();
+		String staffKey = UUID.randomUUID().toString();
+
+		MockHttpServletResponse created = sendAs(asAdmin, adminKey, body).andExpect(status().isCreated())
+				.andReturn()
+				.getResponse();
+		// 직원으로 내려간 뒤: 같은 키는 처음의 201, 새 키는 403.
+		MockHttpServletResponse replayed = sendAs(asStaff, adminKey, body).andExpect(status().isCreated())
+				.andExpect(header().string("Idempotency-Replayed", "true"))
+				.andReturn()
+				.getResponse();
+		assertThat(replayed.getContentAsByteArray()).isEqualTo(created.getContentAsByteArray());
+		sendAs(asStaff, staffKey, body).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
+		// 거부도 그 시도의 결과로 보관된다. 관리자가 된 뒤에도 그 키로는 같은 거부를 받는다.
+		sendAs(asAdmin, staffKey, body).andExpect(status().isForbidden())
+				.andExpect(header().string("Idempotency-Replayed", "true"));
+
+		assertThat(classService.allClasses(1L)).filteredOn(each -> each.getName().equals(name)).hasSize(1);
+	}
+
 	// 키를 받지 않는 POST는 키 없이 그대로 된다.
 	@Test
 	@WithJeyUser(role = UserRole.ADMIN, id = ADMIN + 5)
@@ -172,6 +209,22 @@ class IdempotentEndpointsApiTest {
 		mockMvc.perform(post("/api/v1/students/{id}/guardians/{guardianId}/phone/reveal", student.id(),
 				student.guardians().getFirst().id()).with(csrfToken(mockMvc))).andExpect(status().isOk());
 		mockMvc.perform(post("/api/v1/auth/logout").with(csrfToken(mockMvc))).andExpect(status().isNoContent());
+	}
+
+	private ResultActions sendAs(SecurityContext login, String key, String json) throws Exception {
+		return mockMvc.perform(post("/api/v1/classes").with(securityContext(login))
+				.with(csrfToken(mockMvc))
+				.with(idempotencyKey(key))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(json));
+	}
+
+	private static SecurityContext login(long accountId, UserRole role, Long campusId) {
+		AuthenticatedUser user = new AuthenticatedUser(accountId, "test-role-change", "테스트 사용자", role, campusId, null);
+		SecurityContext context = SecurityContextHolder.createEmptyContext();
+		context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(user, null,
+				List.of(new SimpleGrantedAuthority(role.authority()))));
+		return context;
 	}
 
 	private ResultActions send(String path, String key, String json) throws Exception {

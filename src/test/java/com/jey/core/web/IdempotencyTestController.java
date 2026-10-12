@@ -85,6 +85,13 @@ class IdempotencyTestController {
 		return Map.of("serial", serial);
 	}
 
+	// JSON만 받는다. 다른 타입으로 보내면 맞는 메서드가 없는 요청이 된다.
+	@Idempotent
+	@PostMapping(path = "/json-only", consumes = "application/json")
+	void jsonOnly(@RequestBody Thing body) {
+		EXECUTIONS.incrementAndGet();
+	}
+
 	@NotIdempotent("필터가 표시 없는 경로를 건드리지 않는지 보는 테스트용이다")
 	@PostMapping("/unguarded")
 	Map<String, Object> unguarded() {

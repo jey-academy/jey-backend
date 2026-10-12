@@ -111,10 +111,10 @@ class IdempotencyApiTest {
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = SENDER)
 	void 키가_없거나_형식이_틀리면_실행하지_않는다() throws Exception {
-		send("/things", null, THING).andExpect(status().isBadRequest())
+		expectSecurityHeaders(send("/things", null, THING).andExpect(status().isBadRequest())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("COMMON_IDEMPOTENCY_KEY_REQUIRED"))
-				.andExpect(jsonPath("$.instance").value(BASE + "/things"));
+				.andExpect(jsonPath("$.instance").value(BASE + "/things")));
 		for (String malformed : List.of("", "short", "공백과 한글", "a".repeat(129), "has space in it")) {
 			send("/things", malformed, THING).andExpect(status().isBadRequest())
 					.andExpect(jsonPath("$.code").value("COMMON_IDEMPOTENCY_KEY_REQUIRED"));
@@ -129,9 +129,9 @@ class IdempotencyApiTest {
 	void 같은_키에_본문이나_주소가_다르면_거부한다() throws Exception {
 		send("/things", key, THING).andExpect(status().isCreated());
 
-		send("/things", key, "{\"name\": \"이영희\"}").andExpect(status().isUnprocessableEntity())
+		expectSecurityHeaders(send("/things", key, "{\"name\": \"이영희\"}").andExpect(status().isUnprocessableEntity())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
-				.andExpect(jsonPath("$.code").value("COMMON_IDEMPOTENCY_KEY_REUSED"));
+				.andExpect(jsonPath("$.code").value("COMMON_IDEMPOTENCY_KEY_REUSED")));
 		mockMvc.perform(request("/things", key, THING).queryParam("note", "other"))
 				.andExpect(status().isUnprocessableEntity());
 		send("/empty", key, THING).andExpect(status().isUnprocessableEntity());
@@ -198,8 +198,8 @@ class IdempotencyApiTest {
 					.getResponse());
 			assertThat(IdempotencyTestController.entered.await(10, TimeUnit.SECONDS)).isTrue();
 
-			send("/slow", key, null).andExpect(status().isConflict())
-					.andExpect(jsonPath("$.code").value("COMMON_IDEMPOTENCY_IN_PROGRESS"));
+			expectSecurityHeaders(send("/slow", key, null).andExpect(status().isConflict())
+					.andExpect(jsonPath("$.code").value("COMMON_IDEMPOTENCY_IN_PROGRESS")));
 
 			IdempotencyTestController.proceed.countDown();
 			assertThat(slow.get(10, TimeUnit.SECONDS).getStatus()).isEqualTo(200);
@@ -290,8 +290,48 @@ class IdempotencyApiTest {
 	void 본문이_너무_크면_실행하지_않는다() throws Exception {
 		String huge = "{\"name\": \"" + "가".repeat(400_000) + "\"}";
 
-		send("/things", key, huge).andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+		expectSecurityHeaders(send("/things", key, huge).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST")));
+
+		assertThat(IdempotencyTestController.EXECUTIONS).hasValue(0);
+	}
+
+	// 필터가 본문을 먼저 읽으면 폼의 값이 컨트롤러에 닿지 않는다. 빈 값으로 실행하지 않고 거부한다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = SENDER)
+	void 폼으로_보낸_요청은_실행하지_않는다() throws Exception {
+		mockMvc.perform(post(BASE + "/things").with(csrfToken(mockMvc))
+				.header("Idempotency-Key", key)
+				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
+				.content("name=kim"))
+				.andExpect(status().isUnsupportedMediaType())
+				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON));
+		mockMvc.perform(post(BASE + "/empty").with(csrfToken(mockMvc))
+				.header("Idempotency-Key", key)
+				.contentType("multipart/form-data; boundary=x")
+				.content("--x--"))
+				.andExpect(status().isUnsupportedMediaType());
+
+		assertThat(IdempotencyTestController.EXECUTIONS).hasValue(0);
+		// 키는 쓰이지 않았다. 같은 키로 제대로 다시 보낼 수 있다.
+		send("/things", key, THING).andExpect(status().isCreated());
+	}
+
+	// 맞는 컨트롤러 메서드가 없는 요청은 키를 요구하지 않고 그대로 넘긴다. 뒤에서 원래의 이유로 거절된다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = SENDER)
+	void 맞는_메서드가_없는_요청은_키와_무관하게_원래의_이유로_거절된다() throws Exception {
+		mockMvc.perform(post("/api/v1/auth/me").with(csrfToken(mockMvc)))
+				.andExpect(status().isMethodNotAllowed())
+				.andExpect(jsonPath("$.code").value("COMMON_METHOD_NOT_ALLOWED"));
+		mockMvc.perform(post(BASE + "/no-such-thing").with(csrfToken(mockMvc)))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("COMMON_NOT_FOUND"));
+		// 본문의 타입이 맞지 않는 요청. 필터의 폼 검사와는 다른 길이다(JSON만 받는 메서드에 글자를 보냄).
+		mockMvc.perform(post(BASE + "/json-only").with(csrfToken(mockMvc))
+				.contentType(MediaType.TEXT_PLAIN)
+				.content("kim"))
+				.andExpect(status().isUnsupportedMediaType());
 
 		assertThat(IdempotencyTestController.EXECUTIONS).hasValue(0);
 	}
@@ -315,6 +355,21 @@ class IdempotencyApiTest {
 				.andExpect(status().isCreated())
 				.andExpect(header().string("Access-Control-Expose-Headers",
 						org.hamcrest.Matchers.containsString("Idempotency-Replayed")));
+		// 다시 돌려주는 응답은 필터가 쓴다. 그 응답도 다른 출처에서 읽을 수 있어야 한다.
+		expectSecurityHeaders(mockMvc.perform(request("/things", key, THING).header("Origin", "http://localhost:5173"))
+				.andExpect(status().isCreated())
+				.andExpect(header().string("Idempotency-Replayed", "true"))
+				.andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+				.andExpect(header().string("Access-Control-Expose-Headers",
+						org.hamcrest.Matchers.containsString("Idempotency-Replayed"))));
+	}
+
+	// 필터가 직접 쓴 응답에도 보안 필터가 붙이는 헤더가 있어야 한다.
+	// 예외로 던져 맨 앞의 필터가 응답을 비우게 하면 이 헤더들이 사라진다.
+	private static ResultActions expectSecurityHeaders(ResultActions result) throws Exception {
+		return result.andExpect(header().string("X-Content-Type-Options", "nosniff"))
+				.andExpect(header().string("X-Frame-Options", "DENY"))
+				.andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")));
 	}
 
 	private ResultActions send(String path, String idempotencyKey, String json) throws Exception {

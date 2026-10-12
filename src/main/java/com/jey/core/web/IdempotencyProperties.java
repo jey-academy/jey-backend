@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *
  * @param retention 끝난 요청의 응답을 보관하는 기간. 이 동안 같은 키의 요청은 다시 실행되지 않고 보관한 응답을 받는다
  * @param processingLease 처리 중이라고 표시해 두는 기간. 처리하던 서버가 죽으면 이 시간 뒤에 같은 키로 다시 실행할 수 있다.
- * 요청 하나가 이보다 오래 걸리면 같은 키의 요청이 겹쳐 실행될 수 있다
+ * 요청 하나가 이보다 오래 걸리면 같은 키의 요청이 겹쳐 실행될 수 있다. 길게 잡으면 그만큼 오래 "처리 중"으로 거부된다
  */
 @ConfigurationProperties("jey.web.idempotency")
 record IdempotencyProperties(@DefaultValue("24h") Duration retention, @DefaultValue("2m") Duration processingLease) {
@@ -22,6 +22,9 @@ record IdempotencyProperties(@DefaultValue("24h") Duration retention, @DefaultVa
 
 	private static final Duration MIN_PROCESSING_LEASE = Duration.ofSeconds(10);
 
+	// "2m"을 "2h"로 잘못 적으면 서버가 죽은 요청의 키가 두 시간 동안 거부된다.
+	private static final Duration MAX_PROCESSING_LEASE = Duration.ofMinutes(10);
+
 	IdempotencyProperties {
 		if (retention == null || retention.compareTo(MIN_RETENTION) < 0) {
 			throw new IllegalArgumentException(PREFIX + "retention은 1분 이상이어야 한다(단위를 붙였는지 확인): " + retention);
@@ -29,6 +32,10 @@ record IdempotencyProperties(@DefaultValue("24h") Duration retention, @DefaultVa
 		if (processingLease == null || processingLease.compareTo(MIN_PROCESSING_LEASE) < 0) {
 			throw new IllegalArgumentException(
 					PREFIX + "processing-lease는 10초 이상이어야 한다(단위를 붙였는지 확인): " + processingLease);
+		}
+		if (processingLease.compareTo(MAX_PROCESSING_LEASE) > 0) {
+			throw new IllegalArgumentException(
+					PREFIX + "processing-lease는 10분 이하여야 한다(단위를 확인): " + processingLease);
 		}
 		if (processingLease.compareTo(retention) >= 0) {
 			throw new IllegalArgumentException(PREFIX + "processing-lease(" + processingLease + ")는 retention("
