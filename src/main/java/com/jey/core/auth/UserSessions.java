@@ -1,6 +1,7 @@
 package com.jey.core.auth;
 
 import java.util.Map;
+import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,10 +31,30 @@ public class UserSessions {
 	 * @return 끊은 세션 수
 	 */
 	public int terminateAll(long userId) {
+		return terminate(userId, null);
+	}
+
+	/**
+	 * 그 계정으로 로그인된 세션 가운데 하나만 남기고 모두 끊는다. 본인이 비밀번호를 바꿨을 때 쓴다.
+	 * 바꾼 사람이 쓰고 있는 세션은 남기고, 옛 비밀번호로 로그인된 다른 세션(다른 기기, 훔친 세션)을 끊는다.
+	 *
+	 * @param keepSessionId 남길 세션의 ID
+	 * @return 끊은 세션 수
+	 */
+	public int terminateOthers(long userId, String keepSessionId) {
+		// 남길 세션을 모르는 채로 부르면 전부 끊는 것과 같아진다. 그럴 때는 terminateAll을 쓴다.
+		Objects.requireNonNull(keepSessionId, "keepSessionId");
+		return terminate(userId, keepSessionId);
+	}
+
+	private int terminate(long userId, String keepSessionId) {
 		int terminated = 0;
 		try {
 			Map<String, ? extends Session> found = sessions.findByPrincipalName(String.valueOf(userId));
 			for (String sessionId : found.keySet()) {
+				if (sessionId.equals(keepSessionId)) {
+					continue;
+				}
 				sessions.deleteById(sessionId);
 				terminated++;
 			}
