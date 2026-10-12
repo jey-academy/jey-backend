@@ -96,7 +96,7 @@ public class LoginService {
 		});
 		AccountUserDetails account = authenticate(loginId, password);
 		AuthenticatedUser user = account.toAuthenticatedUser();
-		requireStillActive(user);
+		requireUnchanged(account);
 		// 여기까지 오지 못한 시도(틀린 비밀번호, 없는 아이디, 비활성 계정)는 실패로 남는다.
 		attemptLimiter.loginSucceeded(loginId, clientIp);
 		countAttempt("success", NO_SCOPE);
@@ -163,10 +163,19 @@ public class LoginService {
 	// 비밀번호 검증 전에 읽어 둔 값을 쓰지 않고 지금 DB에서 다시 읽는다. 해시를 계산하는 동안 계정이 차단됐을 수 있고,
 	// 그 경우 차단 쪽이 세션을 끊은 뒤에 이 로그인의 세션이 저장되어 살아남기 때문이다.
 	// 다시 읽은 직후부터 세션이 저장될 때까지의 짧은 틈은 남는다(ADR-0019).
-	private void requireStillActive(AuthenticatedUser user) {
-		boolean active = users.findById(user.id()).map(User::isActive).orElse(false);
-		if (!active) {
-			log.info("로그인 실패: 비활성 계정 userId={}", user.id());
+	//
+	// 같은 이유로 역할·지점과 비밀번호도 그대로인지 본다(ADR-0030). 해시를 계산하는 동안 역할이 바뀌었거나 비밀번호가 다시 정해졌으면,
+	// 바꾼 쪽이 세션을 끊은 뒤에 이 로그인의 세션이 옛 권한(또는 옛 비밀번호)으로 저장된다. 그런 로그인은 실패시키고 다시 하게 한다.
+	private void requireUnchanged(AccountUserDetails account) {
+		long userId = account.toAuthenticatedUser().id();
+		User reloaded = users.findById(userId).orElse(null);
+		if (reloaded == null || !reloaded.isActive()) {
+			log.info("로그인 실패: 비활성 계정 userId={}", userId);
+			countAttempt("failure", NO_SCOPE);
+			throw new BusinessException(AuthErrorCode.INVALID_CREDENTIALS);
+		}
+		if (!account.isSameAs(reloaded)) {
+			log.info("로그인 실패: 비밀번호 검증 중에 바뀐 계정 userId={}", userId);
 			countAttempt("failure", NO_SCOPE);
 			throw new BusinessException(AuthErrorCode.INVALID_CREDENTIALS);
 		}

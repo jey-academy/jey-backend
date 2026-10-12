@@ -120,6 +120,48 @@ class LoginServiceTest {
 		assertThat(output).contains("로그인 실패: 비활성 계정 userId=" + USER_ID);
 	}
 
+	// 역할·지점을 바꾸거나 비밀번호를 다시 정한 쪽은 그 계정의 세션을 끊는다. 해시를 계산하던 로그인이 그 뒤에 세션을 저장하면
+	// 옛 권한이나 옛 비밀번호로 로그인된 세션이 살아남는다. 차단과 같은 틈이다(ADR-0030).
+	@Test
+	void 비밀번호_검증_중에_역할이나_지점이_바뀐_계정은_로그인되지_않는다(CapturedOutput output) {
+		authenticationSucceedsWith(savedUser());
+		User moved = savedUser();
+		moved.changeAffiliation(UserRole.STAFF, 2L);
+		when(users.findById(USER_ID)).thenReturn(Optional.of(moved));
+
+		assertThatThrownBy(this::login)
+				.isInstanceOfSatisfying(BusinessException.class,
+						ex -> assertThat(ex.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_CREDENTIALS));
+		verifyNoInteractions(sessionStrategy, contextRepository);
+		assertThat(output).contains("로그인 실패: 비밀번호 검증 중에 바뀐 계정 userId=" + USER_ID);
+	}
+
+	@Test
+	void 비밀번호_검증_중에_비밀번호가_바뀐_계정은_로그인되지_않는다() {
+		authenticationSucceedsWith(savedUser());
+		User reset = savedUser();
+		reset.changePassword("{noop}reset-by-admin");
+		when(users.findById(USER_ID)).thenReturn(Optional.of(reset));
+
+		assertThatThrownBy(this::login)
+				.isInstanceOfSatisfying(BusinessException.class,
+						ex -> assertThat(ex.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_CREDENTIALS));
+		verifyNoInteractions(sessionStrategy, contextRepository);
+	}
+
+	// 이름은 권한과 무관하다. 검증 중에 이름만 바뀐 계정은 그대로 로그인된다.
+	@Test
+	void 비밀번호_검증_중에_이름만_바뀐_계정은_로그인된다() {
+		authenticationSucceedsWith(savedUser());
+		User renamed = savedUser();
+		renamed.rename("김데스크");
+		when(users.findById(USER_ID)).thenReturn(Optional.of(renamed));
+
+		login();
+
+		verify(contextRepository).saveContext(any(), any(), any());
+	}
+
 	@Test
 	void 비밀번호_검증_중에_사라진_계정은_로그인되지_않는다() {
 		authenticationSucceedsWith(savedUser());
