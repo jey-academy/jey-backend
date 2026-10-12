@@ -83,6 +83,28 @@ class FilterStageErrorTest {
 				.contains("\"instance\":\"/api/v1/auth//me\"");
 	}
 
+	// 필터 단계 오류는 응답을 비우고 다시 쓴다. 그 뒤에도 요청 ID가 헤더와 본문에 있어야 로그와 이어 볼 수 있다.
+	@Test
+	void 필터에서_난_오류의_응답에도_요청_ID가_있다() throws Exception {
+		HttpResponse<String> response = get("/api/v1/test-filter/exception");
+
+		assertInternalError(response);
+		assertSameRequestIdInHeaderAndBody(response);
+	}
+
+	// 방화벽은 sendError로 끝내고, 컨테이너가 오류 경로로 다시 보낸다. 다시 들어온 요청도 처음의 ID를 써야 한다.
+	@Test
+	void 오류_경로로_넘어간_응답에도_처음의_요청_ID가_있다() throws Exception {
+		HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/v1/auth//me"))
+				.timeout(Duration.ofSeconds(30)).header("X-Request-Id", "sent-by-proxy-0123456789").GET().build();
+
+		HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+		assertThat(response.statusCode()).isEqualTo(400);
+		assertThat(response.headers().allValues("X-Request-Id")).containsExactly("sent-by-proxy-0123456789");
+		assertThat(response.body()).contains("\"requestId\":\"sent-by-proxy-0123456789\"");
+	}
+
 	// 오류 경로의 인증을 풀어 준 것은 컨테이너가 다시 보낸 요청뿐이다. 밖에서 직접 부르면 다른 주소와 똑같이 인증을 요구한다.
 	@Test
 	void 오류_경로를_직접_부르면_인증을_요구한다() throws Exception {
@@ -97,6 +119,13 @@ class FilterStageErrorTest {
 		assertThat(response.headers().firstValue("Content-Type").orElse("")).startsWith("application/problem+json");
 		assertThat(response.body()).contains("\"code\":\"COMMON_INTERNAL_ERROR\"").contains("\"status\":500")
 				.doesNotContain("secret-host").doesNotContain("Exception").doesNotContain("trace");
+	}
+
+	private static void assertSameRequestIdInHeaderAndBody(HttpResponse<String> response) {
+		assertThat(response.headers().allValues("X-Request-Id")).hasSize(1);
+		String id = response.headers().firstValue("X-Request-Id").orElseThrow();
+		assertThat(id).matches("[0-9a-f]{32}");
+		assertThat(response.body()).contains("\"requestId\":\"" + id + "\"");
 	}
 
 	private HttpResponse<String> get(String path) throws Exception {

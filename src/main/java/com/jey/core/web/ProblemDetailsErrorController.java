@@ -49,6 +49,11 @@ class ProblemDetailsErrorController implements ErrorController {
 		CommonErrorCode errorCode = CommonErrorCode.fromStatus(status);
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, errorCode.message());
 		problem.setProperty("code", errorCode.code());
+		// 처음 들어올 때 정한 ID다. 오류 경로로 다시 들어와도 같은 값이다(RequestIdFilter).
+		String requestId = RequestIdFilter.of(request);
+		if (requestId != null) {
+			problem.setProperty(GlobalExceptionHandler.REQUEST_ID, requestId);
+		}
 		URI instance = originalUri(request);
 		if (instance != null) {
 			problem.setInstance(instance);

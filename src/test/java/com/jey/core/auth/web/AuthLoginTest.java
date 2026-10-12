@@ -639,8 +639,12 @@ class AuthLoginTest {
 		return session;
 	}
 
+	// 본문에는 요청마다 다른 요청 ID가 실린다. 같은 ID를 보내서 나머지가 글자 하나까지 같은지 본다.
 	private String failedLoginBody(String loginId, String password) throws Exception {
-		MvcResult result = login(loginId, password)
+		MvcResult result = mockMvc.perform(post("/api/v1/auth/login").with(csrfToken(mockMvc))
+						.header("X-Request-Id", "same-id-for-comparison")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(loginJson(loginId, password)))
 				.andExpect(status().isUnauthorized())
 				.andExpect(cookie().doesNotExist(SESSION))
 				.andReturn();

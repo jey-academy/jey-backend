@@ -23,6 +23,7 @@ import org.springframework.validation.Errors;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
@@ -36,6 +37,8 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	private static final String CODE = "code";
 
 	private static final String ERRORS = "errors";
+
+	static final String REQUEST_ID = "requestId";
 
 	private static final String BINDING_FAILURE_MESSAGE = "형식이 올바르지 않습니다.";
 
@@ -113,6 +116,7 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	// 모든 에러 응답이 지나는 마지막 지점.
 	// code가 없으면 Spring이 만든 본문이다(404, 405, 본문 파싱 실패, ResponseStatusException 등).
 	// HTTP 상태로 공통 코드를 붙이고, 프론트가 detail을 그대로 보여주므로 Spring 기본 영어 문구를 공통 코드의 문구로 바꾼다.
+	// 요청 ID도 여기서 싣는다. 화면에서 본 오류를 서버 로그에서 찾는 데 쓴다 (ADR-0028).
 	@Override
 	protected ResponseEntity<Object> handleExceptionInternal(Exception ex, Object body, HttpHeaders headers,
 			HttpStatusCode statusCode, WebRequest request) {
@@ -121,10 +125,15 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 			log.error("서버 오류 응답: status={} {}", statusCode.value(), request.getDescription(false), ex);
 		}
 		ResponseEntity<Object> response = super.handleExceptionInternal(ex, body, headers, statusCode, request);
-		if (response != null && response.getBody() instanceof ProblemDetail problem && !hasCode(problem)) {
-			CommonErrorCode errorCode = CommonErrorCode.fromStatus(statusCode);
-			problem.setDetail(errorCode.message());
-			problem.setProperty(CODE, errorCode.code());
+		if (response != null && response.getBody() instanceof ProblemDetail problem) {
+			if (!hasCode(problem)) {
+				CommonErrorCode errorCode = CommonErrorCode.fromStatus(statusCode);
+				problem.setDetail(errorCode.message());
+				problem.setProperty(CODE, errorCode.code());
+			}
+			if (request.getAttribute(RequestIdFilter.ATTRIBUTE, RequestAttributes.SCOPE_REQUEST) instanceof String id) {
+				problem.setProperty(REQUEST_ID, id);
+			}
 		}
 		return response;
 	}
