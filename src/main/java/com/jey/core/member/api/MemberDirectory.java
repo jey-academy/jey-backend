@@ -24,7 +24,7 @@ public interface MemberDirectory {
 	/**
 	 * 알림과 링크를 보낼 대표 연락처. 어머니, 먼저 연결된 학부모, 학생 본인 번호 순으로 고른다.
 	 *
-	 * @return 없는 학생이면 비어 있다
+	 * @return 없는 학생이면 비어 있다. 학생은 있는데 연락처가 하나도 없을 때도 비어 있다(보낼 곳이 없다)
 	 */
 	Optional<ContactInfo> primaryContact(long studentId);
 

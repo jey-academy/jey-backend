@@ -27,9 +27,11 @@ import static com.jey.core.member.MemberFixtures.DONGTAN;
 import static com.jey.core.member.MemberFixtures.mother;
 import static com.jey.core.member.MemberFixtures.randomPhone;
 import static com.jey.core.member.MemberFixtures.registration;
+import static com.jey.core.member.MemberFixtures.removeAllContacts;
 import static com.jey.core.member.MemberFixtures.registrationWithPhone;
 import static com.jey.core.member.MemberFixtures.uniqueName;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -159,6 +161,27 @@ class MemberApiEdgeTest {
 			jdbc.update("UPDATE core_guardian SET phone_enc = ? WHERE id = ?", original, guardianId);
 		}
 		mockMvc.perform(get(STUDENTS + "/{id}", student.id())).andExpect(status().isOk());
+	}
+
+	// 화면은 대표 연락처 칸만 비워서 그 학생을 보여 준다. 칸을 빼지 않고 null로 내보내 응답의 모양이 같게 한다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 연락처가_없는_학생은_목록과_상세에_대표_연락처가_null로_나온다() throws Exception {
+		String prefix = uniqueName();
+		studentService.register(registration(prefix + "-가", mother(randomPhone())));
+		long withoutContact = studentService.register(registration(prefix + "-나", mother(randomPhone()))).id();
+		removeAllContacts(jdbc, withoutContact);
+
+		mockMvc.perform(get(STUDENTS).param("name", prefix))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.items.length()").value(2))
+				.andExpect(jsonPath("$.items[0].primaryContact.phone").exists())
+				.andExpect(jsonPath("$.items[1].id").value(withoutContact))
+				.andExpect(jsonPath("$.items[1].primaryContact").value(nullValue()));
+		mockMvc.perform(get(STUDENTS + "/" + withoutContact))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.primaryContact").value(nullValue()))
+				.andExpect(jsonPath("$.guardians.length()").value(0));
 	}
 
 	private ResultActions send(MockHttpServletRequestBuilder request, String json) throws Exception {

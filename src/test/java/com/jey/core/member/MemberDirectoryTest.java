@@ -12,12 +12,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import static com.jey.core.member.MemberFixtures.DONGTAN;
 import static com.jey.core.member.MemberFixtures.father;
 import static com.jey.core.member.MemberFixtures.mother;
 import static com.jey.core.member.MemberFixtures.randomPhone;
 import static com.jey.core.member.MemberFixtures.registration;
+import static com.jey.core.member.MemberFixtures.removeAllContacts;
 import static com.jey.core.member.MemberFixtures.registrationWithPhone;
 import static com.jey.core.member.MemberFixtures.uniqueName;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,6 +34,9 @@ class MemberDirectoryTest {
 
 	@Autowired
 	StudentService studentService;
+
+	@Autowired
+	JdbcTemplate jdbc;
 
 	@Test
 	void 학생을_찾는다() {
@@ -83,6 +88,16 @@ class MemberDirectoryTest {
 		assertThat(directory.primaryContact(withMother).orElseThrow().toString()).doesNotContain(motherPhone.value())
 				.contains(motherPhone.masked());
 		assertThat(directory.primaryContact(999_999_999L)).isEmpty();
+	}
+
+	// 알림을 보내는 쪽은 빈 값이면 보낼 곳이 없는 것으로 다룬다. 예외가 나면 그 알림의 리스너가 계속 다시 실행된다.
+	@Test
+	void 연락처가_없는_학생의_대표_연락처는_비어_있다() {
+		long id = studentService.register(registration(uniqueName(), mother(randomPhone()))).id();
+		removeAllContacts(jdbc, id);
+
+		assertThat(directory.primaryContact(id)).isEmpty();
+		assertThat(directory.findStudent(id)).isPresent();
 	}
 
 }

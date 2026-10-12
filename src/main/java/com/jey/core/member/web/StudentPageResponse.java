@@ -29,7 +29,8 @@ record StudentPageResponse(@Schema(requiredMode = RequiredMode.REQUIRED) List<St
 			@Schema(description = "학교. 없으면 null", requiredMode = RequiredMode.REQUIRED, nullable = true) String school,
 			@Schema(requiredMode = RequiredMode.REQUIRED) Grade grade,
 			@Schema(requiredMode = RequiredMode.REQUIRED) StudentStatus status,
-			@Schema(requiredMode = RequiredMode.REQUIRED) ContactResponse primaryContact) {
+			@Schema(description = "대표 연락처. 연락처가 하나도 없는 학생이면 null이다(있어서는 안 되는 자료다. 칸을 비워 보여 준다). 필드는 항상 있다",
+					requiredMode = RequiredMode.REQUIRED, nullable = true) ContactResponse primaryContact) {
 
 		static StudentSummaryResponse from(StudentSummaryView student) {
 			return new StudentSummaryResponse(student.id(), student.campusId(), student.classId(), student.name(),

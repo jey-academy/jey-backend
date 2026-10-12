@@ -23,7 +23,8 @@ record StudentResponse(@Schema(requiredMode = RequiredMode.REQUIRED) Long id,
 		@Schema(description = "학생 본인의 가린 전화번호. 없으면 null", example = "010-****-5678",
 				requiredMode = RequiredMode.REQUIRED, nullable = true) PhoneNumber phone,
 		@Schema(description = "학부모. 먼저 연결된 순서", requiredMode = RequiredMode.REQUIRED) List<GuardianResponse> guardians,
-		@Schema(requiredMode = RequiredMode.REQUIRED) ContactResponse primaryContact,
+		@Schema(description = "대표 연락처. 연락처가 하나도 없는 학생이면 null이다(있어서는 안 되는 자료다. 칸을 비워 보여 준다). 필드는 항상 있다",
+				requiredMode = RequiredMode.REQUIRED, nullable = true) ContactResponse primaryContact,
 		@Schema(description = "형제. 같은 학부모에 연결된 다른 학생",
 				requiredMode = RequiredMode.REQUIRED) List<SiblingResponse> siblings) {
 

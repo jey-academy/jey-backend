@@ -40,6 +40,8 @@ import com.jey.core.shared.PhoneProtector;
 import com.jey.core.shared.RateLimitedException;
 import com.jey.core.shared.UniqueKeys;
 import org.springframework.context.ApplicationEventPublisher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -57,6 +59,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 @Service
 public class StudentService {
+
+	private static final Logger log = LoggerFactory.getLogger(StudentService.class);
 
 	private static final String LINK_UNIQUE_KEY = "uk_core_student_guardian";
 
@@ -452,10 +456,12 @@ public class StudentService {
 	}
 
 	// 학부모가 없으면 학생 본인 번호가 대표다. 둘 다 없는 학생은 있어서는 안 된다(등록과 삭제가 막는다).
-	// 그런 행이 있으면 "연락처 없음"으로 넘기지 않고 드러낸다.
+	// 그래도 자료가 그렇게 됐으면 대표 연락처 없이(null) 내보낸다. 예외를 던지면 그 학생 한 명 때문에
+	// 같은 페이지의 다른 학생까지 볼 수 없게 된다. 조용히 넘기지는 않는다. 만날 때마다 경고를 남긴다.
 	private static ContactView ownContact(Student student, PhoneNumber phone) {
 		if (phone == null) {
-			throw new IllegalStateException("학생 " + student.getId() + "에게 연락처가 하나도 없다");
+			log.warn("학생에게 연락처가 하나도 없다. 대표 연락처 없이 내보낸다: studentId={}", student.getId());
+			return null;
 		}
 		return ContactView.ofStudent(student.getName(), phone);
 	}

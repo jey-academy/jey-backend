@@ -13,7 +13,8 @@ import com.jey.core.shared.PhoneNumber;
  *
  * @param phone 학생 본인 번호. 없으면 {@code null}
  * @param guardians 먼저 연결된 순서
- * @param primaryContact 대표 연락처. 어머니, 먼저 연결된 학부모, 학생 본인 번호 순으로 고른다. 비어 있지 않다
+ * @param primaryContact 대표 연락처. 어머니, 먼저 연결된 학부모, 학생 본인 번호 순으로 고른다.
+ * 연락처가 하나도 없는 학생이면 {@code null}이다(있어서는 안 되는 자료지만, 그런 학생도 보여는 준다)
  * @param siblings 같은 학부모에 연결된 다른 학생
  */
 public record StudentView(long id, long campusId, Long classId, String name, String school, Grade grade,

@@ -747,7 +747,12 @@
             "type" : [ "string", "null" ]
           },
           "primaryContact" : {
-            "$ref" : "#/components/schemas/ContactResponse"
+            "anyOf" : [ {
+              "$ref" : "#/components/schemas/ContactResponse"
+            }, {
+              "type" : "null"
+            } ],
+            "description" : "대표 연락처. 연락처가 하나도 없는 학생이면 null이다(있어서는 안 되는 자료다. 칸을 비워 보여 준다). 필드는 항상 있다"
           },
           "registeredAt" : {
             "format" : "date",
@@ -796,7 +801,12 @@
             "type" : "string"
           },
           "primaryContact" : {
-            "$ref" : "#/components/schemas/ContactResponse"
+            "anyOf" : [ {
+              "$ref" : "#/components/schemas/ContactResponse"
+            }, {
+              "type" : "null"
+            } ],
+            "description" : "대표 연락처. 연락처가 하나도 없는 학생이면 null이다(있어서는 안 되는 자료다. 칸을 비워 보여 준다). 필드는 항상 있다"
           },
           "school" : {
             "description" : "학교. 없으면 null",
