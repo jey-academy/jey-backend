@@ -259,7 +259,8 @@ class MemberApiEdgeTest {
 				.getResponse()
 				.getContentAsString();
 
-		assertThat(body).doesNotContain("0199");
+		// 오류 본문의 요청 ID에 우연히 같은 숫자가 나올 수 있어 빼고 본다.
+		assertThat(body.replaceAll("\"requestId\":\"[^\"]*\"", "")).doesNotContain("0199");
 	}
 
 	// 아주 큰 페이지는 건너뛸 줄 수가 정수 범위를 넘어 조회가 서버 오류(500)로 끝났다. 상한을 넘으면 조회하지 않고 거부한다.
