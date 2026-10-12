@@ -159,6 +159,16 @@ class SecurityConfigTest {
 				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
 	}
 
+	// 다른 출처의 응답 헤더는 드러내겠다고 적은 것만 프론트가 읽을 수 있다.
+	@Test
+	void 다른_출처의_프론트가_요청_ID_헤더를_읽을_수_있다() throws Exception {
+		mockMvc.perform(get("/api/v1/auth/csrf").header(HttpHeaders.ORIGIN, ALLOWED_ORIGIN))
+				.andExpect(status().isNoContent())
+				.andExpect(header().exists("X-Request-Id"))
+				.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+						org.hamcrest.Matchers.containsString("X-Request-Id")));
+	}
+
 	@Test
 	void 허용하지_않은_출처는_거부한다() throws Exception {
 		mockMvc.perform(options("/api/v1/auth/login")

@@ -97,6 +97,12 @@ jey:
       # 발행된 지 이 시간이 지나도록 끝나지 않은 것만 다시 보낸다. 방금 발행돼 처리 중인 것은 건드리지 않는다.
       older-than: 5m
 
+logging:
+  pattern:
+    # 로그 줄마다 [요청 ID|계정 ID]를 찍는다 (ADR-0028). 요청 밖에서 남긴 줄(기동, 주기 작업)은 비어 있다.
+    # 운영은 JSON으로 내보내므로 이 형식을 쓰지 않는다(application-prod.yaml).
+    correlation: "[%X{requestId:-}|%X{accountId:-}] "
+
 management:
   endpoints:
     web:

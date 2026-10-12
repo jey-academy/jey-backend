@@ -157,8 +157,8 @@ class SecurityConfig {
 		// 세션 쿠키를 실은 요청을 받아야 한다. 이 경우 허용 출처에 *를 쓸 수 없어 목록으로 받는다.
 		configuration.setAllowCredentials(true);
 		// 다른 출처의 응답 헤더는 여기에 적어야 프론트가 읽을 수 있다.
-		// 횟수 한도(429)의 남은 시간과, 멱등 키로 처음의 응답을 다시 돌려준 것이라는 표시다.
-		configuration.setExposedHeaders(List.of("Retry-After", "Idempotency-Replayed"));
+		// 횟수 한도(429)의 남은 시간, 멱등 키로 처음의 응답을 다시 돌려준 것이라는 표시, 서버 로그와 이어 볼 요청 ID다.
+		configuration.setExposedHeaders(List.of("Retry-After", "Idempotency-Replayed", "X-Request-Id"));
 		configuration.setMaxAge(Duration.ofHours(1));
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/api/**", configuration);
@@ -167,12 +167,12 @@ class SecurityConfig {
 
 	// CORS 헤더를 세션 필터보다 먼저 붙인다. 보안 필터 안에서만 붙이면, 그보다 앞에서 난 오류(세션 저장소 장애 등)의 응답에는
 	// 헤더가 없어서 다른 출처의 프론트가 그 응답을 읽지 못하고 네트워크 오류로 본다.
-	// 순서는 오류를 잡는 맨 앞 필터(core.web.FilterExceptionFilter) 바로 다음이다.
+	// 순서는 요청 ID를 정하는 필터와 오류를 잡는 필터(core.web의 RequestIdFilter, FilterExceptionFilter) 바로 다음이다.
 	@Bean
 	FilterRegistrationBean<CorsFilter> earlyCorsFilter(CorsConfigurationSource corsConfigurationSource) {
 		FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(
 				new CorsFilter(corsConfigurationSource));
-		registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
+		registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 2);
 		return registration;
 	}
 
