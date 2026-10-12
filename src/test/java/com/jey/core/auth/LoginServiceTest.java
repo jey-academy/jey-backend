@@ -12,6 +12,7 @@ import com.jey.core.auth.domain.User;
 import com.jey.core.auth.domain.UserRepository;
 import com.jey.core.shared.BusinessException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -29,6 +30,7 @@ import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
 import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -63,6 +65,13 @@ class LoginServiceTest {
 	private final LoginService loginService = new LoginService(authenticationManager, sessionStrategy,
 			contextRepository, users, attemptLimiter, new AuthProperties(List.of(), false, null, false, null, null, null),
 			meterRegistry, Clock.systemUTC());
+
+	// 성공한 로그인은 이 스레드에 로그인 정보를 남긴다(LoginService가 SecurityContextHolder에 넣는다).
+	// 치우지 않으면 바로 뒤에 도는 MockMvc 테스트가 그것을 집어 모든 요청의 로그인 정보로 쓴다.
+	@AfterEach
+	void clearLogin() {
+		SecurityContextHolder.clearContext();
+	}
 
 	@Test
 	void 비밀번호가_틀리면_자격_증명_오류다() {
@@ -118,6 +127,65 @@ class LoginServiceTest {
 						ex -> assertThat(ex.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_CREDENTIALS));
 		verifyNoInteractions(sessionStrategy, contextRepository);
 		assertThat(output).contains("로그인 실패: 비활성 계정 userId=" + USER_ID);
+	}
+
+	// 역할·지점을 바꾸거나 비밀번호를 다시 정한 쪽은 그 계정의 세션을 끊는다. 해시를 계산하던 로그인이 그 뒤에 세션을 저장하면
+	// 옛 권한이나 옛 비밀번호로 로그인된 세션이 살아남는다. 차단과 같은 틈이다(ADR-0030).
+	@Test
+	void 비밀번호_검증_중에_역할이나_지점이_바뀐_계정은_로그인되지_않는다(CapturedOutput output) {
+		authenticationSucceedsWith(savedUser());
+		User moved = savedUser();
+		moved.changeAffiliation(UserRole.STAFF, 2L);
+		when(users.findById(USER_ID)).thenReturn(Optional.of(moved));
+
+		assertThatThrownBy(this::login)
+				.isInstanceOfSatisfying(BusinessException.class,
+						ex -> assertThat(ex.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_CREDENTIALS));
+		verifyNoInteractions(sessionStrategy, contextRepository);
+		assertThat(output).contains("로그인 실패: 비밀번호 검증 중에 바뀐 계정 userId=" + USER_ID);
+	}
+
+	@Test
+	void 비밀번호_검증_중에_비밀번호가_바뀐_계정은_로그인되지_않는다() {
+		authenticationSucceedsWith(savedUser());
+		User reset = savedUser();
+		reset.changePassword("{noop}reset-by-admin");
+		when(users.findById(USER_ID)).thenReturn(Optional.of(reset));
+
+		assertThatThrownBy(this::login)
+				.isInstanceOfSatisfying(BusinessException.class,
+						ex -> assertThat(ex.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_CREDENTIALS));
+		verifyNoInteractions(sessionStrategy, contextRepository);
+	}
+
+	// 가장 위험한 방향이다. 관리자를 직원으로 내리는 순간 해시를 계산하던 로그인이 관리자 세션으로 살아남으면 안 된다.
+	@Test
+	void 비밀번호_검증_중에_관리자에서_직원으로_내려간_계정은_로그인되지_않는다() {
+		User admin = User.create("owner", "{noop}not-a-real-hash", "박원장", UserRole.ADMIN, null, null);
+		ReflectionTestUtils.setField(admin, "id", USER_ID);
+		authenticationSucceedsWith(admin);
+		User demoted = User.create("owner", "{noop}not-a-real-hash", "박원장", UserRole.ADMIN, null, null);
+		ReflectionTestUtils.setField(demoted, "id", USER_ID);
+		demoted.changeAffiliation(UserRole.STAFF, 1L);
+		when(users.findById(USER_ID)).thenReturn(Optional.of(demoted));
+
+		assertThatThrownBy(this::login)
+				.isInstanceOfSatisfying(BusinessException.class,
+						ex -> assertThat(ex.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_CREDENTIALS));
+		verifyNoInteractions(sessionStrategy, contextRepository);
+	}
+
+	// 이름은 권한과 무관하다. 검증 중에 이름만 바뀐 계정은 그대로 로그인된다.
+	@Test
+	void 비밀번호_검증_중에_이름만_바뀐_계정은_로그인된다() {
+		authenticationSucceedsWith(savedUser());
+		User renamed = savedUser();
+		renamed.rename("김데스크");
+		when(users.findById(USER_ID)).thenReturn(Optional.of(renamed));
+
+		login();
+
+		verify(contextRepository).saveContext(any(), any(), any());
 	}
 
 	@Test

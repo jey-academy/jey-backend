@@ -29,6 +29,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.JdkSerializationRedisSerializer;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.test.context.TestSecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -103,6 +104,9 @@ class AuthLoginTest {
 	// 이 클래스의 요청은 따로 정하지 않으면 모두 127.0.0.1에서 온다. 앞 테스트의 실패 횟수가 남으면 뒤 테스트가 429를 받는다.
 	@BeforeEach
 	void clearLoginAttempts() {
+		// 앞에서 돈 테스트가 이 스레드에 로그인 정보를 남겼으면 MockMvc가 그것을 모든 요청의 로그인 정보로 쓴다.
+		// 이 클래스는 실제 세션 쿠키로만 로그인하므로 비우고 시작한다.
+		TestSecurityContextHolder.clearContext();
 		redis.delete(redis.keys(LOGIN_ATTEMPT_KEYS));
 	}
 
