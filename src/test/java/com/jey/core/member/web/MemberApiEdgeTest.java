@@ -244,6 +244,24 @@ class MemberApiEdgeTest {
 				""".formatted(name, registeredAt);
 	}
 
+	// 학부모를 여럿 적는 등록 창에서, 몇 번째 학부모의 번호가 틀렸는지 알려 준다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 학부모_전화번호의_형식이_틀리면_몇_번째인지_알려_준다() throws Exception {
+		String guardians = guardianBody(randomPhone())
+				+ ", {\"name\": \"김보호자\", \"relation\": \"OTHER\", \"phone\": \"02-555-0199\"}";
+
+		String body = send(post(STUDENTS), createBody(uniqueName(), guardians)).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[0].field").value("guardians[1].phone"))
+				.andExpect(jsonPath("$.errors[0].message").value("휴대전화 번호 형식이 아닙니다."))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		assertThat(body).doesNotContain("0199");
+	}
+
 	private ResultActions send(MockHttpServletRequestBuilder request, String json) throws Exception {
 		return mockMvc.perform(request.with(csrfToken(mockMvc)).with(idempotencyKey()).contentType(MediaType.APPLICATION_JSON).content(json));
 	}

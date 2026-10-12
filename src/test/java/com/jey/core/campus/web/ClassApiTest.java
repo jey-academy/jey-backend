@@ -285,8 +285,11 @@ class ClassApiTest {
 	@Test
 	@WithJeyUser(role = UserRole.ADMIN)
 	void 음수_금액은_400이다() throws Exception {
+		// 금액으로 읽지 못한 값이다. 어느 칸인지 알려 준다.
 		create(DONGTAN, uniqueName(), "-1", "0").andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors.length()").value(1))
+				.andExpect(jsonPath("$.errors[0].field").isNotEmpty());
 	}
 
 	@Test

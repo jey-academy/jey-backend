@@ -27,6 +27,12 @@ import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import com.jey.core.shared.PhoneNumber;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DatabindException;
+import tools.jackson.databind.exc.MismatchedInputException;
+import tools.jackson.databind.exc.ValueInstantiationException;
 
 @RestControllerAdvice
 class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
@@ -41,6 +47,8 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	static final String REQUEST_ID = "requestId";
 
 	private static final String BINDING_FAILURE_MESSAGE = "형식이 올바르지 않습니다.";
+
+	private static final String PHONE_FORMAT_MESSAGE = "휴대전화 번호 형식이 아닙니다.";
 
 	private static final int MAX_LOGGED_URI_LENGTH = 200;
 
@@ -87,6 +95,59 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 			HttpHeaders headers, HttpStatusCode status, WebRequest request) {
 		return handleExceptionInternal(ex, validationProblem(violations(ex.getBindingResult())), headers, status,
 				request);
+	}
+
+	// 본문(JSON)의 값 하나를 읽지 못한 경우다: 형식이 틀린 전화번호, 고를 수 없는 값, 숫자 칸의 글자, 틀린 날짜.
+	// 어느 칸인지 알면 그 칸의 검증 실패로 답한다. 폼이 그 칸 밑에 오류를 보여 줄 수 있다.
+	// 본문이 JSON이 아니거나 모양이 통째로 틀려 칸을 알 수 없으면 요청 형식 오류(COMMON_BAD_REQUEST)로 둔다.
+	@Override
+	protected ResponseEntity<Object> handleHttpMessageNotReadable(HttpMessageNotReadableException ex,
+			HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+		FieldViolation unreadable = unreadableField(ex);
+		if (unreadable == null) {
+			return super.handleHttpMessageNotReadable(ex, headers, status, request);
+		}
+		return handleExceptionInternal(ex, validationProblem(List.of(unreadable)), headers, status, request);
+	}
+
+	// 문구는 고정이다. 변환 실패 문구에는 내부 타입 이름과 보낸 값이 들어 있다(전화번호가 응답에 실리면 안 된다).
+	private static FieldViolation unreadableField(Throwable ex) {
+		for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+			Class<?> target = targetTypeOf(cause);
+			if (target != null && cause instanceof DatabindException failure && !failure.getPath().isEmpty()) {
+				return new FieldViolation(fieldOf(failure.getPath()),
+						(target == PhoneNumber.class) ? PHONE_FORMAT_MESSAGE : BINDING_FAILURE_MESSAGE);
+			}
+		}
+		return null;
+	}
+
+	// 값을 그 타입으로 바꾸다 실패한 것만 본다. 문법이 깨진 본문은 여기에 해당하지 않는다.
+	private static Class<?> targetTypeOf(Throwable cause) {
+		if (cause instanceof ValueInstantiationException instantiation) {
+			return instantiation.getType().getRawClass();
+		}
+		if (cause instanceof MismatchedInputException mismatch) {
+			return (mismatch.getTargetType() != null) ? mismatch.getTargetType() : Object.class;
+		}
+		return null;
+	}
+
+	// 검증 실패가 쓰는 표기와 같게 적는다: guardians[1].phone
+	private static String fieldOf(List<JacksonException.Reference> path) {
+		StringBuilder field = new StringBuilder();
+		for (JacksonException.Reference step : path) {
+			if (step.getPropertyName() != null) {
+				if (!field.isEmpty()) {
+					field.append('.');
+				}
+				field.append(step.getPropertyName());
+			}
+			else {
+				field.append('[').append(step.getIndex()).append(']');
+			}
+		}
+		return field.toString();
 	}
 
 	@Override

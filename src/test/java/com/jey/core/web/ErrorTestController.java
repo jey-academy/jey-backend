@@ -31,6 +31,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.jey.core.shared.PhoneNumber;
+import java.util.List;
 
 // 예외 변환만 검증하기 위한 테스트 전용 컨트롤러. 각 예외를 확정적으로 일으킨다.
 // 테스트 소스라 운영 빌드에는 포함되지 않는다. API 명세에도 싣지 않는다(ApiSpecTest).
@@ -115,6 +117,24 @@ class ErrorTestController {
 	}
 
 	record Body(@NotBlank String name, @Min(1) int count) {
+	}
+
+	@NotIdempotent("예외 변환만 보는 테스트용이다")
+	@PostMapping("/typed")
+	void typed(@Valid @RequestBody Typed body) {
+	}
+
+	// 값의 타입이 여러 가지인 본문. 값 하나를 읽지 못했을 때 어느 칸인지 알려 주는지 본다.
+	record Typed(PhoneNumber phone, Color color, int count, LocalDate date, List<Contact> contacts) {
+	}
+
+	record Contact(String name, PhoneNumber phone) {
+	}
+
+	enum Color {
+
+		RED, GREEN
+
 	}
 
 	record Query(LocalDate from) {
