@@ -27,6 +27,14 @@ public class Student extends BaseEntity {
 
 	public static final int MAX_SCHOOL_LENGTH = 50;
 
+	/**
+	 * 등록일로 받는 범위. 날짜 입력칸에서 연도를 치다 만 값(0026-10-12)이 저장되는 것을 막는다.
+	 * 미래 날짜는 막지 않는다(다음 달 등록을 미리 넣는다). 요청을 받는 쪽의 검증도 이 범위를 쓴다.
+	 */
+	public static final LocalDate MIN_REGISTERED_AT = LocalDate.of(2000, 1, 1);
+
+	public static final LocalDate MAX_REGISTERED_AT = LocalDate.of(2099, 12, 31);
+
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
@@ -84,12 +92,12 @@ public class Student extends BaseEntity {
 	 * @param classId 반을 아직 정하지 않았으면 {@code null}
 	 * @param school 빈 값이면 {@code null}로 저장한다
 	 * @param phone 본인 번호가 없으면 {@code null}
-	 * @throws IllegalArgumentException 필수값이 비었거나 이름·학교가 길 때
+	 * @throws IllegalArgumentException 필수값이 비었거나, 이름·학교가 길거나, 등록일이 범위 밖일 때
 	 */
 	public static Student create(Long campusId, Long classId, String name, String school, Grade grade,
 			LocalDate registeredAt, ProtectedPhone phone) {
 		return new Student(required(campusId, "campusId"), classId, Names.valid(name, MAX_NAME_LENGTH),
-				validSchool(school), required(grade, "grade"), required(registeredAt, "registeredAt"), phone);
+				validSchool(school), required(grade, "grade"), validRegisteredAt(registeredAt), phone);
 	}
 
 	/**
@@ -104,7 +112,7 @@ public class Student extends BaseEntity {
 		String validSchool = validSchool(school);
 		Grade validGrade = required(grade, "grade");
 		StudentStatus validStatus = required(status, "status");
-		LocalDate validRegisteredAt = required(registeredAt, "registeredAt");
+		LocalDate validRegisteredAt = validRegisteredAt(registeredAt);
 		this.campusId = validCampusId;
 		this.classId = classId;
 		this.name = validName;
@@ -180,6 +188,20 @@ public class Student extends BaseEntity {
 			throw new IllegalArgumentException(field + "는 비울 수 없다");
 		}
 		return value;
+	}
+
+	/** 등록일로 받을 수 있는 날짜인지. */
+	public static boolean isRegisteredAtInRange(LocalDate registeredAt) {
+		return !registeredAt.isBefore(MIN_REGISTERED_AT) && !registeredAt.isAfter(MAX_REGISTERED_AT);
+	}
+
+	private static LocalDate validRegisteredAt(LocalDate registeredAt) {
+		required(registeredAt, "registeredAt");
+		if (!isRegisteredAtInRange(registeredAt)) {
+			throw new IllegalArgumentException(
+					"registeredAt은 " + MIN_REGISTERED_AT + "부터 " + MAX_REGISTERED_AT + " 사이여야 한다: " + registeredAt);
+		}
+		return registeredAt;
 	}
 
 }

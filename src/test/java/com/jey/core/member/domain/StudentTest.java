@@ -1,5 +1,6 @@
 package com.jey.core.member.domain;
 
+import java.util.List;
 import java.time.LocalDate;
 
 import com.jey.core.shared.ProtectedPhone;
@@ -125,6 +126,32 @@ class StudentTest {
 		assertThatIllegalArgumentException().isThrownBy(() -> StudentGuardian.link(1L, 1L, null));
 		assertThatIllegalArgumentException()
 				.isThrownBy(() -> StudentGuardian.link(1L, 1L, GuardianRelation.MOTHER).changeRelation(null));
+	}
+
+	// 화면을 거치지 않고 들어온 값도 막는다. 연도를 치다 만 값(0026)이 저장되면 목록과 통계가 틀어진다.
+	@Test
+	void 등록일은_2000년_첫날부터_2099년_마지막_날까지다() {
+		for (LocalDate outOfRange : List.of(LocalDate.of(26, 10, 12), LocalDate.of(1999, 12, 31),
+				LocalDate.of(2100, 1, 1))) {
+			assertThatIllegalArgumentException()
+				.isThrownBy(() -> Student.create(1L, null, "김학생", null, Grade.HIGH_1, outOfRange, null));
+		}
+		assertThat(Student.create(1L, null, "김학생", null, Grade.HIGH_1, LocalDate.of(2000, 1, 1), null)
+			.getRegisteredAt()).isEqualTo(LocalDate.of(2000, 1, 1));
+		assertThat(Student.create(1L, null, "김학생", null, Grade.HIGH_1, LocalDate.of(2099, 12, 31), null)
+			.getRegisteredAt()).isEqualTo(LocalDate.of(2099, 12, 31));
+	}
+
+	@Test
+	void 범위_밖의_등록일로는_수정할_수_없고_아무것도_바뀌지_않는다() {
+		Student student = Student.create(1L, null, "김학생", null, Grade.HIGH_1, LocalDate.of(2026, 3, 2), null);
+
+		assertThatIllegalArgumentException().isThrownBy(() -> student.update(1L, null, "새 이름", null, Grade.HIGH_2,
+				StudentStatus.ENROLLED, LocalDate.of(26, 10, 12)));
+
+		assertThat(student.getName()).isEqualTo("김학생");
+		assertThat(student.getGrade()).isEqualTo(Grade.HIGH_1);
+		assertThat(student.getRegisteredAt()).isEqualTo(LocalDate.of(2026, 3, 2));
 	}
 
 }

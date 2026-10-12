@@ -20,7 +20,7 @@ record StudentCreateRequest(@NotNull Long campusId,
 		@NotBlank @Size(max = Student.MAX_NAME_LENGTH) String name,
 		@Schema(description = "학교. 없으면 보내지 않는다") @Size(max = Student.MAX_SCHOOL_LENGTH) String school,
 		@NotNull Grade grade,
-		@Schema(description = "등록일. 보내지 않으면 오늘") LocalDate registeredAt,
+		@Schema(description = "등록일. 보내지 않으면 오늘. 2000-01-01부터 2099-12-31까지") @RegisteredDate LocalDate registeredAt,
 		@Schema(description = "학생 본인의 휴대전화 번호. 없으면 보내지 않는다", example = "010-1234-5678") PhoneNumber phone,
 		@Schema(description = "학부모. 같은 전화번호를 두 번 적을 수 없다") @Valid @Size(
 				max = StudentGuardian.MAX_PER_STUDENT) List<@NotNull @Valid GuardianRequest> guardians) {

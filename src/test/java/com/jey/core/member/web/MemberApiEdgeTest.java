@@ -197,6 +197,53 @@ class MemberApiEdgeTest {
 				.andExpect(jsonPath("$.guardians.length()").value(0));
 	}
 
+	// 날짜 입력칸에서 연도를 치다 만 값(0026-10-12)이 그대로 저장되면 목록과 통계가 틀어진다. 화면만 믿지 않고 서버도 범위를 본다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 등록일은_2000년부터_2099년까지만_받는다() throws Exception {
+		for (String outOfRange : new String[] { "0026-10-12", "1999-12-31", "2100-01-01" }) {
+			send(post(STUDENTS), createBodyRegisteredAt(uniqueName(), outOfRange)).andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+					.andExpect(jsonPath("$.errors[?(@.field == 'registeredAt')]").isNotEmpty());
+		}
+		for (String inRange : new String[] { "2000-01-01", "2099-12-31" }) {
+			send(post(STUDENTS), createBodyRegisteredAt(uniqueName(), inRange)).andExpect(status().isCreated())
+					.andExpect(jsonPath("$.registeredAt").value(inRange));
+		}
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 수정에서도_등록일의_범위를_본다() throws Exception {
+		String name = uniqueName();
+		long id = studentService.register(registration(name, mother(randomPhone()))).id();
+
+		send(put(STUDENTS + "/" + id), updateBodyRegisteredAt(name, "0026-10-12")).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[?(@.field == 'registeredAt')]").isNotEmpty());
+		send(put(STUDENTS + "/" + id), updateBodyRegisteredAt(name, "2099-12-31")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.registeredAt").value("2099-12-31"));
+	}
+
+	// 보내지 않으면 지금처럼 오늘이다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 등록에서_등록일을_보내지_않으면_오늘이다() throws Exception {
+		send(post(STUDENTS), createBody(uniqueName(), guardians(1))).andExpect(status().isCreated())
+				.andExpect(jsonPath("$.registeredAt").isNotEmpty());
+	}
+
+	private static String createBodyRegisteredAt(String name, String registeredAt) {
+		return "{\"campusId\": 1, \"name\": \"%s\", \"grade\": \"HIGH_1\", \"registeredAt\": \"%s\", \"guardians\": [%s]}"
+			.formatted(name, registeredAt, guardians(1));
+	}
+
+	private static String updateBodyRegisteredAt(String name, String registeredAt) {
+		return """
+				{"campusId": 1, "name": "%s", "grade": "HIGH_1", "status": "ENROLLED", "registeredAt": "%s"}
+				""".formatted(name, registeredAt);
+	}
+
 	private ResultActions send(MockHttpServletRequestBuilder request, String json) throws Exception {
 		return mockMvc.perform(request.with(csrfToken(mockMvc)).with(idempotencyKey()).contentType(MediaType.APPLICATION_JSON).content(json));
 	}

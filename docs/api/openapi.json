@@ -665,7 +665,7 @@
             "type" : "string"
           },
           "registeredAt" : {
-            "description" : "등록일. 보내지 않으면 오늘",
+            "description" : "등록일. 보내지 않으면 오늘. 2000-01-01부터 2099-12-31까지",
             "format" : "date",
             "type" : "string"
           },
@@ -847,6 +847,7 @@
             "type" : "string"
           },
           "registeredAt" : {
+            "description" : "등록일. 2000-01-01부터 2099-12-31까지",
             "format" : "date",
             "type" : "string"
           },
