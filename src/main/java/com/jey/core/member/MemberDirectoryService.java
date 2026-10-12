@@ -3,7 +3,6 @@ package com.jey.core.member;
 import java.util.List;
 import java.util.Optional;
 
-import com.jey.core.member.StudentView.ContactView;
 import com.jey.core.member.api.ContactInfo;
 import com.jey.core.member.api.MemberDirectory;
 import com.jey.core.member.api.StudentInfo;
@@ -43,8 +42,9 @@ class MemberDirectoryService implements MemberDirectory {
 		if (!students.existsById(studentId)) {
 			return Optional.empty();
 		}
-		ContactView contact = studentService.get(studentId).primaryContact();
-		return Optional.of(new ContactInfo(contact.name(), contact.studentOwn(), contact.phone()));
+		// 연락처가 하나도 없는 학생이면 비어 있다(StudentService가 경고를 남긴다).
+		return Optional.ofNullable(studentService.get(studentId).primaryContact())
+			.map(contact -> new ContactInfo(contact.name(), contact.studentOwn(), contact.phone()));
 	}
 
 }

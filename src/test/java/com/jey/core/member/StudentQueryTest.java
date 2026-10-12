@@ -18,6 +18,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.test.context.ActiveProfiles;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import static com.jey.core.member.MemberFixtures.DONGTAN;
 import static com.jey.core.member.MemberFixtures.NEUNGDONG;
@@ -27,6 +30,7 @@ import static com.jey.core.member.MemberFixtures.randomLast4;
 import static com.jey.core.member.MemberFixtures.randomPhone;
 import static com.jey.core.member.MemberFixtures.randomPhoneEndingWith;
 import static com.jey.core.member.MemberFixtures.registration;
+import static com.jey.core.member.MemberFixtures.removeAllContacts;
 import static com.jey.core.member.MemberFixtures.registrationWithPhone;
 import static com.jey.core.member.MemberFixtures.uniqueName;
 import static com.jey.core.member.StudentRegistrationTest.assertFails;
@@ -38,6 +42,7 @@ import static org.awaitility.Awaitility.await;
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class StudentQueryTest {
 
 	@Autowired
@@ -78,6 +83,53 @@ class StudentQueryTest {
 		assertThat(studentService.get(withGuardians).primaryContact().phone()).isEqualTo(grandparentPhone);
 		assertThat(studentService.get(alone).primaryContact().phone()).isEqualTo(studentPhone);
 		assertThat(studentService.get(alone).primaryContact().relation()).isNull();
+	}
+
+	// 등록과 삭제가 막고 있어 정상 경로로는 생기지 않는다. 그래도 자료가 그렇게 되면, 그 한 줄 때문에
+	// 같은 페이지의 다른 학생까지 못 보게 되어서는 안 된다. 연락처 칸만 비워서 내보낸다.
+	@Test
+	void 연락처가_없는_학생이_있어도_목록의_다른_학생은_대표_연락처와_함께_나온다() {
+		String prefix = uniqueName();
+		PhoneNumber motherPhone = randomPhone();
+		long withContact = studentService.register(registration(prefix + "-가", mother(motherPhone))).id();
+		long withoutContact = studentService.register(registration(prefix + "-나", mother(randomPhone()))).id();
+		removeAllContacts(jdbc, withoutContact);
+
+		List<StudentSummaryView> found = studentService.search(null, prefix, null, 0, 20).getContent();
+
+		assertThat(found).extracting(StudentSummaryView::id).containsExactly(withContact, withoutContact);
+		assertThat(found.get(0).primaryContact().phone()).isEqualTo(motherPhone);
+		assertThat(found.get(1).primaryContact()).isNull();
+	}
+
+	@Test
+	void 연락처가_없는_학생의_상세는_대표_연락처_없이_나온다() {
+		long id = studentService.register(registration(uniqueName(), mother(randomPhone()))).id();
+		removeAllContacts(jdbc, id);
+
+		StudentView found = studentService.get(id);
+
+		assertThat(found.primaryContact()).isNull();
+		assertThat(found.guardians()).isEmpty();
+		assertThat(found.phone()).isNull();
+	}
+
+	// 예외 대신 빈 칸으로 내보내므로, 이 로그가 그런 자료가 있다는 것을 알리는 유일한 통로다.
+	// 어느 학생인지와 어느 지점인지를 ID로 남긴다. 이름은 남기지 않는다.
+	@Test
+	void 연락처가_없는_학생을_만나면_누구인지_경고로_남긴다(CapturedOutput output) {
+		String prefix = uniqueName();
+		long first = studentService.register(registration(prefix + "-가", mother(randomPhone()))).id();
+		long second = studentService.register(registration(prefix + "-나", mother(randomPhone()))).id();
+		removeAllContacts(jdbc, first);
+		removeAllContacts(jdbc, second);
+
+		List<StudentSummaryView> found = studentService.search(null, prefix, null, 0, 20).getContent();
+
+		assertThat(found).hasSize(2).allSatisfy(student -> assertThat(student.primaryContact()).isNull());
+		assertThat(output.getAll()).contains("studentId=" + first + " campusId=" + DONGTAN)
+			.contains("studentId=" + second + " campusId=" + DONGTAN)
+			.doesNotContain(prefix);
 	}
 
 	@Test

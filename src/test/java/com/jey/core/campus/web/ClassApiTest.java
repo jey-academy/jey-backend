@@ -285,8 +285,19 @@ class ClassApiTest {
 	@Test
 	@WithJeyUser(role = UserRole.ADMIN)
 	void 음수_금액은_400이다() throws Exception {
-		create(DONGTAN, uniqueName(), "-1", "0").andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+		// 금액으로 읽지 못한 값이다. 어느 칸인지 알려 준다.
+		String body = create(DONGTAN, uniqueName(), "-1", "0").andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors.length()").value(1))
+				.andExpect(jsonPath("$.errors[0].field").value("baseFee8"))
+				.andExpect(jsonPath("$.errors[0].message").value("형식이 올바르지 않습니다."))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+		create(DONGTAN, uniqueName(), "0", "-1").andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errors[0].field").value("bookFee"));
+
+		assertThat(body).doesNotContain("Money").doesNotContain("java.");
 	}
 
 	@Test

@@ -13,7 +13,11 @@ record ContactResponse(@Schema(requiredMode = RequiredMode.REQUIRED) String name
 		@Schema(description = "가운데를 가린 전화번호", example = "010-****-5678",
 				requiredMode = RequiredMode.REQUIRED) PhoneNumber phone) {
 
+	// 연락처가 하나도 없는 학생이면 null이다.
 	static ContactResponse from(ContactView contact) {
+		if (contact == null) {
+			return null;
+		}
 		return new ContactResponse(contact.name(), contact.relation(), contact.phone());
 	}
 

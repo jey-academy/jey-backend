@@ -3,10 +3,12 @@ package com.jey.core.web;
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.CommonErrorCode;
 import com.jey.core.shared.ErrorCode;
+import com.jey.core.shared.PhoneNumber;
 import com.jey.core.shared.RateLimitedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.core.Authentication;
@@ -27,6 +30,10 @@ import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DatabindException;
+import tools.jackson.databind.exc.MismatchedInputException;
+import tools.jackson.databind.exc.ValueInstantiationException;
 
 @RestControllerAdvice
 class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
@@ -41,6 +48,8 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	static final String REQUEST_ID = "requestId";
 
 	private static final String BINDING_FAILURE_MESSAGE = "형식이 올바르지 않습니다.";
+
+	private static final String PHONE_FORMAT_MESSAGE = "휴대전화 번호 형식이 아닙니다.";
 
 	private static final int MAX_LOGGED_URI_LENGTH = 200;
 
@@ -87,6 +96,67 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 			HttpHeaders headers, HttpStatusCode status, WebRequest request) {
 		return handleExceptionInternal(ex, validationProblem(violations(ex.getBindingResult())), headers, status,
 				request);
+	}
+
+	// 본문(JSON)의 값 하나를 읽지 못한 경우다: 형식이 틀린 전화번호, 고를 수 없는 값, 숫자 칸의 글자, 틀린 날짜.
+	// 어느 칸인지 알면 그 칸의 검증 실패로 답한다. 폼이 그 칸 밑에 오류를 보여 줄 수 있다.
+	// 본문이 JSON이 아니거나 모양이 통째로 틀려 칸을 알 수 없으면 요청 형식 오류(COMMON_BAD_REQUEST)로 둔다.
+	//
+	// 값을 만드는 코드(생성자, 팩터리)가 던진 예외는 가려서 받는다. "값이 틀렸다"는 뜻으로 던진 것(IllegalArgumentException)만 입력 오류다.
+	// 그 밖의 예외(널 참조, 상태 오류)는 그 코드의 버그다. 입력 오류로 답하면 사용자는 멀쩡한 값을 넣고 "형식이 틀렸다"를 보고,
+	// 서버 로그에는 아무것도 남지 않는다. 서버 오류로 답하고 로그에 남긴다.
+	@Override
+	protected ResponseEntity<Object> handleHttpMessageNotReadable(HttpMessageNotReadableException ex,
+			HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+		for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+			if (cause instanceof ValueInstantiationException instantiation) {
+				if (!(instantiation.getCause() instanceof IllegalArgumentException)) {
+					return respond(ex, CommonErrorCode.INTERNAL_ERROR, null, request);
+				}
+				boolean phone = instantiation.getType().getRawClass() == PhoneNumber.class;
+				return unreadableValue(ex, instantiation, phone ? PHONE_FORMAT_MESSAGE : BINDING_FAILURE_MESSAGE,
+						headers, status, request);
+			}
+			// 값의 모양이 그 칸의 타입과 맞지 않는다(고를 수 없는 값, 숫자 칸의 글자, 틀린 날짜, 값이 있어야 하는 칸의 null).
+			// 문법이 깨진 본문은 여기에 해당하지 않는다.
+			if (cause instanceof MismatchedInputException mismatch) {
+				return unreadableValue(ex, mismatch, BINDING_FAILURE_MESSAGE, headers, status, request);
+			}
+		}
+		return super.handleHttpMessageNotReadable(ex, headers, status, request);
+	}
+
+	// 문구는 고정이다. 변환 실패 문구에는 내부 타입 이름과 보낸 값이 들어 있다(전화번호가 응답에 실리면 안 된다).
+	private ResponseEntity<Object> unreadableValue(HttpMessageNotReadableException ex, DatabindException failure,
+			String message, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+		String field = fieldOf(failure.getPath());
+		if (field == null) {
+			return super.handleHttpMessageNotReadable(ex, headers, status, request);
+		}
+		return handleExceptionInternal(ex, validationProblem(List.of(new FieldViolation(field, message))), headers,
+				status, request);
+	}
+
+	// 검증 실패가 쓰는 표기와 같게 적는다: guardians[1].phone
+	// 칸 이름은 응답에 실리므로 서버가 정한 이름만 쓴다. Map의 키는 사용자가 보낸 값이라 싣지 않고 그 Map이 든 칸까지만 적는다.
+	// 어느 칸인지 알 수 없으면 null이다.
+	private static String fieldOf(List<JacksonException.Reference> path) {
+		StringBuilder field = new StringBuilder();
+		for (JacksonException.Reference step : path) {
+			if (step.from() instanceof Map<?, ?>) {
+				break;
+			}
+			if (step.getPropertyName() != null) {
+				if (!field.isEmpty()) {
+					field.append('.');
+				}
+				field.append(step.getPropertyName());
+			}
+			else if (step.getIndex() >= 0) {
+				field.append('[').append(step.getIndex()).append(']');
+			}
+		}
+		return field.isEmpty() ? null : field.toString();
 	}
 
 	@Override

@@ -102,6 +102,45 @@ class ApiSpecTest {
 	}
 
 	@SuppressWarnings("unchecked")
+	// "$ref" 옆에 다른 키(type 등)가 나란히 있으면 뜻이 맞지 않고, 프론트의 타입 생성기는 "$ref"만 보고 나머지를 버린다.
+	// null일 수 있는 참조 필드가 그렇게 나온다(NullableReferenceOpenApiConfig가 고쳐 적는다).
+	// 명세 생성기를 올려 표현이 바뀌거나 그 설정이 보지 않는 자리(목록의 원소 등)에 그런 필드가 생기면, 설정은 조용히 아무 일도 하지 않고
+	// 저장된 파일까지 같이 다시 쓰면 위의 비교는 통과한다. 그래서 명세 전체를 따로 본다.
+	@Test
+	void 명세에_참조와_다른_키가_나란히_있는_스키마가_없다() throws Exception {
+		List<String> found = new ArrayList<>();
+		collectReferencesWithSiblings("", currentSpec(), found);
+
+		assertThat(found).as("\"$ref\" 옆에 다른 키가 있는 자리").isEmpty();
+	}
+
+	@Test
+	void null일_수_있는_참조_필드는_그_타입이거나_null로_적혀_있다() throws Exception {
+		Map<String, Object> schemas = schemas(currentSpec());
+
+		for (String response : List.of("StudentResponse", "StudentSummaryResponse")) {
+			Map<String, Object> primaryContact = child(child(child(schemas, response), "properties"), "primaryContact");
+			assertThat(primaryContact.get("anyOf")).as(response + ".primaryContact")
+				.isEqualTo(List.of(Map.of("$ref", "#/components/schemas/ContactResponse"), Map.of("type", "null")));
+			assertThat(primaryContact.get("description")).as(response + ".primaryContact의 설명").isNotNull();
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private static void collectReferencesWithSiblings(String path, Object node, List<String> found) {
+		if (node instanceof Map<?, ?> map) {
+			if (map.containsKey("$ref") && map.size() > 1) {
+				found.add(path + " " + map.keySet());
+			}
+			((Map<String, Object>) map).forEach((key, value) -> collectReferencesWithSiblings(path + "/" + key, value, found));
+		}
+		else if (node instanceof List<?> list) {
+			for (int i = 0; i < list.size(); i++) {
+				collectReferencesWithSiblings(path + "[" + i + "]", list.get(i), found);
+			}
+		}
+	}
+
 	private static List<Map<String, Object>> headerParameters(Map<String, Object> paths, String path) {
 		Map<String, Object> operation = child(child(paths, path), "post");
 		assertThat(operation).as("POST " + path).isNotEmpty();

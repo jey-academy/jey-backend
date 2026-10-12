@@ -2,6 +2,7 @@ package com.jey.core.member;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 
 import com.jey.core.member.domain.Grade;
 import com.jey.core.member.domain.GuardianRelation;
@@ -13,7 +14,8 @@ import com.jey.core.shared.PhoneNumber;
  *
  * @param phone 학생 본인 번호. 없으면 {@code null}
  * @param guardians 먼저 연결된 순서
- * @param primaryContact 대표 연락처. 어머니, 먼저 연결된 학부모, 학생 본인 번호 순으로 고른다. 비어 있지 않다
+ * @param primaryContact 대표 연락처. 어머니, 먼저 연결된 학부모, 학생 본인 번호 순으로 고른다.
+ * 연락처가 하나도 없는 학생이면 {@code null}이다(있어서는 안 되는 자료지만, 그런 학생도 보여는 준다)
  * @param siblings 같은 학부모에 연결된 다른 학생
  */
 public record StudentView(long id, long campusId, Long classId, String name, String school, Grade grade,
@@ -33,6 +35,13 @@ public record StudentView(long id, long campusId, Long classId, String name, Str
 	 * @param relation 학생 본인 번호면 {@code null}. 본인 번호인지는 {@link #studentOwn()}으로 확인한다
 	 */
 	public record ContactView(String name, GuardianRelation relation, PhoneNumber phone) {
+
+		// 연락처가 없는 학생은 이 값이 아예 없다(null). 값이 있으면 이름과 번호가 반드시 있다.
+		// 번호 없는 연락처를 만들 수 있으면 "연락처 없음"이 두 가지 모양이 된다.
+		public ContactView {
+			Objects.requireNonNull(name, "name");
+			Objects.requireNonNull(phone, "phone");
+		}
 
 		public static ContactView ofGuardian(String name, GuardianRelation relation, PhoneNumber phone) {
 			if (relation == null) {

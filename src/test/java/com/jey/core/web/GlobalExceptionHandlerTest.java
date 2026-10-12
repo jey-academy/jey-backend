@@ -229,6 +229,145 @@ class GlobalExceptionHandlerTest {
 				.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
 	}
 
+	// 폼은 필드별 오류를 그 칸 밑에 보여 준다. 어느 칸인지 없이 "요청 형식이 올바르지 않습니다"만 오면 사용자는 무엇을 고칠지 모른다.
+	@Test
+	void 전화번호_형식이_틀리면_어느_칸인지_알려_주고_보낸_번호는_싣지_않는다(CapturedOutput output) throws Exception {
+		// 오류 본문에는 요청마다 다른 요청 ID가 실린다. 그 안에 우연히 같은 숫자가 나오지 않게 ID를 정해서 보낸다.
+		String body = mockMvc.perform(post("/api/v1/test-errors/typed").with(csrfToken(mockMvc))
+						.header("X-Request-Id", "fixed-request-id")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"phone\":\"02-9876-5432\",\"count\":1}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors.length()").value(1))
+				.andExpect(jsonPath("$.errors[0].field").value("phone"))
+				.andExpect(jsonPath("$.errors[0].message").value("휴대전화 번호 형식이 아닙니다."))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		assertThat(body).doesNotContain("9876").doesNotContain("PhoneNumber");
+		assertThat(output.getAll()).doesNotContain("02-9876-5432");
+	}
+
+	@Test
+	void 목록_안의_칸은_몇_번째인지까지_알려_준다() throws Exception {
+		mockMvc.perform(post("/api/v1/test-errors/typed").with(csrfToken(mockMvc))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"count\":1,\"contacts\":[{\"name\":\"가\",\"phone\":\"010-1234-5678\"},"
+								+ "{\"name\":\"나\",\"phone\":\"1234\"}]}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[0].field").value("contacts[1].phone"))
+				.andExpect(jsonPath("$.errors[0].message").value("휴대전화 번호 형식이 아닙니다."));
+	}
+
+	// 전화번호만이 아니다. 고를 수 없는 값, 숫자 칸의 글자, 틀린 날짜도 어느 칸인지 알려 준다.
+	// 문구는 고정이다. 변환 실패 문구에는 내부 타입 이름과 입력값이 들어 있다.
+	@Test
+	void 읽지_못한_값은_칸_이름과_고정_문구로_답한다() throws Exception {
+		String[][] cases = { { "{\"color\":\"PURPLE-SECRET\",\"count\":1}", "color" },
+				{ "{\"count\":\"many-SECRET\"}", "count" }, { "{\"count\":1,\"date\":\"2026-13-45-SECRET\"}", "date" },
+				{ "{\"count\":1,\"phone\":12345}", "phone" } };
+		for (String[] each : cases) {
+			String body = mockMvc.perform(post("/api/v1/test-errors/typed").with(csrfToken(mockMvc))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(each[0]))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+					.andExpect(jsonPath("$.errors.length()").value(1))
+					.andExpect(jsonPath("$.errors[0].field").value(each[1]))
+					.andReturn()
+					.getResponse()
+					.getContentAsString();
+
+			assertThat(body).as(each[1]).doesNotContain("SECRET").doesNotContain("Color").doesNotContain("java.");
+		}
+	}
+
+	// 값이 있어야 하는 칸에 null이 왔다. 어느 칸인지 알려 준다.
+	@Test
+	void 숫자_칸의_null은_그_칸의_오류다() throws Exception {
+		mockMvc.perform(post("/api/v1/test-errors/typed").with(csrfToken(mockMvc))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"count\":null}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[0].field").value("count"));
+	}
+
+	// 값을 만드는 코드가 "값이 틀렸다"는 뜻으로 던진 예외는 그 칸의 입력 오류다.
+	@Test
+	void 값이_틀려서_만들지_못한_칸은_그_칸의_오류다() throws Exception {
+		mockMvc.perform(post("/api/v1/test-errors/typed").with(csrfToken(mockMvc))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"count\":1,\"ranged\":{\"min\":9,\"max\":1}}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[0].field").value("ranged"))
+				.andExpect(jsonPath("$.errors[0].message").value("형식이 올바르지 않습니다."));
+	}
+
+	// 값을 만드는 코드의 버그(널 참조, 상태 오류)를 입력 오류로 답하면, 사용자는 멀쩡한 값을 넣고 "형식이 틀렸다"를 보고
+	// 서버 로그에는 아무것도 남지 않는다. 서버 오류로 답하고 원인을 로그에 남긴다.
+	@Test
+	void 값을_만드는_코드의_버그는_입력_오류가_아니라_서버_오류이고_로그에_남는다(CapturedOutput output) throws Exception {
+		for (String body : new String[] { "{\"count\":1,\"buggy\":\"anything\"}", "{\"count\":1,\"strict\":{}}" }) {
+			String response = mockMvc.perform(post("/api/v1/test-errors/typed").with(csrfToken(mockMvc))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(body))
+					.andExpect(status().isInternalServerError())
+					.andExpect(jsonPath("$.code").value("COMMON_INTERNAL_ERROR"))
+					.andExpect(jsonPath("$.errors").doesNotExist())
+					.andReturn()
+					.getResponse()
+					.getContentAsString();
+
+			assertThat(response).doesNotContain("BUGGY-DETAIL").doesNotContain("Buggy").doesNotContain("Strict");
+		}
+		assertThat(output.getAll()).contains("BUGGY-DETAIL").contains("NullPointerException");
+	}
+
+	// 칸 이름은 응답에 실린다. Map의 키는 서버가 정한 이름이 아니라 사용자가 보낸 값이므로 싣지 않는다.
+	@Test
+	void 사용자가_보낸_키는_칸_이름에_싣지_않는다() throws Exception {
+		String body = mockMvc.perform(post("/api/v1/test-errors/typed").with(csrfToken(mockMvc))
+						.header("X-Request-Id", "fixed-request-id")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"count\":1,\"scores\":{\"010-1234-5678\":\"abc\"}}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[0].field").value("scores"))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		assertThat(body).doesNotContain("1234").doesNotContain("5678");
+	}
+
+	// 모르는 칸은 지금 무시한다. 무시하지 않게 바꾸면 사용자가 보낸 칸 이름이 응답에 실릴 수 있다. 그때 이 테스트가 알린다.
+	@Test
+	void 모르는_칸은_무시한다() throws Exception {
+		mockMvc.perform(post("/api/v1/test-errors/typed").with(csrfToken(mockMvc))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"count\":1,\"unknown-SECRET\":\"value\"}"))
+				.andExpect(status().is2xxSuccessful());
+	}
+
+	// 어느 칸인지 알 수 없는 실패는 지금처럼 요청 형식 오류다.
+	@Test
+	void 본문의_모양이_틀리면_요청_형식_오류다() throws Exception {
+		for (String shape : new String[] { "[1, 2]", "\"text\"", "" }) {
+			mockMvc.perform(post("/api/v1/test-errors/typed").with(csrfToken(mockMvc))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(shape))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"))
+					.andExpect(jsonPath("$.errors").doesNotExist());
+		}
+	}
+
 	@Test
 	void 깨진_JSON_본문은_400() throws Exception {
 		mockMvc.perform(post("/api/v1/test-errors/validated").with(csrfToken(mockMvc))

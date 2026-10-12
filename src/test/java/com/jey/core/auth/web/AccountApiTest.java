@@ -460,6 +460,12 @@ class AccountApiTest {
 			.exec()
 			.andExpect(jsonPath("$.code").value("AUTH_PARTNER_ACCOUNT_NOT_SUPPORTED"));
 		asAdmin(get("/api/v1/accounts").param("page", "-1")).exec().andExpect(status().isBadRequest());
+		// 아주 큰 페이지는 조회가 서버 오류로 끝난다. 상한을 넘으면 조회하지 않고 거부한다.
+		asAdmin(get("/api/v1/accounts").param("page", "10000")).exec().andExpect(status().isOk());
+		asAdmin(get("/api/v1/accounts").param("page", "10001")).exec().andExpect(status().isBadRequest());
+		asAdmin(get("/api/v1/accounts").param("page", "2147483647")).exec()
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"));
 		asAdmin(get("/api/v1/accounts").param("size", "0")).exec().andExpect(status().isBadRequest());
 		asAdmin(get("/api/v1/accounts").param("status", "DELETED")).exec().andExpect(status().isBadRequest());
 	}

@@ -1,5 +1,6 @@
 package com.jey.core.member;
 
+import com.jey.core.member.domain.StudentGuardian;
 import com.jey.core.shared.ErrorCode;
 import org.springframework.http.HttpStatus;
 
@@ -26,6 +27,9 @@ public enum MemberErrorCode implements ErrorCode {
 	GUARDIAN_ALREADY_LINKED(HttpStatus.CONFLICT, "이미 이 학생에게 연결된 학부모입니다."),
 
 	LAST_CONTACT(HttpStatus.CONFLICT, "마지막 연락처는 지울 수 없습니다. 다른 연락처를 먼저 넣어 주세요."),
+
+	// 학생 한 명에게 붙일 수 있는 학부모 수를 넘는다. 화면의 등록은 요청 검증에서 먼저 걸리므로, 보통은 나중에 한 명씩 추가할 때 난다.
+	TOO_MANY_GUARDIANS(HttpStatus.CONFLICT, "학부모는 " + StudentGuardian.MAX_PER_STUDENT + "명까지 연결할 수 있습니다."),
 
 	// 전체 번호를 보려 했는데 학생 본인의 번호가 없다.
 	PHONE_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 본인의 전화번호가 없습니다."),
@@ -59,7 +63,7 @@ public enum MemberErrorCode implements ErrorCode {
 		return switch (this) {
 			case STUDENT_DUPLICATED, GUARDIAN_PHONE_DUPLICATED, GUARDIAN_ALREADY_LINKED -> true;
 			case STUDENT_NOT_FOUND, GUARDIAN_NOT_FOUND, INVALID_CAMPUS, INVALID_CLASS, CONTACT_REQUIRED,
-					GUARDIAN_PHONE_REPEATED, LAST_CONTACT, PHONE_NOT_FOUND, PHONE_REVEAL_LIMITED,
+					GUARDIAN_PHONE_REPEATED, LAST_CONTACT, TOO_MANY_GUARDIANS, PHONE_NOT_FOUND, PHONE_REVEAL_LIMITED,
 					PHONE_CHANGE_LIMITED ->
 				false;
 		};

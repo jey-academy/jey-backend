@@ -27,9 +27,11 @@ import static com.jey.core.member.MemberFixtures.DONGTAN;
 import static com.jey.core.member.MemberFixtures.mother;
 import static com.jey.core.member.MemberFixtures.randomPhone;
 import static com.jey.core.member.MemberFixtures.registration;
+import static com.jey.core.member.MemberFixtures.removeAllContacts;
 import static com.jey.core.member.MemberFixtures.registrationWithPhone;
 import static com.jey.core.member.MemberFixtures.uniqueName;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -63,6 +65,19 @@ class MemberApiEdgeTest {
 		send(post(STUDENTS), createBody(uniqueName(), guardians(5))).andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
 				.andExpect(jsonPath("$.errors[?(@.field == 'guardians')]").isNotEmpty());
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 학부모가_네_명인_학생에게_한_명을_더_붙이면_409다() throws Exception {
+		String created = send(post(STUDENTS), createBody(uniqueName(), guardians(4))).andExpect(status().isCreated())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+		long id = ((Number) com.jayway.jsonpath.JsonPath.read(created, "$.id")).longValue();
+
+		send(post(STUDENTS + "/" + id + "/guardians"), guardianBody(randomPhone())).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("MEMBER_TOO_MANY_GUARDIANS"));
 	}
 
 	@Test
@@ -159,6 +174,108 @@ class MemberApiEdgeTest {
 			jdbc.update("UPDATE core_guardian SET phone_enc = ? WHERE id = ?", original, guardianId);
 		}
 		mockMvc.perform(get(STUDENTS + "/{id}", student.id())).andExpect(status().isOk());
+	}
+
+	// 화면은 대표 연락처 칸만 비워서 그 학생을 보여 준다. 칸을 빼지 않고 null로 내보내 응답의 모양이 같게 한다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 연락처가_없는_학생은_목록과_상세에_대표_연락처가_null로_나온다() throws Exception {
+		String prefix = uniqueName();
+		studentService.register(registration(prefix + "-가", mother(randomPhone())));
+		long withoutContact = studentService.register(registration(prefix + "-나", mother(randomPhone()))).id();
+		removeAllContacts(jdbc, withoutContact);
+
+		mockMvc.perform(get(STUDENTS).param("name", prefix))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.items.length()").value(2))
+				.andExpect(jsonPath("$.items[0].primaryContact.phone").exists())
+				.andExpect(jsonPath("$.items[1].id").value(withoutContact))
+				.andExpect(jsonPath("$.items[1].primaryContact").value(nullValue()));
+		mockMvc.perform(get(STUDENTS + "/" + withoutContact))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.primaryContact").value(nullValue()))
+				.andExpect(jsonPath("$.guardians.length()").value(0));
+	}
+
+	// 날짜 입력칸에서 연도를 치다 만 값(0026-10-12)이 그대로 저장되면 목록과 통계가 틀어진다. 화면만 믿지 않고 서버도 범위를 본다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 등록일은_2000년부터_2099년까지만_받는다() throws Exception {
+		for (String outOfRange : new String[] { "0026-10-12", "1999-12-31", "2100-01-01" }) {
+			send(post(STUDENTS), createBodyRegisteredAt(uniqueName(), outOfRange)).andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+					.andExpect(jsonPath("$.errors[?(@.field == 'registeredAt')]").isNotEmpty());
+		}
+		for (String inRange : new String[] { "2000-01-01", "2099-12-31" }) {
+			send(post(STUDENTS), createBodyRegisteredAt(uniqueName(), inRange)).andExpect(status().isCreated())
+					.andExpect(jsonPath("$.registeredAt").value(inRange));
+		}
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 수정에서도_등록일의_범위를_본다() throws Exception {
+		String name = uniqueName();
+		long id = studentService.register(registration(name, mother(randomPhone()))).id();
+
+		send(put(STUDENTS + "/" + id), updateBodyRegisteredAt(name, "0026-10-12")).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[?(@.field == 'registeredAt')]").isNotEmpty());
+		send(put(STUDENTS + "/" + id), updateBodyRegisteredAt(name, "2099-12-31")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.registeredAt").value("2099-12-31"));
+	}
+
+	// 보내지 않으면 지금처럼 오늘이다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 등록에서_등록일을_보내지_않으면_오늘이다() throws Exception {
+		send(post(STUDENTS), createBody(uniqueName(), guardians(1))).andExpect(status().isCreated())
+				.andExpect(jsonPath("$.registeredAt").isNotEmpty());
+	}
+
+	private static String createBodyRegisteredAt(String name, String registeredAt) {
+		return "{\"campusId\": 1, \"name\": \"%s\", \"grade\": \"HIGH_1\", \"registeredAt\": \"%s\", \"guardians\": [%s]}"
+			.formatted(name, registeredAt, guardians(1));
+	}
+
+	private static String updateBodyRegisteredAt(String name, String registeredAt) {
+		return """
+				{"campusId": 1, "name": "%s", "grade": "HIGH_1", "status": "ENROLLED", "registeredAt": "%s"}
+				""".formatted(name, registeredAt);
+	}
+
+	// 학부모를 여럿 적는 등록 창에서, 몇 번째 학부모의 번호가 틀렸는지 알려 준다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 학부모_전화번호의_형식이_틀리면_몇_번째인지_알려_준다() throws Exception {
+		String guardians = guardianBody(randomPhone())
+				+ ", {\"name\": \"김보호자\", \"relation\": \"OTHER\", \"phone\": \"02-555-0199\"}";
+
+		String body = send(post(STUDENTS), createBody(uniqueName(), guardians)).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[0].field").value("guardians[1].phone"))
+				.andExpect(jsonPath("$.errors[0].message").value("휴대전화 번호 형식이 아닙니다."))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		// 오류 본문의 요청 ID에 우연히 같은 숫자가 나올 수 있어 빼고 본다.
+		assertThat(body.replaceAll("\"requestId\":\"[^\"]*\"", "")).doesNotContain("0199");
+	}
+
+	// 아주 큰 페이지는 건너뛸 줄 수가 정수 범위를 넘어 조회가 서버 오류(500)로 끝났다. 상한을 넘으면 조회하지 않고 거부한다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 목록의_page는_만까지만_받는다() throws Exception {
+		mockMvc.perform(get(STUDENTS).param("page", "10000"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.items.length()").value(0));
+		for (String tooDeep : new String[] { "2147483647", "10001" }) {
+			mockMvc.perform(get(STUDENTS).param("page", tooDeep))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+					.andExpect(jsonPath("$.errors[?(@.field == 'page')]").isNotEmpty());
+		}
 	}
 
 	private ResultActions send(MockHttpServletRequestBuilder request, String json) throws Exception {

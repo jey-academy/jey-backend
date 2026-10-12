@@ -31,6 +31,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.jey.core.shared.PhoneNumber;
+import java.util.List;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import java.util.Map;
+import java.util.Objects;
 
 // 예외 변환만 검증하기 위한 테스트 전용 컨트롤러. 각 예외를 확정적으로 일으킨다.
 // 테스트 소스라 운영 빌드에는 포함되지 않는다. API 명세에도 싣지 않는다(ApiSpecTest).
@@ -115,6 +120,55 @@ class ErrorTestController {
 	}
 
 	record Body(@NotBlank String name, @Min(1) int count) {
+	}
+
+	@NotIdempotent("예외 변환만 보는 테스트용이다")
+	@PostMapping("/typed")
+	void typed(@Valid @RequestBody Typed body) {
+	}
+
+	// 값의 타입이 여러 가지인 본문. 값 하나를 읽지 못했을 때 어느 칸인지 알려 주는지 본다.
+	record Typed(PhoneNumber phone, Color color, int count, LocalDate date, List<Contact> contacts, Buggy buggy,
+			Strict strict, Ranged ranged, Map<String, Integer> scores) {
+	}
+
+	// 값을 만드는 코드에 버그가 있는 타입. 값이 틀려서가 아니라 코드가 틀려서 예외가 난다.
+	record Buggy(String value) {
+
+		@JsonCreator(mode = JsonCreator.Mode.DELEGATING)
+		static Buggy of(String value) {
+			throw new IllegalStateException("값을 만드는 코드의 버그 BUGGY-DETAIL");
+		}
+
+	}
+
+	// 빠진 값을 널 참조로 터뜨리는 타입. 이것도 입력 오류가 아니라 방어 코드가 빠진 것이다.
+	record Strict(String name) {
+
+		Strict {
+			Objects.requireNonNull(name, "name");
+		}
+
+	}
+
+	// 값이 틀리면 "값이 틀렸다"는 뜻의 예외를 던지는 타입. 이것은 입력 오류다.
+	record Ranged(int min, int max) {
+
+		Ranged {
+			if (min > max) {
+				throw new IllegalArgumentException("min이 max보다 크다");
+			}
+		}
+
+	}
+
+	record Contact(String name, PhoneNumber phone) {
+	}
+
+	enum Color {
+
+		RED, GREEN
+
 	}
 
 	record Query(LocalDate from) {

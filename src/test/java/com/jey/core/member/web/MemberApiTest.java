@@ -222,7 +222,9 @@ class MemberApiTest {
 				{"campusId": 1, "name": "%s", "grade": "HIGH_1", "status": "ENROLLED",
 				 "registeredAt": "2026-03-02", "phone": "%s"}
 				""".formatted(name, original.masked())).andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[0].field").value("phone"))
+				.andExpect(jsonPath("$.errors[0].message").value("휴대전화 번호 형식이 아닙니다."));
 
 		mockMvc.perform(get(STUDENTS + "/{id}", created.id()))
 				.andExpect(jsonPath("$.phone").value(original.masked()));
@@ -385,16 +387,24 @@ class MemberApiTest {
 				{"campusId": 1, "name": "%s", "grade": "HIGH_1",
 				 "guardians": [{"name": "김어머니", "relation": "MOTHER", "phone": "%s"}]}
 				""".formatted(uniqueName(), wrongPhone)).andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"))
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[0].field").value("guardians[0].phone"))
 				.andReturn()
 				.getResponse()
 				.getContentAsString();
-		send(post(STUDENTS), """
+		String gradeBody = send(post(STUDENTS), """
 				{"campusId": 1, "name": "%s", "grade": "고1", "phone": "%s"}
 				""".formatted(uniqueName(), randomPhone().value())).andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[0].field").value("grade"))
+				.andExpect(jsonPath("$.errors[0].message").value("형식이 올바르지 않습니다."))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
 
-		assertThat(body).doesNotContain("8765").doesNotContain("4321");
+		// 오류 본문의 요청 ID에 우연히 같은 숫자가 나올 수 있어 빼고 본다.
+		assertThat(body.replaceAll("\"requestId\":\"[^\"]*\"", "")).doesNotContain("8765").doesNotContain("4321");
+		assertThat(gradeBody).doesNotContain("고1").doesNotContain("Grade");
 		assertThat(output.getAll()).doesNotContain(wrongPhone).doesNotContain("87654321");
 	}
 
