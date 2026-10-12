@@ -1,6 +1,7 @@
 package com.jey.core.web;
 
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,11 +17,14 @@ import org.springframework.context.annotation.Configuration;
  * <p>명세 생성기는 그런 필드를 {@code $ref}와 {@code "type": "null"}을 나란히 적는다. 이 둘은 "그 타입이면서 동시에 null"로 읽혀
  * 뜻이 맞지 않고, 프론트의 타입 생성기는 {@code $ref}만 보고 null을 버린다(null이 올 수 있는 필드가 타입에서는 항상 있는 것으로 나온다).
  * "그 타입이거나 null"({@code anyOf})로 바꿔 적어 프론트 타입에 {@code | null}이 나오게 한다.
+ *
+ * <p>고치는 자리는 응답·요청 타입의 바로 아래 필드뿐이다. 목록의 원소({@code items})나 필드 안에 다시 적힌 객체는 보지 않는다.
+ * 그런 자리에 null일 수 있는 참조가 생기면 여기를 넓혀야 한다(넓히지 않으면 {@code ApiSpecTest}가 틀린 표현이 남았다고 알린다).
  */
 @Configuration
 class NullableReferenceOpenApiConfig {
 
-	private static final Set<String> NULL_ONLY = Set.of("null");
+	private static final String NULL = "null";
 
 	@Bean
 	OpenApiCustomizer nullableReferences() {
@@ -38,23 +42,23 @@ class NullableReferenceOpenApiConfig {
 		if (properties == null) {
 			return;
 		}
-		Map<String, Schema> rewritten = new LinkedHashMap<>();
-		properties.forEach((name, property) -> rewritten.put(name, isNullableReference(property) ? eitherOrNull(property) : property));
-		schema.setProperties(rewritten);
+		properties.values().stream().filter(NullableReferenceOpenApiConfig::isNullableReference).forEach(
+				NullableReferenceOpenApiConfig::rewriteAsEitherOrNull);
 	}
 
 	private static boolean isNullableReference(Schema<?> property) {
-		return property.get$ref() != null && NULL_ONLY.equals(property.getTypes());
+		return property.get$ref() != null && Set.of(NULL).equals(property.getTypes());
 	}
 
-	// 설명은 바깥에 둔다. 가리키는 타입의 설명을 덮지 않고 이 필드의 설명으로 읽힌다.
-	private static Schema<?> eitherOrNull(Schema<?> property) {
+	// 그 필드의 스키마를 새로 만들지 않고 고쳐 쓴다. 설명, 예시 같은 나머지 속성이 그대로 남는다.
+	// 뒤에서 도는 다른 설정이 더 고칠 수 있게 바꿀 수 있는 컬렉션을 넣는다.
+	private static void rewriteAsEitherOrNull(Schema<?> property) {
+		Schema<?> reference = new Schema<>().$ref(property.get$ref());
 		Schema<?> nothing = new Schema<>();
-		nothing.setTypes(NULL_ONLY);
-		Schema<?> either = new Schema<>();
-		either.setAnyOf(List.of(new Schema<>().$ref(property.get$ref()), nothing));
-		either.setDescription(property.getDescription());
-		return either;
+		nothing.setTypes(new LinkedHashSet<>(Set.of(NULL)));
+		property.set$ref(null);
+		property.setTypes(null);
+		property.setAnyOf(new ArrayList<>(List.of(reference, nothing)));
 	}
 
 }
