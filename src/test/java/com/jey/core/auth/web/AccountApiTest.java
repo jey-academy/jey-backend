@@ -258,7 +258,7 @@ class AccountApiTest {
 			.andExpect(jsonPath("$.campusId").value(2));
 	}
 
-	// 이름은 권한과 무관하다. 일하던 사람을 내보내지 않는다. 실제 세션 저장소에서 "옛 권한의 세션만 끊기"가 지금 세션을 남기는지도 여기서 본다.
+	// 이름은 권한과 무관하다. 일하던 사람을 내보내지 않는다. 권한 판 번호가 그대로라 그 세션은 요청마다의 확인을 지난다.
 	@Test
 	void 이름만_고치면_그_직원은_로그인된_채로_남는다() throws Exception {
 		User staff = saved("desk", "김직원", UserRole.STAFF, 1L);
@@ -275,23 +275,6 @@ class AccountApiTest {
 			.andExpect(jsonPath("$.name").value("김직원"));
 		mockMvc.perform(get("/api/v1/auth/me").cookie(login(staff.getLoginId(), PASSWORD)))
 			.andExpect(jsonPath("$.name").value("김데스크"));
-	}
-
-	// 지점을 옮긴 요청이 세션을 끊다가 실패했다고 하자. 계정은 능동관인데 동탄관으로 로그인된 세션이 남아 있다.
-	// 같은 내용으로 다시 고치면 바뀐 것은 없지만, 그 옛 세션은 끊겨야 한다.
-	@Test
-	void 바뀐_것이_없는_고치기도_옛_지점으로_로그인된_세션은_끊는다() throws Exception {
-		User staff = saved("desk", "김직원", UserRole.STAFF, 1L);
-		Cookie oldCampusSession = login(staff.getLoginId(), PASSWORD);
-		jdbc.update("UPDATE core_user SET campus_id = 2 WHERE id = ?", staff.getId());
-		Cookie currentSession = login(staff.getLoginId(), PASSWORD);
-
-		asAdmin(put("/api/v1/accounts/" + staff.getId())).content(updateJson("김직원", "STAFF", "2"))
-			.exec()
-			.andExpect(status().isOk());
-
-		mockMvc.perform(get("/api/v1/auth/me").cookie(oldCampusSession)).andExpect(status().isUnauthorized());
-		mockMvc.perform(get("/api/v1/auth/me").cookie(currentSession)).andExpect(status().isOk());
 	}
 
 	@Test
