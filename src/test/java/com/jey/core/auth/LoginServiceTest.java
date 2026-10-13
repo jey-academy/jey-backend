@@ -275,7 +275,7 @@ class LoginServiceTest {
 
 		loginService.login("typed-id", "typed-password", request, new MockHttpServletResponse());
 
-		assertThat(request.getSession(false).getAttribute(LoginService.AUTH_VERSION_ATTRIBUTE)).isEqualTo(1L);
+		assertThat(SessionAuthVersion.of(request.getSession(false))).hasValue(1L);
 	}
 
 	@Test

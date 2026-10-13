@@ -42,11 +42,6 @@ public class LoginService {
 
 	private static final String NO_SCOPE = "none";
 
-	/**
-	 * 세션을 만든 로그인이 본 권한 판 번호(Long). 로그인할 때 넣고, 요청마다 계정의 지금 번호와 비교한다 (ADR-0031).
-	 */
-	static final String AUTH_VERSION_ATTRIBUTE = "jey.auth.accountVersion";
-
 	private final AuthenticationManager authenticationManager;
 
 	private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
@@ -119,7 +114,7 @@ public class LoginService {
 		session.setAttribute(SessionMaxLifetimeFilter.EXPIRES_AT_ATTRIBUTE,
 				clock.instant().plus(properties.sessionMaxLifetimeFor(user.role())).toEpochMilli());
 		// 비밀번호를 검증할 때 읽은 번호다. 그 뒤에 계정이 바뀌었으면 번호가 올라 있어 이 세션은 다음 요청에서 막힌다.
-		session.setAttribute(AUTH_VERSION_ATTRIBUTE, account.authVersion());
+		SessionAuthVersion.put(session, account.authVersion());
 		SecurityContext context = SecurityContextHolder.createEmptyContext();
 		context.setAuthentication(authentication);
 		SecurityContextHolder.setContext(context);

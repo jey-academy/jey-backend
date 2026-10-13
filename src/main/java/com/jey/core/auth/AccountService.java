@@ -44,7 +44,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p>옛 세션을 막는 것은 세션을 끊는 일이 아니라 계정의 권한 판 번호다(ADR-0031). 차단, 역할·지점 변경, 비밀번호 변경은 번호를 올리고,
  * 번호가 다른 세션은 다음 요청에서 막힌다({@code SessionAccountFilter}). 여기서 세션을 끊는 것은 미리 치워 두는 일이라서,
- * 끊지 못해도(세션 저장소 장애) 변경은 성공으로 답하고 로그만 남긴다.
+ * 끊지 못해도(세션 저장소 장애) 변경은 성공으로 답한다. {@link UserSessions}가 던지지 않고 로그만 남긴다.
  *
  * <p>감사 로그와 지점 목록은 직접 부르지 않는다(둘 다 이 패키지를 쓰고 있어 서로 물린다).
  * 기록은 {@link AccountAuditTrail}에 맡기고, 없는 지점은 DB의 외래 키가 걸러낸 것을 받아 알린다.
@@ -165,7 +165,7 @@ public class AccountService {
 		});
 		if (updated.affiliationChanged()) {
 			// 권한이 바뀌었다. 그 전에 만든 세션은 모두 옛 권한의 것이다.
-			cleanUp(() -> userSessions.terminateAll(userId));
+			userSessions.terminateAll(userId);
 		}
 		return updated.account();
 	}
@@ -227,7 +227,7 @@ public class AccountService {
 		// 이 순서로도 틈이 완전히 닫히지는 않는다. 차단 직전에 로그인을 시작한 요청이 세션을 늦게 저장하면 살아남을 수 있어서,
 		// LoginService가 세션을 만들기 직전에 계정 상태를 다시 읽어 그 틈을 수 밀리초로 줄인다(ADR-0019).
 		// 그렇게 살아남은 세션도 차단 전의 번호를 갖고 있어 다음 요청에서 막힌다(ADR-0031).
-		cleanUp(() -> userSessions.terminateAll(userId));
+		userSessions.terminateAll(userId);
 		return disabled;
 	}
 
@@ -273,7 +273,7 @@ public class AccountService {
 			});
 			return null;
 		});
-		cleanUp(() -> userSessions.terminateAll(userId));
+		userSessions.terminateAll(userId);
 	}
 
 	/**
@@ -281,6 +281,8 @@ public class AccountService {
 	 *
 	 * <p>비밀번호를 바꾸면 계정의 권한 판 번호가 오른다(ADR-0031). 지금 세션에는 커밋한 직후에 새 번호를 넣는다.
 	 * 넣지 못하고 요청이 끝나면 지금 세션도 다음 요청에서 막힌다. 새 비밀번호로 다시 로그인하면 된다.
+	 * 넣은 번호는 이 요청이 끝날 때 세션 저장소에 적힌다. 커밋한 뒤 그때까지의 짧은 틈에 같은 세션으로 다른 요청이 오면
+	 * 그 요청이 옛 번호를 보고 세션을 끊는다. 그때는 이 요청이 성공으로 답해도 바꾼 사람은 다시 로그인해야 한다.
 	 *
 	 * <p>지금 비밀번호를 틀린 횟수를 계정별로 센다. 한도를 넘으면 맞는 비밀번호로도 구간이 끝날 때까지 바꿀 수 없다.
 	 * 로그인된 세션을 손에 넣은 사람이 지금 비밀번호를 대입으로 알아내는 것을 느리게 한다. 지금 비밀번호가 맞은 요청은 세지 않는다.
@@ -340,9 +342,11 @@ public class AccountService {
 			}
 			throw ex;
 		}
-		// 다른 세션을 끊기 전에 넣는다. 끊다가 실패해도 지금 세션은 새 번호를 갖고 있어야 한다.
-		currentSession.setAttribute(LoginService.AUTH_VERSION_ATTRIBUTE, authVersion);
-		cleanUp(() -> userSessions.terminateOthers(userId, currentSessionId));
+		// 커밋됐다. 이 뒤에 요청이 실패로 끝나더라도(세션 저장소 장애) 비밀번호는 바뀌어 있다. 그때 로그에서 알 수 있게 남긴다.
+		log.info("본인 비밀번호 변경: userId={} authVersion={}", userId, authVersion);
+		// 다른 세션을 끊기 전에 넣는다. 지금 세션은 그 일과 무관하게 새 번호를 갖고 있어야 한다.
+		SessionAuthVersion.put(currentSession, authVersion);
+		userSessions.terminateOthers(userId, currentSessionId);
 	}
 
 	// 지금 비밀번호가 틀렸다(또는 확인한 뒤에 바뀌어 더는 맞지 않는다). 트랜잭션 밖에서 부른다.
@@ -360,17 +364,6 @@ public class AccountService {
 		catch (RuntimeException ex) {
 			log.error("비밀번호 변경 횟수를 되돌리지 못했다. 맞은 요청이 한 번으로 세어진 채 남는다: userId={}",
 					permit.account().accountId(), ex);
-		}
-	}
-
-	// 계정을 바꾸고 커밋한 뒤, 그 계정의 옛 세션을 미리 치운다. 치우지 못해도 변경은 성공이다:
-	// 옛 세션은 권한 판 번호가 달라 다음 요청에서 막힌다(ADR-0031). 왜 못 치웠는지는 UserSessions가 남겼다.
-	private static void cleanUp(Runnable terminateSessions) {
-		try {
-			terminateSessions.run();
-		}
-		catch (RuntimeException ex) {
-			log.warn("계정은 바뀌었고 옛 세션을 미리 치우지는 못했다. 남은 세션은 다음 요청에서 막힌다: {}", ex.getClass().getSimpleName());
 		}
 	}
 
@@ -456,7 +449,7 @@ public class AccountService {
 	// 남은 세션을 여기서 치우고 로그인하지 않은 것으로 답한다. 트랜잭션 밖에서 부른다.
 	private BusinessException loggedOut(long userId) {
 		log.warn("차단됐거나 없는 계정의 세션으로 요청이 왔다. 그 계정의 세션을 끊는다: userId={}", userId);
-		cleanUp(() -> userSessions.terminateAll(userId));
+		userSessions.terminateAll(userId);
 		return new BusinessException(CommonErrorCode.UNAUTHENTICATED);
 	}
 

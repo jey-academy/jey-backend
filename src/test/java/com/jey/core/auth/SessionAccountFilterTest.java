@@ -60,8 +60,23 @@ class SessionAccountFilterTest {
 		assertThat(session.isInvalid()).isTrue();
 		// 요청을 막지 않고 넘긴다. 세션이 없어졌으므로 뒤에서 인증 없는 요청으로 처리된다.
 		assertThat(chain.getRequest()).isNotNull();
-		// 누구의 세션인지는 계정 ID로만 남긴다.
-		assertThat(output).contains("계정이 차단됐거나 바뀐 뒤에 남은 세션을 끊는다: userId=42");
+		// 누구의 세션인지는 계정 ID로만 남긴다. 왜 끊었는지 가릴 수 있게 차단 여부와 두 번호를 함께 남긴다.
+		assertThat(output).contains(
+				"계정이 차단됐거나 바뀐 뒤에 남은 세션을 끊는다: userId=42 active=false sessionAuthVersion=0 accountAuthVersion=1");
+	}
+
+	// 번호를 올리지 않는 길로 계정이 바뀌었다(DB를 직접 고쳤다). 막기는 하되, 있어서는 안 되는 일이라 경고로 남긴다.
+	@Test
+	void 번호는_같은데_지점이_세션과_다르면_끊고_경고를_남긴다(CapturedOutput output) throws Exception {
+		User account = account();
+		MockHttpSession session = sessionOf(account, account.getAuthVersion());
+		ReflectionTestUtils.setField(account, "campusId", 2L);
+
+		run(session);
+
+		assertThat(session.isInvalid()).isTrue();
+		assertThat(output).contains("권한 판 번호는 같은데 역할이나 소속이 세션과 다른 세션을 끊는다: userId=42 authVersion=0")
+			.doesNotContain("계정이 차단됐거나 바뀐 뒤에 남은 세션을 끊는다");
 	}
 
 	@Test
@@ -189,7 +204,7 @@ class SessionAccountFilterTest {
 		run(session);
 
 		assertThat(session.isInvalid()).isTrue();
-		assertThat(output).contains("누구의 것인지 알 수 없는 세션을 끊는다");
+		assertThat(output).contains("누구의 것인지 알 수 없는 세션을 끊는다: 로그인 정보의 타입=String");
 		verifyNoInteractions(users);
 	}
 
@@ -209,7 +224,7 @@ class SessionAccountFilterTest {
 		session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
 				new SecurityContextImpl(UsernamePasswordAuthenticationToken.authenticated(user, null, List.of())));
 		if (authVersion != null) {
-			session.setAttribute(LoginService.AUTH_VERSION_ATTRIBUTE, authVersion);
+			session.setAttribute(SessionAuthVersion.ATTRIBUTE, authVersion);
 		}
 		return session;
 	}

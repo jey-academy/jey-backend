@@ -64,7 +64,7 @@ class AuthLoginTest {
 
 	private static final String EXPIRES_AT_FIELD = "sessionAttr:jey.auth.sessionExpiresAt";
 
-	private static final String AUTH_VERSION_FIELD = "sessionAttr:jey.auth.accountVersion";
+	private static final String AUTH_VERSION_FIELD = "sessionAttr:jey.auth.authVersion";
 
 	// Spring Session이 세션 값을 저장하는 것과 같은 방식(Java 직렬화)이다.
 	private static final JdkSerializationRedisSerializer SESSION_VALUE_SERIALIZER = new JdkSerializationRedisSerializer();

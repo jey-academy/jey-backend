@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 import com.jey.core.auth.api.AccountActivity;
 import com.jey.core.auth.api.AccountActivity.Kind;
@@ -408,21 +409,26 @@ class AccountServiceTest {
 		accountService.changeOwnPassword("old-password-1", "new-password-1", here);
 
 		assertThat(self.getAuthVersion()).isEqualTo(1);
-		assertThat(here.getAttribute(LoginService.AUTH_VERSION_ATTRIBUTE)).isEqualTo(1L);
+		assertThat(SessionAuthVersion.of(here)).hasValue(1L);
 	}
 
-	// 번호를 넣는 것이 다른 세션을 끊는 것보다 먼저다. 순서가 반대면 끊다가 실패했을 때 바꾼 사람의 세션까지 막힌다.
+	// 번호를 넣는 것이 다른 세션을 끊는 것보다 먼저다. 끊는 일은 세션 저장소를 오가느라 시간이 걸리고,
+	// 그동안 지금 세션은 옛 번호를 갖고 있게 된다.
 	@Test
-	void 다른_세션을_끊지_못해도_지금_세션에는_새_권한_판_번호가_들어_있다() {
+	void 지금_세션에_새_권한_판_번호를_넣은_뒤에_다른_세션을_끊는다() {
 		ownAccount();
 		counted();
 		when(passwordEncoder.encode("new-password-1")).thenReturn("{noop}new-hash");
-		when(userSessions.terminateOthers(ACTOR_ID, "this-session")).thenThrow(new IllegalStateException("저장소 장애"));
 		MockHttpSession here = session("this-session");
+		OptionalLong[] seenWhenTerminating = new OptionalLong[1];
+		when(userSessions.terminateOthers(ACTOR_ID, "this-session")).thenAnswer(invocation -> {
+			seenWhenTerminating[0] = SessionAuthVersion.of(here);
+			return 0;
+		});
 
 		accountService.changeOwnPassword("old-password-1", "new-password-1", here);
 
-		assertThat(here.getAttribute(LoginService.AUTH_VERSION_ATTRIBUTE)).isEqualTo(1L);
+		assertThat(seenWhenTerminating[0]).hasValue(1L);
 	}
 
 	@Test
@@ -434,7 +440,7 @@ class AccountServiceTest {
 		assertDenied(() -> accountService.changeOwnPassword("wrong-password-1", "new-password-1", here),
 				AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
 
-		assertThat(here.getAttribute(LoginService.AUTH_VERSION_ATTRIBUTE)).isNull();
+		assertThat(SessionAuthVersion.of(here)).isEmpty();
 	}
 
 	// 틀린 것은 센 채로 둔다. 되돌리면 대입에 횟수가 들지 않는다.
@@ -475,20 +481,19 @@ class AccountServiceTest {
 		verifyNoInteractions(limiter, users, userSessions, transactionManager);
 	}
 
-	// 세션을 끊는 것은 미리 치워 두는 일이다. 옛 세션을 막는 것은 권한 판 번호라서, 끊지 못했다고 변경을 실패로 답하지 않는다 (ADR-0031).
+	// 커밋한 뒤에 요청이 실패로 끝날 수 있다(세션 저장소 장애로 지금 세션을 저장하지 못함). 그때 사용자는 서버 오류를 보지만
+	// 비밀번호는 바뀌어 있다. 로그에서 그것을 알 수 있어야 한다. 비밀번호는 남기지 않는다.
 	@Test
-	void 자기_비밀번호를_바꾼_뒤_다른_세션을_끊지_못해도_성공으로_끝난다(CapturedOutput output) {
-		User self = ownAccount();
+	void 자기_비밀번호를_바꾸면_바뀌었다는_것을_계정_ID와_함께_로그에_남긴다(CapturedOutput output) {
+		ownAccount();
 		counted();
 		when(passwordEncoder.encode("new-password-1")).thenReturn("{noop}new-hash");
-		when(userSessions.terminateOthers(ACTOR_ID, "this-session")).thenThrow(new IllegalStateException("저장소 장애"));
 
 		accountService.changeOwnPassword("old-password-1", "new-password-1", session("this-session"));
 
-		assertThat(self.getPasswordHash()).isEqualTo("{noop}new-hash");
-		assertThat(self.getAuthVersion()).isEqualTo(1);
-		verify(transactionManager).commit(any());
-		assertThat(output).contains("옛 세션을 미리 치우지는 못했다");
+		assertThat(output).contains("본인 비밀번호 변경: userId=" + ACTOR_ID + " authVersion=1")
+			.doesNotContain("new-password-1")
+			.doesNotContain("old-password-1");
 	}
 
 	// 바꿀 것이 없으니 권한 판 번호도 그대로다. 끊을 세션이 없다.
@@ -505,10 +510,10 @@ class AccountServiceTest {
 		verifyNoInteractions(transactionManager, trail, userSessions);
 	}
 
+	// 세션을 끊는 것은 미리 치워 두는 일이다(끊지 못해도 UserSessions가 던지지 않는다). 옛 세션을 막는 것은 이 번호다 (ADR-0031).
 	@Test
-	void 차단한_뒤_세션을_끊지_못해도_성공으로_끝나고_번호는_올라_있다() {
+	void 차단하면_권한_판_번호가_오른다() {
 		User user = existing(account(USER_ID, UserRole.STAFF, 1L));
-		when(userSessions.terminateAll(USER_ID)).thenThrow(new IllegalStateException("저장소 장애"));
 
 		AccountView disabled = accountService.disable(USER_ID);
 
@@ -520,11 +525,10 @@ class AccountServiceTest {
 	}
 
 	@Test
-	void 고치거나_비밀번호를_다시_정한_뒤_세션을_끊지_못해도_성공으로_끝나고_번호는_올라_있다() {
+	void 역할이나_지점을_고치거나_비밀번호를_다시_정하면_권한_판_번호가_오른다() {
 		User user = existing(account(USER_ID, UserRole.STAFF, 1L));
 		when(users.findById(USER_ID)).thenReturn(Optional.of(user));
 		when(passwordEncoder.encode("brand-new-password")).thenReturn("{noop}brand-new-hash");
-		when(userSessions.terminateAll(USER_ID)).thenThrow(new IllegalStateException("저장소 장애"));
 
 		accountService.update(USER_ID, new AccountChange("김직원", UserRole.STAFF, 2L));
 		assertThat(user.getCampusId()).isEqualTo(2L);
