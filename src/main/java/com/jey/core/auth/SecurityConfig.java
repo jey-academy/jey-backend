@@ -84,7 +84,8 @@ class SecurityConfig {
 				// 로그인 정보를 읽기 전에, 최대 유지 시간이 지난 세션을 먼저 끊는다.
 				.addFilterBefore(new SessionMaxLifetimeFilter(clock), SecurityContextHolderFilter.class)
 				// 이어서, 세션의 계정이 차단됐거나 바뀌지 않았는지 본다 (ADR-0031). 계정을 읽으므로 만료된 세션을 걸러낸 뒤에 둔다.
-				.addFilterAfter(new SessionAccountFilter(users), SessionMaxLifetimeFilter.class)
+				// 같은 자리 앞에 차례대로 넣는다. 먼저 넣은 필터가 먼저 돈다(SessionAccountCheckTest가 순서를 본다).
+				.addFilterBefore(new SessionAccountFilter(users), SecurityContextHolderFilter.class)
 				// 로그인 정보를 읽을 수 있게 된 바로 다음에 계정 ID를 로그 문맥에 넣는다 (ADR-0028).
 				// CSRF 검사보다 앞이라, 로그인한 사용자의 요청이 거기서 막혀도 그 로그에 계정 ID가 찍힌다.
 				.addFilterAfter(new AccountLogContextFilter(), SecurityContextHolderFilter.class)
