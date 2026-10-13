@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 
+import com.jey.core.auth.domain.UserRepository;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -62,7 +63,7 @@ class SecurityConfig {
 	SecurityFilterChain securityFilterChain(HttpSecurity http,
 			@Qualifier("handlerExceptionResolver") HandlerExceptionResolver exceptionResolver,
 			SecurityContextRepository securityContextRepository, CsrfTokenRepository csrfTokenRepository,
-			CorsConfigurationSource corsConfigurationSource, Clock clock) throws Exception {
+			CorsConfigurationSource corsConfigurationSource, Clock clock, UserRepository users) throws Exception {
 		return http
 				// 같은 설정으로 아래 earlyCorsFilter가 먼저 돈다. 여기서는 이미 붙은 헤더를 보고 넘어간다.
 				.cors(cors -> cors.configurationSource(corsConfigurationSource))
@@ -82,6 +83,8 @@ class SecurityConfig {
 				.securityContext(context -> context.securityContextRepository(securityContextRepository))
 				// 로그인 정보를 읽기 전에, 최대 유지 시간이 지난 세션을 먼저 끊는다.
 				.addFilterBefore(new SessionMaxLifetimeFilter(clock), SecurityContextHolderFilter.class)
+				// 이어서, 세션의 계정이 차단됐거나 바뀌지 않았는지 본다 (ADR-0031). 계정을 읽으므로 만료된 세션을 걸러낸 뒤에 둔다.
+				.addFilterAfter(new SessionAccountFilter(users), SessionMaxLifetimeFilter.class)
 				// 로그인 정보를 읽을 수 있게 된 바로 다음에 계정 ID를 로그 문맥에 넣는다 (ADR-0028).
 				// CSRF 검사보다 앞이라, 로그인한 사용자의 요청이 거기서 막혀도 그 로그에 계정 ID가 찍힌다.
 				.addFilterAfter(new AccountLogContextFilter(), SecurityContextHolderFilter.class)
