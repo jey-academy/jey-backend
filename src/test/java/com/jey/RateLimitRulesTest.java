@@ -10,8 +10,6 @@ import java.util.Set;
 import com.jey.core.auth.api.RateLimit;
 import com.jey.core.auth.api.RateLimitName;
 import com.jey.core.auth.api.SampleRateLimits;
-import com.tngtech.archunit.base.DescribedPredicate;
-import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
@@ -19,7 +17,6 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
 import org.junit.jupiter.api.Test;
 
-import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
@@ -37,12 +34,7 @@ class RateLimitRulesTest {
 			.importPackages(SampleRateLimits.class.getPackageName());
 
 	// RateLimit 밖에서는 그 생성자를 부르지도(new) 가리키지도(::new) 않는다.
-	private static final ArchRule ONLY_THROUGH_FACTORY = noClasses().that()
-		.doNotHaveFullyQualifiedName(RateLimit.class.getName())
-		.should()
-		.accessTargetWhere(DescribedPredicate.describe("RateLimit의 생성자",
-				(JavaAccess<?> access) -> access.getTargetOwner().isEquivalentTo(RateLimit.class)
-						&& access.getName().equals("<init>")));
+	private static final ArchRule ONLY_THROUGH_FACTORY = ConstructorRules.constructedOnlyInside(RateLimit.class);
 
 	@Test
 	void 운영_코드의_한도_이름은_규칙을_지킨다() {
