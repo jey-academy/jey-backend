@@ -21,6 +21,8 @@
 - **의존 방향은 `dongtanpass → billing` 한 방향**이다. `billing`은 `dongtanpass`를 모른다.
 - `billing::api`의 청구 생성은 할인을 출처와 무관한 범용 형태로 받는다: `discountType`, `discountRate`, `discountRef`. `billing`은 `discountRef`(예: 패스 번호)를 해석하지 않고 저장만 한다.
 - `core` 하위 패키지끼리의 순환 의존은 ArchUnit 규칙으로 막는다(Modulith는 모듈 사이만 검사).
+- `core` 하위 패키지끼리도 서로의 `api`와 `shared`만 쓴다. 이것도 ArchUnit 규칙으로 막는다(2026-10-13 추가. 그 전에는 관례였고 어긴 곳은 없었다).
+  `api`가 없는 하위 패키지(`web`, `config`)는 다른 하위 패키지가 쓸 수 없다. 쓰려는 것이 `api`에 없으면 그 하위 패키지의 `api`에 올리고 쓴다.
 - 1차는 단일 Gradle 프로젝트로 간다. 2차에 `jey-notifier`를 만들 때 멀티 모듈로 전환한다.
 
 ## 의존 방향 (dongtanpass → billing)
@@ -47,6 +49,7 @@
 - 이후 기능(attendance, community, grade 등)이 모두 추가되면 `com.jey` 아래 패키지가 10개 안팎이 된다.
 - `core` 하위 패키지마다 `api` 패키지를 따로 두므로 패키지 깊이가 한 단계 늘어난다.
 - `core`의 다른 하위 패키지를 쓰게 되면 `allowedDependencies`를 고쳐야 한다(의도한 마찰).
+- `core` 안에서도 다른 하위 패키지의 서비스나 저장소를 바로 쓸 수 없다. 같은 모듈인데도 `api`를 거쳐야 하고, 방향이 맞지 않으면 인터페이스로 뒤집어야 한다(계정의 감사 기록이 그렇다 — ADR-0030).
 - `dongtanpass`는 결제 완료를 이벤트로만 알 수 있다. `billing`이 `dongtanpass`에 직접 물어볼 수 없다.
 - 2차에 멀티 모듈로 전환할 때 디렉터리 이동 작업이 한 번 필요하다.
 
