@@ -74,8 +74,7 @@ class AuthController {
 
 	@Operation(summary = "자기 비밀번호 바꾸기",
 			description = "지금 화면은 로그인된 채로 남고, 같은 계정으로 로그인된 다른 화면은 로그아웃된다. "
-					+ "지금 비밀번호를 여러 번 틀리면 429와 Retry-After(초)가 온다. "
-					+ "503(AUTH_SESSION_TERMINATION_FAILED)이면 비밀번호는 바뀌었고 다른 화면만 로그아웃시키지 못한 것이다")
+					+ "지금 비밀번호를 여러 번 틀리면 429와 Retry-After(초)가 온다.")
 	@AnyRole
 	@NotIdempotent("비밀번호가 실린 본문의 지문을 저장하지 않는다. 다시 보내면 지금 비밀번호가 맞지 않아 거부된다")
 	@PostMapping("/password")
@@ -87,7 +86,7 @@ class AuthController {
 			log.warn("로그인한 요청인데 세션이 없다. 비밀번호를 바꾸지 않는다");
 			throw new BusinessException(CommonErrorCode.UNAUTHENTICATED);
 		}
-		accountService.changeOwnPassword(body.currentPassword(), body.newPassword(), session.getId());
+		accountService.changeOwnPassword(body.currentPassword(), body.newPassword(), session);
 		// 남긴 세션의 ID도 바꾼다. 이 세션의 쿠키를 누가 베껴 갖고 있었다면 그 사본은 여기서 못 쓰게 된다.
 		// 바꾼 사람의 브라우저는 이 응답으로 새 쿠키를 받는다.
 		request.changeSessionId();

@@ -264,6 +264,20 @@ class LoginServiceTest {
 		verifyNoInteractions(sessionStrategy, contextRepository);
 	}
 
+	// 요청마다 이 번호를 계정의 지금 번호와 비교한다 (ADR-0031). 번호가 없는 세션은 끊긴다.
+	@Test
+	void 로그인에_성공하면_비밀번호를_검증할_때의_권한_판_번호를_세션에_넣는다() {
+		User user = savedUser();
+		user.changePassword("{noop}another-hash");
+		authenticationSucceedsWith(user);
+		when(users.findById(USER_ID)).thenReturn(Optional.of(user));
+		var request = new MockHttpServletRequest();
+
+		loginService.login("typed-id", "typed-password", request, new MockHttpServletResponse());
+
+		assertThat(SessionAuthVersion.of(request.getSession(false))).hasValue(1L);
+	}
+
 	@Test
 	void 로그인에_성공하면_시도_횟수를_지운다() {
 		User user = savedUser();

@@ -1,24 +1,18 @@
 package com.jey.core.auth;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
-import com.jey.core.auth.api.AuthenticatedUser;
-import com.jey.core.auth.api.UserRole;
 import org.junit.jupiter.api.Test;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.session.FindByIndexNameSessionRepository;
 import org.springframework.session.MapSession;
 import org.springframework.session.Session;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -28,6 +22,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 // 실제 세션 저장소에서 끊기는지는 API 테스트가 본다. 여기서는 어느 세션을 끊고 어느 세션을 남기는지를 본다.
+@ExtendWith(OutputCaptureExtension.class)
 class UserSessionsTest {
 
 	private static final long USER_ID = 7L;
@@ -75,52 +70,26 @@ class UserSessionsTest {
 		verifyNoInteractions(sessions);
 	}
 
+	// 부르는 쪽은 계정을 이미 바꾸고 커밋했다. 여기서 던지면 성공한 변경이 실패로 답해진다.
+	// 남은 세션은 요청마다의 확인이 막는다 (ADR-0031). 저장소 장애는 알아야 하므로 원인과 함께 오류로 남긴다.
 	@Test
-	void 끊다가_실패하면_예외를_그대로_던진다() {
-		loggedIn("here", "other-device");
-		doThrow(new IllegalStateException("저장소 장애")).when(sessions).deleteById(anyString());
+	void 끊다가_실패해도_던지지_않고_그때까지_끊은_수를_돌려주며_오류를_남긴다(CapturedOutput output) {
+		loggedIn("first", "second", "third");
+		doThrow(new IllegalStateException("저장소 장애")).when(sessions).deleteById("second");
 
-		assertThatThrownBy(() -> userSessions.terminateOthers(USER_ID, "here")).isInstanceOf(IllegalStateException.class)
-			.hasMessage("저장소 장애");
+		assertThat(userSessions.terminateAll(USER_ID)).isEqualTo(1);
+
+		verify(sessions, never()).deleteById("third");
+		assertThat(output).contains("세션 강제 종료 실패: userId=7 끊은 수=1").contains("저장소 장애");
 	}
 
-	// 세션에는 로그인할 때의 역할과 지점이 들어 있다. 계정의 지점을 옮기면 옛 지점으로 로그인된 세션만 끊는다.
 	@Test
-	void 역할이나_지점이_지금과_다른_세션만_끊는다() {
-		Map<String, Session> found = new LinkedHashMap<>();
-		found.put("dongtan", sessionOf("dongtan", UserRole.STAFF, 1L));
-		found.put("neungdong", sessionOf("neungdong", UserRole.STAFF, 2L));
-		found.put("was-admin", sessionOf("was-admin", UserRole.ADMIN, null));
-		when(sessions.findByPrincipalName(String.valueOf(USER_ID))).thenReturn(found);
+	void 그_계정의_세션을_찾다가_실패해도_던지지_않는다(CapturedOutput output) {
+		when(sessions.findByPrincipalName(anyString())).thenThrow(new IllegalStateException("저장소 장애"));
 
-		assertThat(userSessions.terminateOutdated(USER_ID, UserRole.STAFF, 2L)).isEqualTo(2);
+		assertThat(userSessions.terminateOthers(USER_ID, "here")).isZero();
 
-		verify(sessions).deleteById("dongtan");
-		verify(sessions).deleteById("was-admin");
-		verify(sessions, never()).deleteById("neungdong");
-	}
-
-	// 어떤 권한으로 로그인된 세션인지 알 수 없으면 남기지 않는다.
-	@Test
-	void 로그인_정보를_읽을_수_없는_세션은_옛_세션으로_보고_끊는다() {
-		MapSession broken = new MapSession("broken");
-		broken.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, "not-a-security-context");
-		Map<String, Session> found = new LinkedHashMap<>();
-		found.put("empty", new MapSession("empty"));
-		found.put("broken", broken);
-		when(sessions.findByPrincipalName(String.valueOf(USER_ID))).thenReturn(found);
-
-		assertThat(userSessions.terminateOutdated(USER_ID, UserRole.STAFF, 1L)).isEqualTo(2);
-	}
-
-	private static Session sessionOf(String sessionId, UserRole role, Long campusId) {
-		var principal = new AuthenticatedUser(USER_ID, "desk", "김직원", role, campusId, null);
-		SecurityContext context = SecurityContextHolder.createEmptyContext();
-		context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(principal, null,
-				List.of(new SimpleGrantedAuthority(role.authority()))));
-		MapSession session = new MapSession(sessionId);
-		session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
-		return session;
+		assertThat(output).contains("세션 강제 종료 실패: userId=7 끊은 수=0");
 	}
 
 	private void loggedIn(String... sessionIds) {

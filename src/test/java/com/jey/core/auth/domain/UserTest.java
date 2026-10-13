@@ -1,7 +1,14 @@
 package com.jey.core.auth.domain;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.UserRole;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -198,6 +205,109 @@ class UserTest {
 		assertThatIllegalArgumentException()
 				.isThrownBy(() -> User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, 7L));
 		assertThat(User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null).getPartnerId()).isNull();
+	}
+
+	// 권한 판 번호 (ADR-0031). 이 번호가 오르면 그 전에 만든 세션은 다음 요청에서 막힌다.
+	@Test
+	void 차단하거나_역할_지점_비밀번호를_바꾸면_권한_판_번호가_오른다() {
+		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
+		assertThat(user.getAuthVersion()).isZero();
+
+		user.changeAffiliation(UserRole.STAFF, 2L);
+		assertThat(user.getAuthVersion()).as("지점이 바뀜").isEqualTo(1);
+
+		user.changeAffiliation(UserRole.ADMIN, null);
+		assertThat(user.getAuthVersion()).as("역할이 바뀜").isEqualTo(2);
+
+		user.changePassword("{noop}another-hash");
+		assertThat(user.getAuthVersion()).as("비밀번호가 바뀜").isEqualTo(3);
+
+		user.disable();
+		assertThat(user.getAuthVersion()).as("차단됨").isEqualTo(4);
+	}
+
+	@Test
+	void 세션에_든_것이_달라지지_않는_변경은_권한_판_번호를_올리지_않는다() {
+		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
+
+		user.rename("김데스크");
+		user.changeAffiliation(UserRole.STAFF, 1L);
+		assertThatIllegalArgumentException().isThrownBy(() -> user.changeAffiliation(UserRole.ADMIN, 1L));
+		assertThatIllegalArgumentException().isThrownBy(() -> user.changePassword("plain-password"));
+
+		assertThat(user.getAuthVersion()).isZero();
+	}
+
+	// 차단할 때 번호가 올랐으므로 차단 전의 세션은 풀어도 살아나지 않는다. 풀 때 또 올릴 필요가 없다.
+	@Test
+	void 차단을_풀_때는_번호를_올리지_않고_이미_차단된_계정을_다시_차단해도_오르지_않는다() {
+		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
+
+		user.disable();
+		user.disable();
+		user.enable();
+
+		assertThat(user.getAuthVersion()).isEqualTo(1);
+	}
+
+	@Test
+	void 로그인할_때와_같은_계정이면_그_세션은_유효하다() {
+		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
+
+		assertThat(user.stillValidFor(sessionUser(UserRole.STAFF, 1L, null), 0)).isTrue();
+		user.rename("김데스크");
+		assertThat(user.stillValidFor(sessionUser(UserRole.STAFF, 1L, null), 0)).as("이름은 권한이 아니다").isTrue();
+	}
+
+	@Test
+	void 차단된_계정의_세션은_유효하지_않다() {
+		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
+		user.disable();
+
+		assertThat(user.stillValidFor(sessionUser(UserRole.STAFF, 1L, null), user.getAuthVersion())).isFalse();
+	}
+
+	@Test
+	void 권한_판_번호가_다른_세션은_유효하지_않다() {
+		User user = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
+		user.changePassword("{noop}another-hash");
+
+		assertThat(user.stillValidFor(sessionUser(UserRole.STAFF, 1L, null), 0)).as("옛 번호").isFalse();
+		assertThat(user.stillValidFor(sessionUser(UserRole.STAFF, 1L, null), 1)).as("지금 번호").isTrue();
+		assertThat(user.stillValidFor(sessionUser(UserRole.STAFF, 1L, null), 2)).as("앞선 번호").isFalse();
+	}
+
+	// 번호가 같아도 역할·지점·연계 학원 식별자가 다르면 막는다. DB를 손으로 고쳐 번호가 오르지 않은 경우다.
+	@Test
+	void 번호가_같아도_역할이나_소속이_세션과_다르면_유효하지_않다() {
+		User staff = User.create("staff", HASH, "김직원", UserRole.STAFF, 1L, null);
+		User partner = User.create("partner", HASH, "연계학원", UserRole.PARTNER, null, 7L);
+
+		assertThat(staff.stillValidFor(sessionUser(UserRole.ADMIN, null, null), 0)).as("역할").isFalse();
+		assertThat(staff.stillValidFor(sessionUser(UserRole.STAFF, 2L, null), 0)).as("지점").isFalse();
+		assertThat(partner.stillValidFor(sessionUser(UserRole.PARTNER, null, 8L), 0)).as("연계 학원 식별자").isFalse();
+		assertThat(partner.stillValidFor(sessionUser(UserRole.PARTNER, null, 7L), 0)).isTrue();
+	}
+
+	// 계정에 필드를 더하면 여기서 실패한다. 그 값이 바뀌었을 때 그 전에 만든 세션을 무효로 해야 하는지를 정하고 한쪽에 적는다.
+	// 무효로 해야 하는 값이면, 그 값을 바꾸는 메서드가 번호를 올리는지(invalidateSessions)도 위의 테스트에 더한다.
+	@Test
+	void 계정의_필드는_세션을_무효로_하는_값인지_아닌지가_정해져_있다() {
+		Set<String> invalidatesSessions = Set.of("passwordHash", "role", "campusId", "partnerId", "status");
+		Set<String> keepsSessions = Set.of("id", "loginId", "name", "authVersion");
+
+		Set<String> fields = Arrays.stream(User.class.getDeclaredFields())
+			.filter(field -> !Modifier.isStatic(field.getModifiers()))
+			.map(Field::getName)
+			.collect(Collectors.toSet());
+
+		assertThat(invalidatesSessions).doesNotContainAnyElementsOf(keepsSessions);
+		assertThat(fields).containsExactlyInAnyOrderElementsOf(
+				Stream.concat(invalidatesSessions.stream(), keepsSessions.stream()).toList());
+	}
+
+	private static AuthenticatedUser sessionUser(UserRole role, Long campusId, Long partnerId) {
+		return new AuthenticatedUser(42L, "login", "이름", role, campusId, partnerId);
 	}
 
 }

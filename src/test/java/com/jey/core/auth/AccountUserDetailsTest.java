@@ -47,60 +47,19 @@ class AccountUserDetailsTest {
 		assertThat(details.getPassword()).isNull();
 	}
 
-	// 로그인은 세션을 만들기 직전에 계정을 다시 읽어 이것으로 비교한다. 비교에서 빠진 값이 있으면,
-	// 그 값이 바뀐 계정의 로그인이 옛 권한이나 옛 비밀번호의 세션으로 살아남는다.
+	// 로그인은 세션을 만들기 직전에 계정을 다시 읽어, 검증할 때 읽은 번호와 지금 번호를 비교한다(User#stillValidFor).
+	// 세션에도 이 번호가 들어간다. 다시 읽은 계정의 번호를 넣으면 검증 중에 바뀐 계정의 로그인이 새 번호의 세션을 얻는다.
 	@Test
-	void 다시_읽은_계정의_권한과_비밀번호가_그대로인지_가린다() {
-		var staff = new AccountUserDetails(savedUser("desk"));
+	void 검증하려고_읽었을_때의_권한_판_번호를_든다() {
+		User user = savedUser("desk");
+		user.changePassword("{bcrypt}$2a$10$zyxwvutsrqponmlkjihgfe");
+		var details = new AccountUserDetails(user);
 
-		assertThat(staff.isSameAs(savedUser("desk"))).isTrue();
-		User renamed = savedUser("desk");
-		renamed.rename("김데스크");
-		assertThat(staff.isSameAs(renamed)).as("이름은 권한이 아니다").isTrue();
-
-		User moved = savedUser("desk");
-		moved.changeAffiliation(UserRole.STAFF, 2L);
-		assertThat(staff.isSameAs(moved)).as("지점이 바뀜").isFalse();
-
-		User promoted = savedUser("desk");
-		promoted.changeAffiliation(UserRole.ADMIN, null);
-		assertThat(staff.isSameAs(promoted)).as("역할이 바뀜").isFalse();
-
-		User reset = savedUser("desk");
-		reset.changePassword("{bcrypt}$2a$10$zyxwvutsrqponmlkjihgfe");
-		assertThat(staff.isSameAs(reset)).as("비밀번호가 바뀜").isFalse();
-	}
-
-	@Test
-	void 관리자에서_직원으로_내려간_계정은_같은_계정으로_보지_않는다() {
-		var details = new AccountUserDetails(saved(User.create("owner", HASH, "박원장", UserRole.ADMIN, null, null)));
-		User demoted = saved(User.create("owner", HASH, "박원장", UserRole.ADMIN, null, null));
-		demoted.changeAffiliation(UserRole.STAFF, 1L);
-
-		assertThat(details.isSameAs(demoted)).isFalse();
-	}
-
-	@Test
-	void 연계_학원_식별자가_바뀐_계정은_같은_계정으로_보지_않는다() {
-		var details = new AccountUserDetails(
-				saved(User.create("partner", HASH, "연계학원", UserRole.PARTNER, null, 7L)));
-
-		assertThat(details.isSameAs(saved(User.create("partner", HASH, "연계학원", UserRole.PARTNER, null, 7L))))
-			.isTrue();
-		assertThat(details.isSameAs(saved(User.create("partner", HASH, "연계학원", UserRole.PARTNER, null, 8L))))
-			.isFalse();
-	}
-
-	// 해시는 검증이 끝나면 지운다. 그 뒤에도 "그때의 해시가 지금도 그대로인가"를 가릴 수 있어야 한다.
-	@Test
-	void 해시를_지운_뒤에도_비밀번호가_바뀌었는지_가린다() {
-		var details = new AccountUserDetails(savedUser("desk"));
+		user.changeAffiliation(UserRole.STAFF, 2L);
 		details.eraseCredentials();
-		User reset = savedUser("desk");
-		reset.changePassword("{bcrypt}$2a$10$zyxwvutsrqponmlkjihgfe");
 
-		assertThat(details.isSameAs(savedUser("desk"))).isTrue();
-		assertThat(details.isSameAs(reset)).isFalse();
+		assertThat(details.authVersion()).isEqualTo(1);
+		assertThat(user.stillValidFor(details.toAuthenticatedUser(), details.authVersion())).isFalse();
 	}
 
 	// DB에서 읽은 계정처럼 ID가 채워진 계정을 만든다.

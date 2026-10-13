@@ -4,6 +4,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
+import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.shared.BaseEntity;
 import jakarta.persistence.Column;
@@ -64,6 +65,12 @@ public class User extends BaseEntity {
 	@Column(nullable = false, length = 20)
 	private UserStatus status;
 
+	// 권한 판 번호 (ADR-0031). 세션에는 로그인할 때의 번호가 들어 있고, 요청마다 이 값과 비교한다.
+	// 그 전에 만든 세션을 무효로 해야 하는 변경(차단, 역할·지점, 비밀번호)은 이 번호를 올린다(invalidateSessions).
+	// JPA의 @Version(동시 변경을 가리는 번호)이 아니다.
+	@Column(name = "auth_version", nullable = false)
+	private long authVersion;
+
 	protected User() {
 	}
 
@@ -118,20 +125,40 @@ public class User extends BaseEntity {
 	}
 
 	/**
-	 * 다음 로그인부터 막는다. 이미 로그인된 세션은 이 메서드만으로는 끊기지 않는다.
-	 * 계정을 차단할 때는 세션까지 끊는 {@code AccountService#disable}을 쓴다.
+	 * 다음 로그인부터 막는다. 이미 로그인된 세션은 다음 요청에서 막힌다(권한 판 번호가 오른다).
+	 * 계정을 차단할 때는 세션까지 치우는 {@code AccountService#disable}을 쓴다.
 	 */
 	public void disable() {
+		if (this.status == UserStatus.DISABLED) {
+			return;
+		}
 		this.status = UserStatus.DISABLED;
+		invalidateSessions();
 	}
 
-	/** 차단을 푼다. 다시 로그인할 수 있다. */
+	/** 차단을 푼다. 다시 로그인할 수 있다. 차단하기 전에 만든 세션은 살아나지 않는다(차단할 때 권한 판 번호가 올랐다). */
 	public void enable() {
 		this.status = UserStatus.ACTIVE;
 	}
 
 	public boolean isActive() {
 		return status == UserStatus.ACTIVE;
+	}
+
+	/**
+	 * 로그인할 때 만든 세션(또는 방금 비밀번호를 검증한 로그인)이 지금의 이 계정으로 계속 일해도 되는지.
+	 * 기준은 여기 한 곳이다: 요청마다의 확인과 로그인 직전의 재확인이 모두 이것을 쓴다.
+	 *
+	 * <p>차단되지 않았고, 권한 판 번호가 그때와 같고, 역할·지점·연계 학원 식별자가 세션의 것과 같아야 한다.
+	 * 마지막 조건은 번호를 올리지 않고 바뀐 계정(DB를 직접 고친 경우)을 잡는다.
+	 *
+	 * @param sessionUser 세션에 든 로그인 정보. 이 계정의 것이어야 한다(부르는 쪽이 계정 ID로 이 계정을 찾는다)
+	 * @param sessionAuthVersion 그 세션을 만들 때의 권한 판 번호
+	 */
+	public boolean stillValidFor(AuthenticatedUser sessionUser, long sessionAuthVersion) {
+		return isActive() && authVersion == sessionAuthVersion && role == sessionUser.role()
+				&& Objects.equals(campusId, sessionUser.campusId())
+				&& Objects.equals(partnerId, sessionUser.partnerId());
 	}
 
 	/**
@@ -151,8 +178,8 @@ public class User extends BaseEntity {
 	}
 
 	/**
-	 * 역할과 소속 지점을 바꾼다. 이미 로그인된 세션은 이 메서드만으로는 옛 역할과 지점을 그대로 쓴다.
-	 * 바꿀 때는 세션까지 끊는 {@code AccountService#update}를 쓴다.
+	 * 역할과 소속 지점을 바꾼다. 이미 로그인된 세션은 다음 요청에서 막힌다(권한 판 번호가 오른다).
+	 * 바꿀 때는 세션까지 치우는 {@code AccountService#update}를 쓴다.
 	 *
 	 * @return 실제로 바뀌었는지
 	 * @throws IllegalArgumentException 역할이 비었거나, 역할과 지점·연계 학원 식별자의 조합이 맞지 않을 때
@@ -167,11 +194,13 @@ public class User extends BaseEntity {
 		}
 		this.role = role;
 		this.campusId = campusId;
+		invalidateSessions();
 		return true;
 	}
 
 	/**
-	 * 비밀번호를 바꾼다. 이미 로그인된 세션은 이 메서드만으로는 끊기지 않는다.
+	 * 비밀번호를 바꾼다. 이미 로그인된 세션은 다음 요청에서 막힌다(권한 판 번호가 오른다).
+	 * 본인이 바꿀 때 지금 세션을 남기려면 그 세션에 새 번호를 넣어야 한다({@code AccountService#changeOwnPassword}).
 	 *
 	 * @param passwordHash 해시된 비밀번호. 원문을 넘기지 않는다.
 	 * @throws IllegalArgumentException 비었거나 해시가 아닐 때
@@ -180,6 +209,7 @@ public class User extends BaseEntity {
 		requireText(passwordHash, "passwordHash");
 		requireHash(passwordHash);
 		this.passwordHash = passwordHash;
+		invalidateSessions();
 	}
 
 	public Long getId() {
@@ -212,6 +242,17 @@ public class User extends BaseEntity {
 
 	public UserStatus getStatus() {
 		return status;
+	}
+
+	public long getAuthVersion() {
+		return authVersion;
+	}
+
+	// 이 계정으로 그 전에 만든 세션을 모두 무효로 한다 (ADR-0031). 세션에 든 것(역할, 소속)이나 로그인의 근거(비밀번호, 차단 여부)를
+	// 바꾸는 메서드는 이것을 부른다. 그런 필드를 더하면 UserTest의 분류에도 더한다.
+	// 계정 행을 잠근 트랜잭션에서 부른다. 잠그지 않은 두 변경이 겹치면 번호가 한 번만 오른다.
+	private void invalidateSessions() {
+		this.authVersion++;
 	}
 
 	// 인코더가 만든 해시는 {bcrypt}처럼 알고리즘 이름으로 시작하고 그 뒤에 값이 온다. 원문 비밀번호를 그대로 넘기는 실수를 여기서 막는다.
