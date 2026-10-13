@@ -29,15 +29,15 @@ record MemberLimitProperties(Limit phoneRevealLimit, Limit phoneChangeLimit, Lim
 	}
 
 	RateLimit phoneReveal() {
-		return new RateLimit("member.phone-reveal", phoneRevealLimit.max(), phoneRevealLimit.window());
+		return RateLimit.of(MemberRateLimit.PHONE_REVEAL, phoneRevealLimit.max(), phoneRevealLimit.window());
 	}
 
 	RateLimit phoneChange() {
-		return new RateLimit("member.phone-change", phoneChangeLimit.max(), phoneChangeLimit.window());
+		return RateLimit.of(MemberRateLimit.PHONE_CHANGE, phoneChangeLimit.max(), phoneChangeLimit.window());
 	}
 
 	RateLimit phoneProbe() {
-		return new RateLimit("member.phone-probe", phoneProbeLimit.max(), phoneProbeLimit.window());
+		return RateLimit.of(MemberRateLimit.PHONE_PROBE, phoneProbeLimit.max(), phoneProbeLimit.window());
 	}
 
 	private static void check(String name, Limit limit) {

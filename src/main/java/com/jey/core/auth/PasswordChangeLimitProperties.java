@@ -33,7 +33,7 @@ record PasswordChangeLimitProperties(@DefaultValue("15m") Duration window, @Defa
 	}
 
 	RateLimit toRateLimit() {
-		return new RateLimit("auth.password-change", maxFailures, window);
+		return RateLimit.of(AuthRateLimit.PASSWORD_CHANGE, maxFailures, window);
 	}
 
 }
