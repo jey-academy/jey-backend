@@ -10,4 +10,7 @@ public class BetaInternal {
 
 	SharedThing shared;
 
+	public static void touch() {
+	}
+
 }
