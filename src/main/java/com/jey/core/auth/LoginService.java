@@ -42,6 +42,11 @@ public class LoginService {
 
 	private static final String NO_SCOPE = "none";
 
+	/**
+	 * 세션을 만든 로그인이 본 권한 판 번호(Long). 로그인할 때 넣고, 요청마다 계정의 지금 번호와 비교한다 (ADR-0031).
+	 */
+	static final String AUTH_VERSION_ATTRIBUTE = "jey.auth.accountVersion";
+
 	private final AuthenticationManager authenticationManager;
 
 	private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
@@ -113,6 +118,8 @@ public class LoginService {
 		// 최대 유지 시각은 로그인 시점 기준이다. 계속 쓰고 있어도 이 시각이 지나면 SessionMaxLifetimeFilter가 끊는다.
 		session.setAttribute(SessionMaxLifetimeFilter.EXPIRES_AT_ATTRIBUTE,
 				clock.instant().plus(properties.sessionMaxLifetimeFor(user.role())).toEpochMilli());
+		// 비밀번호를 검증할 때 읽은 번호다. 그 뒤에 계정이 바뀌었으면 번호가 올라 있어 이 세션은 다음 요청에서 막힌다.
+		session.setAttribute(AUTH_VERSION_ATTRIBUTE, account.authVersion());
 		SecurityContext context = SecurityContextHolder.createEmptyContext();
 		context.setAuthentication(authentication);
 		SecurityContextHolder.setContext(context);
@@ -164,8 +171,9 @@ public class LoginService {
 	// 그 경우 차단 쪽이 세션을 끊은 뒤에 이 로그인의 세션이 저장되어 살아남기 때문이다.
 	// 다시 읽은 직후부터 세션이 저장될 때까지의 짧은 틈은 남는다(ADR-0019).
 	//
-	// 같은 이유로 역할·지점과 비밀번호도 그대로인지 본다(ADR-0030). 해시를 계산하는 동안 역할이 바뀌었거나 비밀번호가 다시 정해졌으면,
-	// 바꾼 쪽이 세션을 끊은 뒤에 이 로그인의 세션이 옛 권한(또는 옛 비밀번호)으로 저장된다. 그런 로그인은 실패시키고 다시 하게 한다.
+	// 같은 이유로 역할·지점과 비밀번호도 그대로인지 본다(ADR-0030). 해시를 계산하는 동안 역할이 바뀌었거나 비밀번호가 다시 정해졌으면
+	// 이 로그인은 옛 권한(또는 옛 비밀번호)으로 검증된 것이다. 실패시키고 다시 하게 한다.
+	// 그대로인지의 기준은 요청마다의 확인과 같다(User#stillValidFor, ADR-0031).
 	private void requireUnchanged(AccountUserDetails account) {
 		long userId = account.toAuthenticatedUser().id();
 		User reloaded = users.findById(userId).orElse(null);
@@ -180,7 +188,7 @@ public class LoginService {
 			countAttempt("failure", NO_SCOPE);
 			throw new BusinessException(AuthErrorCode.INVALID_CREDENTIALS);
 		}
-		if (!account.isSameAs(reloaded)) {
+		if (!reloaded.stillValidFor(account.toAuthenticatedUser(), account.authVersion())) {
 			log.info("로그인 실패: 비밀번호 검증 중에 바뀐 계정 userId={}", userId);
 			countAttempt("failure", NO_SCOPE);
 			throw new BusinessException(AuthErrorCode.INVALID_CREDENTIALS);

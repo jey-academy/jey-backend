@@ -64,6 +64,8 @@ class AuthLoginTest {
 
 	private static final String EXPIRES_AT_FIELD = "sessionAttr:jey.auth.sessionExpiresAt";
 
+	private static final String AUTH_VERSION_FIELD = "sessionAttr:jey.auth.accountVersion";
+
 	// Spring Session이 세션 값을 저장하는 것과 같은 방식(Java 직렬화)이다.
 	private static final JdkSerializationRedisSerializer SESSION_VALUE_SERIALIZER = new JdkSerializationRedisSerializer();
 
@@ -296,6 +298,14 @@ class AuthLoginTest {
 				after + Duration.ofHours(16).toMillis());
 		assertThat(readExpiresAt(adminSession)).isBetween(before + Duration.ofHours(12).toMillis(),
 				after + Duration.ofHours(12).toMillis());
+	}
+
+	// 요청마다 이 번호를 계정의 지금 번호와 비교한다 (ADR-0031). Long으로 들어가야 한다.
+	@Test
+	void 로그인하면_계정의_권한_판_번호가_세션에_기록된다() throws Exception {
+		Cookie session = loginAndGetSession(staff.getLoginId());
+
+		assertThat(readLong(session, AUTH_VERSION_FIELD)).isEqualTo(staff.getAuthVersion());
 	}
 
 	// 필터가 실제 요청 흐름에 연결돼 있고, 끊긴 세션이 Spring Session에서도 정말 사라지는지 확인한다.
@@ -667,8 +677,12 @@ class AuthLoginTest {
 
 	// 값이 Long이 아니면 여기서 실패한다. 필터는 Long일 때만 시각으로 읽는다.
 	private Long readExpiresAt(Cookie session) {
+		return readLong(session, EXPIRES_AT_FIELD);
+	}
+
+	private Long readLong(Cookie session, String field) {
 		byte[] raw = redis.execute((RedisCallback<byte[]>) connection -> connection.hashCommands().hGet(
-				redisKey(session).getBytes(StandardCharsets.UTF_8), EXPIRES_AT_FIELD.getBytes(StandardCharsets.UTF_8)));
+				redisKey(session).getBytes(StandardCharsets.UTF_8), field.getBytes(StandardCharsets.UTF_8)));
 		return (Long) SESSION_VALUE_SERIALIZER.deserialize(raw);
 	}
 
