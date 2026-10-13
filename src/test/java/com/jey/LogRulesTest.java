@@ -14,7 +14,8 @@ import org.junit.jupiter.api.Test;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// 쿼리 문자열에는 검색어(학생 이름, 전화번호 뒷자리)가 실린다. 로그에는 경로(getRequestURI)만 남긴다 (ADR-0028).
+// 쿼리 문자열에는 검색어가 실릴 수 있다. 로그에는 경로(getRequestURI)만 남긴다 (ADR-0028).
+// (사람을 가리키는 검색어는 이제 본문으로 받지만(ADR-0032), 주소에 무엇이 실려 올지는 서버가 정하지 못한다.)
 //
 // 이 규칙이 막는 것은 하나다: 요청의 쿼리 문자열을 통째로 읽는 코드(getQueryString)가 정해진 한 곳 밖에 생기는 것.
 // "주소를 로그에 찍는다"는 코드가 경로 대신 주소 전체를 찍게 되는 흔한 실수를 여기서 잡는다.

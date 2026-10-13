@@ -23,6 +23,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 // 목록의 page에 상한이 없으면 아주 큰 값(2147483647)에서 건너뛸 줄 수가 정수 범위를 넘어 조회가 서버 오류로 끝난다.
 // 새 목록을 만들 때 상한을 빠뜨리면 같은 일이 다시 난다. 컨트롤러가 받는 page를 모두 모아 검사한다:
 // 메서드의 page 파라미터(주소로 받는 것)와, 본문으로 받는 타입의 page 필드(학생 검색처럼 조건을 본문으로 받는 것).
+//
+// 본문은 그 타입이 직접 가진 page 필드만 본다. 다른 타입 안에 넣었거나(중첩), 상위 타입에서 물려받았거나, 이름이 page가 아니면
+// 찾지 못한다. 페이지를 그렇게 받는 목록을 만들 때는 이 검사를 넓힌다.
 class PageLimitRulesTest {
 
 	private static final JavaClasses MAIN = new ClassFileImporter()
