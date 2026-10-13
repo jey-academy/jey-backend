@@ -87,7 +87,7 @@ class AuthController {
 			log.warn("로그인한 요청인데 세션이 없다. 비밀번호를 바꾸지 않는다");
 			throw new BusinessException(CommonErrorCode.UNAUTHENTICATED);
 		}
-		accountService.changeOwnPassword(body.currentPassword(), body.newPassword(), session.getId());
+		accountService.changeOwnPassword(body.currentPassword(), body.newPassword(), session);
 		// 남긴 세션의 ID도 바꾼다. 이 세션의 쿠키를 누가 베껴 갖고 있었다면 그 사본은 여기서 못 쓰게 된다.
 		// 바꾼 사람의 브라우저는 이 응답으로 새 쿠키를 받는다.
 		request.changeSessionId();

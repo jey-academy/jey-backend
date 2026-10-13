@@ -22,6 +22,7 @@ import com.jey.core.shared.RateLimitedException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -308,7 +309,7 @@ class AccountManagementTest {
 		User staff = saved("desk", "김직원", UserRole.STAFF, DONGTAN);
 		actAs(staff);
 
-		accountService.changeOwnPassword(PASSWORD, "my-new-password-1", "this-session");
+		accountService.changeOwnPassword(PASSWORD, "my-new-password-1", session("this-session"));
 
 		String stored = users.findById(staff.getId()).orElseThrow().getPasswordHash();
 		assertThat(passwordEncoder.matches("my-new-password-1", stored)).isTrue();
@@ -321,7 +322,7 @@ class AccountManagementTest {
 		User staff = saved("desk", "김직원", UserRole.STAFF, DONGTAN);
 		actAs(staff);
 
-		assertDenied(() -> accountService.changeOwnPassword("wrong-password-1", "my-new-password-1", "this-session"),
+		assertDenied(() -> accountService.changeOwnPassword("wrong-password-1", "my-new-password-1", session("this-session")),
 				AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
 
 		assertThat(passwordEncoder.matches(PASSWORD, users.findById(staff.getId()).orElseThrow().getPasswordHash()))
@@ -335,11 +336,11 @@ class AccountManagementTest {
 		User staff = saved("desk", "김직원", UserRole.STAFF, DONGTAN);
 		actAs(staff);
 
-		assertDenied(() -> accountService.changeOwnPassword(PASSWORD, "short", "this-session"),
+		assertDenied(() -> accountService.changeOwnPassword(PASSWORD, "short", session("this-session")),
 				AuthErrorCode.PASSWORD_NOT_ACCEPTABLE);
-		assertDenied(() -> accountService.changeOwnPassword(PASSWORD, staff.getLoginId(), "this-session"),
+		assertDenied(() -> accountService.changeOwnPassword(PASSWORD, staff.getLoginId(), session("this-session")),
 				AuthErrorCode.PASSWORD_NOT_ACCEPTABLE);
-		assertDenied(() -> accountService.changeOwnPassword(PASSWORD, PASSWORD, "this-session"),
+		assertDenied(() -> accountService.changeOwnPassword(PASSWORD, PASSWORD, session("this-session")),
 				AuthErrorCode.PASSWORD_UNCHANGED);
 
 		assertThat(recordsOf("account.password-changed", staff.getId())).isZero();
@@ -350,20 +351,20 @@ class AccountManagementTest {
 	void 틀린_지금_비밀번호가_다섯_번을_넘으면_맞는_비밀번호로도_막히고_막힌_사실이_한_번_기록된다() {
 		User staff = saved("desk", "김직원", UserRole.STAFF, DONGTAN);
 		actAs(staff);
-		accountService.changeOwnPassword(PASSWORD, "my-new-password-1", "this-session");
-		accountService.changeOwnPassword("my-new-password-1", "my-new-password-2", "this-session");
+		accountService.changeOwnPassword(PASSWORD, "my-new-password-1", session("this-session"));
+		accountService.changeOwnPassword("my-new-password-1", "my-new-password-2", session("this-session"));
 		for (int i = 0; i < 3; i++) {
-			assertDenied(() -> accountService.changeOwnPassword("my-new-password-2", "short", "this-session"),
+			assertDenied(() -> accountService.changeOwnPassword("my-new-password-2", "short", session("this-session")),
 					AuthErrorCode.PASSWORD_NOT_ACCEPTABLE);
 		}
 		for (int i = 0; i < 5; i++) {
-			assertDenied(() -> accountService.changeOwnPassword("wrong-password-1", "my-new-password-3", "this-session"),
+			assertDenied(() -> accountService.changeOwnPassword("wrong-password-1", "my-new-password-3", session("this-session")),
 					AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
 		}
 
 		for (int i = 0; i < 2; i++) {
 			assertThatThrownBy(
-					() -> accountService.changeOwnPassword("my-new-password-2", "my-new-password-3", "this-session"))
+					() -> accountService.changeOwnPassword("my-new-password-2", "my-new-password-3", session("this-session")))
 				.isInstanceOfSatisfying(RateLimitedException.class,
 						ex -> assertThat(ex.getErrorCode()).isEqualTo(AuthErrorCode.TOO_MANY_PASSWORD_ATTEMPTS));
 		}
@@ -448,7 +449,7 @@ class AccountManagementTest {
 		assertDenied(() -> accountService.resetPassword(staff.getId(), "first-line\nsecond-line"),
 				AuthErrorCode.PASSWORD_NOT_ACCEPTABLE);
 		actAs(staff);
-		assertDenied(() -> accountService.changeOwnPassword(PASSWORD, "\u200B".repeat(12), "this-session"),
+		assertDenied(() -> accountService.changeOwnPassword(PASSWORD, "\u200B".repeat(12), session("this-session")),
 				AuthErrorCode.PASSWORD_NOT_ACCEPTABLE);
 
 		assertThat(users.findByLoginId(loginId)).isEmpty();
@@ -464,7 +465,7 @@ class AccountManagementTest {
 
 		List<Object> results = concurrently(2, index -> () -> {
 			actAs(staff);
-			accountService.changeOwnPassword(PASSWORD, "changed-by-request-" + index, "session-" + index);
+			accountService.changeOwnPassword(PASSWORD, "changed-by-request-" + index, session("session-" + index));
 			return "changed-by-request-" + index;
 		});
 
@@ -485,9 +486,9 @@ class AccountManagementTest {
 	void 비밀번호를_바꾸거나_틀린_기록에는_상세가_없다() {
 		User staff = saved("desk", "김직원", UserRole.STAFF, DONGTAN);
 		actAs(staff);
-		assertDenied(() -> accountService.changeOwnPassword("wrong-password-1", "my-new-password-1", "this-session"),
+		assertDenied(() -> accountService.changeOwnPassword("wrong-password-1", "my-new-password-1", session("this-session")),
 				AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
-		accountService.changeOwnPassword(PASSWORD, "my-new-password-1", "this-session");
+		accountService.changeOwnPassword(PASSWORD, "my-new-password-1", session("this-session"));
 
 		assertThat(detailOf("account.password-change-mismatch", staff.getId())).isNullOrEmpty();
 		assertThat(detailOf("account.password-changed", staff.getId())).isNullOrEmpty();
@@ -570,6 +571,10 @@ class AccountManagementTest {
 		finally {
 			pool.shutdownNow();
 		}
+	}
+
+	private static MockHttpSession session(String id) {
+		return new MockHttpSession(null, id);
 	}
 
 }

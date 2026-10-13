@@ -20,6 +20,7 @@ import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.CommonErrorCode;
 import com.jey.core.shared.ErrorCode;
 import com.jey.core.shared.UniqueKeys;
+import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -287,6 +288,9 @@ public class AccountService {
 	/**
 	 * 로그인한 사람이 자기 비밀번호를 바꾼다. 지금 세션은 남기고 그 계정의 다른 세션을 모두 끊는다.
 	 *
+	 * <p>비밀번호를 바꾸면 계정의 권한 판 번호가 오른다(ADR-0031). 지금 세션에는 커밋한 직후에 새 번호를 넣는다.
+	 * 넣지 못하고 요청이 끝나면 지금 세션도 다음 요청에서 막힌다. 새 비밀번호로 다시 로그인하면 된다.
+	 *
 	 * <p>지금 비밀번호를 틀린 횟수를 계정별로 센다. 한도를 넘으면 맞는 비밀번호로도 구간이 끝날 때까지 바꿀 수 없다.
 	 * 로그인된 세션을 손에 넣은 사람이 지금 비밀번호를 대입으로 알아내는 것을 느리게 한다. 지금 비밀번호가 맞은 요청은 세지 않는다.
 	 *
@@ -294,14 +298,16 @@ public class AccountService {
 	 * "지금 비밀번호가 틀리다"로 거부된다. 새 비밀번호를 지금 비밀번호 자리에 넣어 다시 보내면 된다:
 	 * 새 비밀번호가 지금 비밀번호와 같은 요청은 바꿀 것이 없어 거부되지만, 거부하기 전에 다른 세션을 끊는다.
 	 *
-	 * @param currentSessionId 이 요청의 세션 ID. 이 세션은 끊지 않는다
+	 * @param currentSession 이 요청의 세션. 이 세션은 끊지 않는다
 	 * @throws com.jey.core.shared.RateLimitedException 틀린 횟수가 한도를 넘었을 때
 	 * @throws BusinessException 지금 비밀번호가 틀리거나, 새 비밀번호가 규칙에 맞지 않거나, 지금 비밀번호와 같을 때.
 	 * 바꾼 뒤 다른 세션을 끊지 못했을 때도 난다(비밀번호는 바뀌어 있다)
 	 * @throws IllegalStateException 로그인한 계정을 알 수 없거나, 다른 트랜잭션 안에서 호출했을 때
 	 */
-	public void changeOwnPassword(String currentPassword, String newPassword, String currentSessionId) {
+	public void changeOwnPassword(String currentPassword, String newPassword, HttpSession currentSession) {
 		requireNoTransaction("changeOwnPassword");
+		Objects.requireNonNull(currentSession, "currentSession");
+		String currentSessionId = currentSession.getId();
 		if (!(currentActor.get() instanceof Actor.User self)) {
 			throw new IllegalStateException("로그인한 계정 없이 비밀번호를 바꿀 수 없다");
 		}
@@ -324,8 +330,9 @@ public class AccountService {
 			throw new BusinessException(AuthErrorCode.PASSWORD_UNCHANGED);
 		}
 		String passwordHash = passwordEncoder.encode(newPassword);
+		long authVersion;
 		try {
-			transaction.executeWithoutResult(status -> {
+			authVersion = transaction.execute(status -> {
 				User user = users.findByIdForUpdate(userId)
 					.filter(User::isActive)
 					.orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHENTICATED));
@@ -336,6 +343,7 @@ public class AccountService {
 				}
 				user.changePassword(passwordHash);
 				trail.done(AccountActivity.of(Kind.PASSWORD_CHANGED, userId));
+				return user.getAuthVersion();
 			});
 		}
 		catch (BusinessException ex) {
@@ -348,6 +356,8 @@ public class AccountService {
 			}
 			throw ex;
 		}
+		// 다른 세션을 끊기 전에 넣는다. 끊다가 실패해도 지금 세션은 새 번호를 갖고 있어야 한다.
+		currentSession.setAttribute(LoginService.AUTH_VERSION_ATTRIBUTE, authVersion);
 		afterOwnPasswordChange(() -> userSessions.terminateOthers(userId, currentSessionId));
 	}
 
