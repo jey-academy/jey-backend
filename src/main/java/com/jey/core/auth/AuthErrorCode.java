@@ -35,12 +35,7 @@ public enum AuthErrorCode implements ErrorCode {
 	PASSWORD_UNCHANGED(HttpStatus.BAD_REQUEST, "새 비밀번호가 지금 비밀번호와 같습니다."),
 
 	// 지금 비밀번호를 틀린 횟수가 한도를 넘었다. 응답의 Retry-After 헤더에 남은 시간(초)이 있다.
-	TOO_MANY_PASSWORD_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "비밀번호 변경 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요."),
-
-	// 계정은 바뀌었는데(커밋됐다) 그 계정의 세션을 끊지 못했다(세션 저장소 장애). 실패가 아니라 "절반만 됐다"이다.
-	// 차단, 고치기, 비밀번호 다시 정하기는 같은 요청을 다시 보내면 끊는다. 본인 비밀번호 변경은 문구가 따로 나간다.
-	SESSION_TERMINATION_FAILED(HttpStatus.SERVICE_UNAVAILABLE,
-			"변경은 저장됐지만 그 계정을 로그아웃시키지 못했습니다. 같은 요청을 한 번 더 보내 주세요.");
+	TOO_MANY_PASSWORD_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "비밀번호 변경 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.");
 
 	private final HttpStatus status;
 

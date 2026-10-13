@@ -1,17 +1,9 @@
 package com.jey.core.auth;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
-import com.jey.core.auth.api.AuthenticatedUser;
-import com.jey.core.auth.api.UserRole;
 import org.junit.jupiter.api.Test;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.session.FindByIndexNameSessionRepository;
 import org.springframework.session.MapSession;
 import org.springframework.session.Session;
@@ -82,45 +74,6 @@ class UserSessionsTest {
 
 		assertThatThrownBy(() -> userSessions.terminateOthers(USER_ID, "here")).isInstanceOf(IllegalStateException.class)
 			.hasMessage("저장소 장애");
-	}
-
-	// 세션에는 로그인할 때의 역할과 지점이 들어 있다. 계정의 지점을 옮기면 옛 지점으로 로그인된 세션만 끊는다.
-	@Test
-	void 역할이나_지점이_지금과_다른_세션만_끊는다() {
-		Map<String, Session> found = new LinkedHashMap<>();
-		found.put("dongtan", sessionOf("dongtan", UserRole.STAFF, 1L));
-		found.put("neungdong", sessionOf("neungdong", UserRole.STAFF, 2L));
-		found.put("was-admin", sessionOf("was-admin", UserRole.ADMIN, null));
-		when(sessions.findByPrincipalName(String.valueOf(USER_ID))).thenReturn(found);
-
-		assertThat(userSessions.terminateOutdated(USER_ID, UserRole.STAFF, 2L)).isEqualTo(2);
-
-		verify(sessions).deleteById("dongtan");
-		verify(sessions).deleteById("was-admin");
-		verify(sessions, never()).deleteById("neungdong");
-	}
-
-	// 어떤 권한으로 로그인된 세션인지 알 수 없으면 남기지 않는다.
-	@Test
-	void 로그인_정보를_읽을_수_없는_세션은_옛_세션으로_보고_끊는다() {
-		MapSession broken = new MapSession("broken");
-		broken.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, "not-a-security-context");
-		Map<String, Session> found = new LinkedHashMap<>();
-		found.put("empty", new MapSession("empty"));
-		found.put("broken", broken);
-		when(sessions.findByPrincipalName(String.valueOf(USER_ID))).thenReturn(found);
-
-		assertThat(userSessions.terminateOutdated(USER_ID, UserRole.STAFF, 1L)).isEqualTo(2);
-	}
-
-	private static Session sessionOf(String sessionId, UserRole role, Long campusId) {
-		var principal = new AuthenticatedUser(USER_ID, "desk", "김직원", role, campusId, null);
-		SecurityContext context = SecurityContextHolder.createEmptyContext();
-		context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(principal, null,
-				List.of(new SimpleGrantedAuthority(role.authority()))));
-		MapSession session = new MapSession(sessionId);
-		session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
-		return session;
 	}
 
 	private void loggedIn(String... sessionIds) {

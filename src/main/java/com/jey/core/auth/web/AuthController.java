@@ -74,8 +74,7 @@ class AuthController {
 
 	@Operation(summary = "자기 비밀번호 바꾸기",
 			description = "지금 화면은 로그인된 채로 남고, 같은 계정으로 로그인된 다른 화면은 로그아웃된다. "
-					+ "지금 비밀번호를 여러 번 틀리면 429와 Retry-After(초)가 온다. "
-					+ "503(AUTH_SESSION_TERMINATION_FAILED)이면 비밀번호는 바뀌었고 다른 화면만 로그아웃시키지 못한 것이다")
+					+ "지금 비밀번호를 여러 번 틀리면 429와 Retry-After(초)가 온다.")
 	@AnyRole
 	@NotIdempotent("비밀번호가 실린 본문의 지문을 저장하지 않는다. 다시 보내면 지금 비밀번호가 맞지 않아 거부된다")
 	@PostMapping("/password")
