@@ -208,7 +208,8 @@ class RequestIdApiTest {
 		assertThat(output).contains("|9602] ");
 	}
 
-	// 쿼리 문자열에는 검색어(학생 이름, 전화번호 뒷자리)가 실린다. 로그에는 경로만 남긴다.
+	// 쿼리 문자열에는 검색어가 실릴 수 있다(사람을 가리키는 조건은 본문으로 받지만, 주소에 무엇이 실려 올지는 서버가 정하지 못한다).
+	// 로그에는 경로만 남긴다.
 	// 로그를 남기는 갈래를 하나씩 지난다: 서버 오류, 접근 거부, CSRF 거부, 멱등 키 필터의 거부.
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = 9603)

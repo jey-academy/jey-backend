@@ -30,6 +30,7 @@ import static com.jey.core.member.MemberFixtures.randomPhone;
 import static com.jey.core.member.MemberFixtures.registration;
 import static com.jey.core.member.MemberFixtures.registrationWithPhone;
 import static com.jey.core.member.MemberFixtures.uniqueName;
+import static com.jey.core.member.web.StudentSearchRequests.studentSearch;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -130,7 +131,7 @@ class MemberApiTest {
 				.andReturn()
 				.getResponse()
 				.getContentAsString();
-		String list = mockMvc.perform(get(STUDENTS).param("name", name))
+		String list = mockMvc.perform(studentSearch(mockMvc, "name", name))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.items.length()").value(1))
 				.andExpect(jsonPath("$.items[0].id").value(created.id()))
@@ -158,11 +159,11 @@ class MemberApiTest {
 		PhoneNumber phone = randomPhone();
 		studentService.register(registration(name, mother(phone)));
 
-		mockMvc.perform(get(STUDENTS).param("name", name).param("phoneLast4", phone.last4()))
+		mockMvc.perform(studentSearch(mockMvc, "name", name, "phoneLast4", phone.last4()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.items.length()").value(1))
 				.andExpect(jsonPath("$.items[0].name").value(name));
-		mockMvc.perform(get(STUDENTS).param("name", name).param("phoneLast4", otherLast4(phone)))
+		mockMvc.perform(studentSearch(mockMvc, "name", name, "phoneLast4", otherLast4(phone)))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.items").isEmpty())
 				.andExpect(jsonPath("$.totalElements").value(0));
@@ -178,7 +179,7 @@ class MemberApiTest {
 		mockMvc.perform(get(STUDENTS + "/{id}", dongtanStudent.id()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.campusId").value(1));
-		mockMvc.perform(get(STUDENTS).param("campusId", "1").param("name", name))
+		mockMvc.perform(studentSearch(mockMvc, "campusId", "1", "name", name))
 				.andExpect(jsonPath("$.items.length()").value(1));
 		send(put(STUDENTS + "/{id}", dongtanStudent.id()), updateBody(name, "HIGH_2", "ENROLLED", null))
 				.andExpect(status().isOk())
@@ -411,20 +412,20 @@ class MemberApiTest {
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
 	void 목록의_조건이_틀리면_400이다() throws Exception {
-		mockMvc.perform(get(STUDENTS).param("phoneLast4", "123"))
+		mockMvc.perform(studentSearch(mockMvc, "phoneLast4", "123"))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
 				.andExpect(jsonPath("$.errors[?(@.field == 'phoneLast4')]").isNotEmpty());
-		mockMvc.perform(get(STUDENTS).param("phoneLast4", "12345")).andExpect(status().isBadRequest());
-		mockMvc.perform(get(STUDENTS).param("size", "101"))
+		mockMvc.perform(studentSearch(mockMvc, "phoneLast4", "12345")).andExpect(status().isBadRequest());
+		mockMvc.perform(studentSearch(mockMvc, "size", "101"))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errors[?(@.field == 'size')]").isNotEmpty());
-		mockMvc.perform(get(STUDENTS).param("size", "0")).andExpect(status().isBadRequest());
-		mockMvc.perform(get(STUDENTS).param("page", "-1"))
+		mockMvc.perform(studentSearch(mockMvc, "size", "0")).andExpect(status().isBadRequest());
+		mockMvc.perform(studentSearch(mockMvc, "page", "-1"))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errors[?(@.field == 'page')]").isNotEmpty());
-		mockMvc.perform(get(STUDENTS).param("name", "가".repeat(51))).andExpect(status().isBadRequest());
-		mockMvc.perform(get(STUDENTS).param("size", "100")).andExpect(status().isOk());
+		mockMvc.perform(studentSearch(mockMvc, "name", "가".repeat(51))).andExpect(status().isBadRequest());
+		mockMvc.perform(studentSearch(mockMvc, "size", "100")).andExpect(status().isOk());
 	}
 
 	// 연계 학원 계정은 학원 밖 사람이 쓴다. 학생과 학부모를 볼 수도 고칠 수도 없어야 한다.
@@ -434,8 +435,8 @@ class MemberApiTest {
 		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
 		long guardianId = student.guardians().getFirst().id();
 
-		forbidden(mockMvc.perform(get(STUDENTS)));
-		forbidden(mockMvc.perform(get(STUDENTS).param("phoneLast4", "1234")));
+		forbidden(mockMvc.perform(studentSearch(mockMvc)));
+		forbidden(mockMvc.perform(studentSearch(mockMvc, "phoneLast4", "1234")));
 		forbidden(mockMvc.perform(get(STUDENTS + "/{id}", student.id())));
 		forbidden(send(post(STUDENTS), createBody(uniqueName(), 1, randomPhone())));
 		forbidden(send(put(STUDENTS + "/{id}", student.id()), updateBody(student.name(), "HIGH_1", "ENROLLED", null)));
@@ -454,7 +455,7 @@ class MemberApiTest {
 
 	@Test
 	void 로그인하지_않으면_401이다() throws Exception {
-		mockMvc.perform(get(STUDENTS)).andExpect(status().isUnauthorized());
+		mockMvc.perform(studentSearch(mockMvc)).andExpect(status().isUnauthorized());
 		mockMvc.perform(get(STUDENTS + "/1")).andExpect(status().isUnauthorized());
 		send(post(STUDENTS), createBody(uniqueName(), 1, randomPhone())).andExpect(status().isUnauthorized());
 		send(put("/api/v1/guardians/1"), "{\"name\": \"이름\"}").andExpect(status().isUnauthorized());
@@ -468,7 +469,7 @@ class MemberApiTest {
 		mockMvc.perform(post(STUDENTS).contentType(MediaType.APPLICATION_JSON)
 				.content(createBody(name, 1, randomPhone()))).andExpect(status().isForbidden());
 
-		mockMvc.perform(get(STUDENTS).param("name", name)).andExpect(jsonPath("$.items").isEmpty());
+		mockMvc.perform(studentSearch(mockMvc, "name", name)).andExpect(jsonPath("$.items").isEmpty());
 	}
 
 	private ResultActions send(MockHttpServletRequestBuilder request, String json) throws Exception {

@@ -32,6 +32,7 @@ import static com.jey.core.member.MemberFixtures.mother;
 import static com.jey.core.member.MemberFixtures.randomPhone;
 import static com.jey.core.member.MemberFixtures.registration;
 import static com.jey.core.member.MemberFixtures.uniqueName;
+import static com.jey.core.member.web.StudentSearchRequests.studentSearch;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -95,7 +96,7 @@ class PhoneChangeLimitApiTest {
 		changeGuardianPhone(guardianId, randomPhone()).andExpect(status().isTooManyRequests());
 
 		// 막힌 요청은 번호를 바꾸지 않았다.
-		mockMvc.perform(get("/api/v1/students").param("phoneLast4", next.last4()).param("name", student.name()))
+		mockMvc.perform(studentSearch(mockMvc, "phoneLast4", next.last4(), "name", student.name()))
 				.andExpect(jsonPath("$.items").isEmpty());
 		// 막힌 사실은 구간마다 한 줄이고, 거부의 한도와 다른 이름으로 남는다.
 		List<AuditRecord> denied = auditLogService

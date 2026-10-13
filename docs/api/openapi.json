@@ -777,6 +777,41 @@
         "required" : [ "campusId", "classId", "grade", "guardians", "id", "name", "phone", "primaryContact", "registeredAt", "school", "siblings", "status" ],
         "type" : "object"
       },
+      "StudentSearchRequest" : {
+        "properties" : {
+          "campusId" : {
+            "description" : "지점. 없으면 전 지점",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "name" : {
+            "description" : "이름의 앞부분",
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "page" : {
+            "description" : "0부터 10000까지. 없으면 0",
+            "format" : "int32",
+            "maximum" : 10000,
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "phoneLast4" : {
+            "description" : "학부모나 학생 본인 전화번호의 뒷자리 4자리. 같은 뒷자리를 가진 학생이 모두 나온다",
+            "pattern" : "\\d{4}",
+            "type" : "string"
+          },
+          "size" : {
+            "description" : "한 페이지의 크기. 100까지. 없으면 20",
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
       "StudentSummaryResponse" : {
         "description" : "목록의 한 줄. 학부모 전체가 아니라 대표 연락처만 있다",
         "properties" : {
@@ -1618,73 +1653,6 @@
       }
     },
     "/api/v1/students" : {
-      "get" : {
-        "operationId" : "students",
-        "parameters" : [ {
-          "in" : "query",
-          "name" : "campusId",
-          "required" : false,
-          "schema" : {
-            "format" : "int64",
-            "type" : "integer"
-          }
-        }, {
-          "description" : "이름의 앞부분",
-          "in" : "query",
-          "name" : "name",
-          "required" : false,
-          "schema" : {
-            "maxLength" : 50,
-            "minLength" : 0,
-            "type" : "string"
-          }
-        }, {
-          "description" : "학부모나 학생 본인 전화번호의 뒷자리 4자리. 같은 뒷자리를 가진 학생이 모두 나온다",
-          "in" : "query",
-          "name" : "phoneLast4",
-          "required" : false,
-          "schema" : {
-            "pattern" : "\\d{4}",
-            "type" : "string"
-          }
-        }, {
-          "description" : "0부터 10000까지",
-          "in" : "query",
-          "name" : "page",
-          "required" : false,
-          "schema" : {
-            "default" : 0,
-            "format" : "int32",
-            "maximum" : 10000,
-            "minimum" : 0,
-            "type" : "integer"
-          }
-        }, {
-          "in" : "query",
-          "name" : "size",
-          "required" : false,
-          "schema" : {
-            "default" : 20,
-            "format" : "int32",
-            "maximum" : 100,
-            "minimum" : 1,
-            "type" : "integer"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/StudentPageResponse"
-                }
-              }
-            },
-            "description" : "OK"
-          }
-        },
-        "tags" : [ "student-controller" ]
-      },
       "post" : {
         "operationId" : "register",
         "parameters" : [ {
@@ -1722,6 +1690,36 @@
             "description" : "Created"
           }
         },
+        "tags" : [ "student-controller" ]
+      }
+    },
+    "/api/v1/students/search" : {
+      "post" : {
+        "description" : "조건은 모두 선택이고 본문으로 보낸다. 조건이 없으면 빈 객체({})를 보낸다. 이름 순이고 퇴원한 학생도 나온다. 조회라서 Idempotency-Key는 받지 않는다",
+        "operationId" : "search",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/StudentSearchRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/StudentPageResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "학생 목록·검색",
         "tags" : [ "student-controller" ]
       }
     },

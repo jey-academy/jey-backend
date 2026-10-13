@@ -4,17 +4,15 @@ import com.jey.core.auth.api.AllowedRoles;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.member.PhoneRevealService;
 import com.jey.core.member.StudentService;
-import com.jey.core.member.domain.Student;
+import com.jey.core.shared.BusinessException;
+import com.jey.core.shared.CommonErrorCode;
 import com.jey.core.shared.Idempotent;
 import com.jey.core.shared.NotIdempotent;
-import com.jey.core.shared.PageLimits;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,7 +21,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -34,7 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 @AllowedRoles({ UserRole.ADMIN, UserRole.STAFF })
 class StudentController {
 
-	static final int MAX_PAGE_SIZE = 100;
+	private static final Logger log = LoggerFactory.getLogger(StudentController.class);
 
 	private final StudentService studentService;
 
@@ -45,16 +42,23 @@ class StudentController {
 		this.phoneRevealService = phoneRevealService;
 	}
 
-	@GetMapping
-	StudentPageResponse students(@RequestParam(required = false) Long campusId,
-			@Parameter(description = "이름의 앞부분") @RequestParam(required = false) @Size(
-					max = Student.MAX_NAME_LENGTH) String name,
-			@Parameter(description = "학부모나 학생 본인 전화번호의 뒷자리 4자리. 같은 뒷자리를 가진 학생이 모두 나온다") @RequestParam(
-					required = false) @Pattern(regexp = "\\d{4}", message = "숫자 4자리여야 합니다.") String phoneLast4,
-			@Parameter(description = PageLimits.PAGE_DESCRIPTION) @RequestParam(defaultValue = "0") @Min(0) @Max(
-					PageLimits.MAX_PAGE) int page,
-			@RequestParam(defaultValue = "20") @Min(1) @Max(MAX_PAGE_SIZE) int size) {
-		return StudentPageResponse.from(studentService.search(campusId, name, phoneLast4, page, size));
+	// GET이 아니다. 조건을 주소로 받으면 이름과 전화번호 뒷자리가 브라우저의 방문 기록과 앞단의 접근 로그에 남는다 (ADR-0032).
+	// 학생 목록을 받는 길은 이것 하나다. 주소로 조건을 받는 GET 목록을 다시 만들지 않는다.
+	@Operation(summary = "학생 목록·검색",
+			description = "조건은 모두 선택이고 본문으로 보낸다. 조건이 없으면 빈 객체({})를 보낸다. 이름 순이고 퇴원한 학생도 나온다. "
+					+ "조회라서 Idempotency-Key는 받지 않는다")
+	@NotIdempotent("바꾸는 자료가 없다. 다시 보내면 다시 조회할 뿐이다")
+	@PostMapping("/search")
+	StudentPageResponse search(@Valid @RequestBody StudentSearchRequest body, HttpServletRequest request) {
+		// 조건을 주소에 실어 보낸 요청이다(예전 방식으로 부르는 코드). 읽지 않고 넘기면 조건 없는 목록이 오류 없이 나가고,
+		// 주소에 실린 검색어는 이미 앞단의 접근 로그에 남았는데 아무도 모른다. 거부해서 드러나게 한다.
+		// 이름이나 값은 로그에 남기지 않는다(무엇이 실렸을지 모른다).
+		if (!request.getParameterMap().isEmpty()) {
+			log.warn("학생 검색에 쿼리 문자열이 실려 왔다. 조건은 본문으로만 받는다: 파라미터 {}개", request.getParameterMap().size());
+			throw new BusinessException(CommonErrorCode.BAD_REQUEST, "검색 조건은 주소가 아니라 본문으로 보내야 합니다.");
+		}
+		return StudentPageResponse.from(
+				studentService.search(body.campusId(), body.name(), body.phoneLast4(), body.page(), body.size()));
 	}
 
 	@Idempotent

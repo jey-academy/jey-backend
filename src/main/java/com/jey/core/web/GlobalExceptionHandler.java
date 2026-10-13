@@ -33,6 +33,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DatabindException;
 import tools.jackson.databind.exc.MismatchedInputException;
+import tools.jackson.databind.exc.UnrecognizedPropertyException;
 import tools.jackson.databind.exc.ValueInstantiationException;
 
 @RestControllerAdvice
@@ -116,6 +117,11 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 				boolean phone = instantiation.getType().getRawClass() == PhoneNumber.class;
 				return unreadableValue(ex, instantiation, phone ? PHONE_FORMAT_MESSAGE : BINDING_FAILURE_MESSAGE,
 						headers, status, request);
+			}
+			// 모르는 필드를 거부하는 본문이다(@RejectUnknownFields). 그 필드의 이름은 서버가 정한 것이 아니라 사용자가 보낸 글자다.
+			// 칸 이름으로 응답에 싣지 않고 요청 형식 오류로 둔다.
+			if (cause instanceof UnrecognizedPropertyException) {
+				break;
 			}
 			// 값의 모양이 그 칸의 타입과 맞지 않는다(고를 수 없는 값, 숫자 칸의 글자, 틀린 날짜, 값이 있어야 하는 칸의 null).
 			// 문법이 깨진 본문은 여기에 해당하지 않는다.
