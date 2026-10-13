@@ -1,6 +1,12 @@
 package com.jey.core.auth.domain;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.UserRole;
@@ -281,6 +287,23 @@ class UserTest {
 		assertThat(staff.stillValidFor(sessionUser(UserRole.STAFF, 2L, null), 0)).as("지점").isFalse();
 		assertThat(partner.stillValidFor(sessionUser(UserRole.PARTNER, null, 8L), 0)).as("연계 학원 식별자").isFalse();
 		assertThat(partner.stillValidFor(sessionUser(UserRole.PARTNER, null, 7L), 0)).isTrue();
+	}
+
+	// 계정에 필드를 더하면 여기서 실패한다. 그 값이 바뀌었을 때 그 전에 만든 세션을 무효로 해야 하는지를 정하고 한쪽에 적는다.
+	// 무효로 해야 하는 값이면, 그 값을 바꾸는 메서드가 번호를 올리는지(invalidateSessions)도 위의 테스트에 더한다.
+	@Test
+	void 계정의_필드는_세션을_무효로_하는_값인지_아닌지가_정해져_있다() {
+		Set<String> invalidatesSessions = Set.of("passwordHash", "role", "campusId", "partnerId", "status");
+		Set<String> keepsSessions = Set.of("id", "loginId", "name", "authVersion");
+
+		Set<String> fields = Arrays.stream(User.class.getDeclaredFields())
+			.filter(field -> !Modifier.isStatic(field.getModifiers()))
+			.map(Field::getName)
+			.collect(Collectors.toSet());
+
+		assertThat(invalidatesSessions).doesNotContainAnyElementsOf(keepsSessions);
+		assertThat(fields).containsExactlyInAnyOrderElementsOf(
+				Stream.concat(invalidatesSessions.stream(), keepsSessions.stream()).toList());
 	}
 
 	private static AuthenticatedUser sessionUser(UserRole role, Long campusId, Long partnerId) {

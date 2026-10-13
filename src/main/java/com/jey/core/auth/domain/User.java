@@ -66,7 +66,8 @@ public class User extends BaseEntity {
 	private UserStatus status;
 
 	// 권한 판 번호 (ADR-0031). 세션에는 로그인할 때의 번호가 들어 있고, 요청마다 이 값과 비교한다.
-	// 그 전에 만든 세션을 무효로 해야 하는 변경(차단, 역할·지점, 비밀번호)은 이 번호를 올린다.
+	// 그 전에 만든 세션을 무효로 해야 하는 변경(차단, 역할·지점, 비밀번호)은 이 번호를 올린다(invalidateSessions).
+	// JPA의 @Version(동시 변경을 가리는 번호)이 아니다.
 	@Column(name = "auth_version", nullable = false)
 	private long authVersion;
 
@@ -132,7 +133,7 @@ public class User extends BaseEntity {
 			return;
 		}
 		this.status = UserStatus.DISABLED;
-		this.authVersion++;
+		invalidateSessions();
 	}
 
 	/** 차단을 푼다. 다시 로그인할 수 있다. 차단하기 전에 만든 세션은 살아나지 않는다(차단할 때 권한 판 번호가 올랐다). */
@@ -193,7 +194,7 @@ public class User extends BaseEntity {
 		}
 		this.role = role;
 		this.campusId = campusId;
-		this.authVersion++;
+		invalidateSessions();
 		return true;
 	}
 
@@ -208,7 +209,7 @@ public class User extends BaseEntity {
 		requireText(passwordHash, "passwordHash");
 		requireHash(passwordHash);
 		this.passwordHash = passwordHash;
-		this.authVersion++;
+		invalidateSessions();
 	}
 
 	public Long getId() {
@@ -245,6 +246,13 @@ public class User extends BaseEntity {
 
 	public long getAuthVersion() {
 		return authVersion;
+	}
+
+	// 이 계정으로 그 전에 만든 세션을 모두 무효로 한다 (ADR-0031). 세션에 든 것(역할, 소속)이나 로그인의 근거(비밀번호, 차단 여부)를
+	// 바꾸는 메서드는 이것을 부른다. 그런 필드를 더하면 UserTest의 분류에도 더한다.
+	// 계정 행을 잠근 트랜잭션에서 부른다. 잠그지 않은 두 변경이 겹치면 번호가 한 번만 오른다.
+	private void invalidateSessions() {
+		this.authVersion++;
 	}
 
 	// 인코더가 만든 해시는 {bcrypt}처럼 알고리즘 이름으로 시작하고 그 뒤에 값이 온다. 원문 비밀번호를 그대로 넘기는 실수를 여기서 막는다.
