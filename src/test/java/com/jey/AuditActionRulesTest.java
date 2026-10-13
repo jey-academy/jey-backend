@@ -10,14 +10,12 @@ import java.util.Set;
 import com.jey.core.audit.api.AuditAction;
 import com.jey.core.shared.DomainEvent;
 import com.jey.core.shared.EventMetadata;
-import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
 
-import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThat;
 
 // 감사 로그의 행위 이름은 기록할 때에야 검사된다. 거부된 시도의 이름이 틀리면 그 거부가 실제로 일어난 날
@@ -86,12 +84,8 @@ class AuditActionRulesTest {
 	// 만드는 곳은 행위자를 타입으로 받는 create 하나로 한다.
 	@Test
 	void 이벤트_봉투는_create로만_만든다() {
-		noClasses().that()
-				.doNotHaveFullyQualifiedName(EventMetadata.class.getName())
-				.should()
-				.callConstructorWhere(DescribedPredicate.describe("EventMetadata constructor",
-						call -> call.getTargetOwner().isEquivalentTo(EventMetadata.class)))
-				.check(MAIN);
+		// 생성자를 부르는 것(new)과 가리키는 것(::new)을 모두 본다.
+		ConstructorRules.constructedOnlyInside(EventMetadata.class).check(MAIN);
 	}
 
 	private static List<JavaClass> actionTypes() {

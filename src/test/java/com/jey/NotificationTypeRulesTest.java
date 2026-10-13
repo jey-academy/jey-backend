@@ -10,14 +10,12 @@ import com.jey.core.notification.api.NotificationRequest;
 import com.jey.core.notification.api.NotificationType;
 import com.jey.core.notification.typerules.SampleNotificationTypes;
 import com.jey.core.shared.EventMetadata;
-import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
 
-import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThat;
 
 // 알림 종류의 이름은 요청을 만들 때에야 검사된다. 이름이 틀리면 그 알림이 처음 나가야 하는 날 리스너가 실패한다.
@@ -125,12 +123,8 @@ class NotificationTypeRulesTest {
 	// 만드는 곳은 이벤트에서 ID와 대상을 가져오는 causedBy 하나로 한다.
 	@Test
 	void 알림_요청은_causedBy로만_만든다() {
-		noClasses().that()
-				.doNotHaveFullyQualifiedName(NotificationRequest.class.getName())
-				.should()
-				.callConstructorWhere(DescribedPredicate.describe("NotificationRequest constructor",
-						call -> call.getTargetOwner().isEquivalentTo(NotificationRequest.class)))
-				.check(MAIN);
+		// 생성자를 부르는 것(new)과 가리키는 것(::new)을 모두 본다.
+		ConstructorRules.constructedOnlyInside(NotificationRequest.class).check(MAIN);
 	}
 
 	private static List<Class<?>> declaredTypes(JavaClasses classes) {
