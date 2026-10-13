@@ -7,6 +7,9 @@ import java.util.regex.Pattern;
 /**
  * 한 계정이 어떤 일을 얼마 동안 몇 번까지 할 수 있는지. 무엇을 제한할지는 쓰는 모듈이 정한다.
  *
+ * <p>{@link #of}로 만든다. 이름은 모듈마다 enum으로 선언한 {@link RateLimitName}이다. 생성자는 직접 부르지 않는다
+ * ({@code RateLimitRulesTest}가 막는다). 이름을 글자로 적어 만들면 다른 한도와 겹치는지 미리 볼 수 없다.
+ *
  * @param name 무엇의 한도인지. {@code {모듈}.{대상}} 꼴의 소문자다(예: {@code member.phone-reveal}).
  * 횟수를 세는 키에 들어가므로 바꾸면 그때까지 센 횟수를 찾지 못해 처음부터 다시 센다
  * @param max 구간 안에서 할 수 있는 횟수
@@ -22,6 +25,24 @@ public record RateLimit(String name, int max, Duration window) {
 
 	// 고정 구간이라 이보다 길게 셀 일이 없다. 지나치게 긴 값은 밀리초로 바꿀 때 넘치거나 저장소가 받지 않는다.
 	private static final Duration MAX_WINDOW = Duration.ofDays(30);
+
+	/**
+	 * @param name 모듈마다 enum으로 선언한 이름
+	 * @throws IllegalArgumentException 이름이 enum이 아니거나, 이름·횟수·구간이 틀렸을 때
+	 */
+	public static RateLimit of(RateLimitName name, int max, Duration window) {
+		Objects.requireNonNull(name, "name");
+		// 람다나 그때그때 만든 객체로 넘긴 이름은 규칙 테스트가 미리 볼 수 없다. 선언해 둔 enum만 받는다.
+		if (!(name instanceof Enum<?>)) {
+			throw new IllegalArgumentException("한도의 이름은 enum으로 선언한다: " + name.getClass().getName());
+		}
+		return new RateLimit(name.value(), max, window);
+	}
+
+	/** 한도의 이름으로 쓸 수 있는 형식인지. {@code {모듈}.{대상}} 꼴의 소문자다. */
+	public static boolean isValidName(String name) {
+		return name != null && NAME.matcher(name).matches();
+	}
 
 	public RateLimit {
 		Objects.requireNonNull(name, "name");
