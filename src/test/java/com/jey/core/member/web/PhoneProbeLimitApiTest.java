@@ -45,6 +45,7 @@ import static com.jey.core.member.MemberFixtures.mother;
 import static com.jey.core.member.MemberFixtures.randomPhone;
 import static com.jey.core.member.MemberFixtures.registration;
 import static com.jey.core.member.MemberFixtures.uniqueName;
+import static com.jey.core.member.web.StudentSearchRequests.studentSearch;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -157,7 +158,7 @@ class PhoneProbeLimitApiTest {
 		registerStudent(name, phone).andExpect(status().isTooManyRequests());
 
 		mockMvc.perform(get("/api/v1/students/{id}", student.id())).andExpect(status().isOk());
-		mockMvc.perform(get("/api/v1/students").param("phoneLast4", phone.last4())).andExpect(status().isOk());
+		mockMvc.perform(studentSearch(mockMvc, "phoneLast4", phone.last4())).andExpect(status().isOk());
 		// 번호를 싣지 않은 학부모 수정은 "그 번호가 이미 있다"는 답을 받을 일이 없다.
 		send(put("/api/v1/guardians/{id}", guardianId), "{\"name\": \"바뀐 이름\"}").andExpect(status().isOk());
 	}

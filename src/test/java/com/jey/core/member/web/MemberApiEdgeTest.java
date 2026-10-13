@@ -30,6 +30,7 @@ import static com.jey.core.member.MemberFixtures.registration;
 import static com.jey.core.member.MemberFixtures.removeAllContacts;
 import static com.jey.core.member.MemberFixtures.registrationWithPhone;
 import static com.jey.core.member.MemberFixtures.uniqueName;
+import static com.jey.core.member.web.StudentSearchRequests.studentSearch;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -158,7 +159,7 @@ class MemberApiEdgeTest {
 					.andReturn()
 					.getResponse()
 					.getContentAsString();
-			String list = mockMvc.perform(get(STUDENTS).param("name", name))
+			String list = mockMvc.perform(studentSearch(mockMvc, "name", name))
 					.andExpect(status().isInternalServerError())
 					.andExpect(jsonPath("$.code").value("COMMON_INTERNAL_ERROR"))
 					.andReturn()
@@ -185,7 +186,7 @@ class MemberApiEdgeTest {
 		long withoutContact = studentService.register(registration(prefix + "-나", mother(randomPhone()))).id();
 		removeAllContacts(jdbc, withoutContact);
 
-		mockMvc.perform(get(STUDENTS).param("name", prefix))
+		mockMvc.perform(studentSearch(mockMvc, "name", prefix))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.items.length()").value(2))
 				.andExpect(jsonPath("$.items[0].primaryContact.phone").exists())
@@ -267,11 +268,11 @@ class MemberApiEdgeTest {
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
 	void 목록의_page는_만까지만_받는다() throws Exception {
-		mockMvc.perform(get(STUDENTS).param("page", "10000"))
+		mockMvc.perform(studentSearch(mockMvc, "page", "10000"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.items.length()").value(0));
 		for (String tooDeep : new String[] { "2147483647", "10001" }) {
-			mockMvc.perform(get(STUDENTS).param("page", tooDeep))
+			mockMvc.perform(studentSearch(mockMvc, "page", tooDeep))
 					.andExpect(status().isBadRequest())
 					.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
 					.andExpect(jsonPath("$.errors[?(@.field == 'page')]").isNotEmpty());
