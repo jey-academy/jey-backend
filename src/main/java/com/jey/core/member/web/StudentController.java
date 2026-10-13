@@ -4,10 +4,15 @@ import com.jey.core.auth.api.AllowedRoles;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.member.PhoneRevealService;
 import com.jey.core.member.StudentService;
+import com.jey.core.shared.BusinessException;
+import com.jey.core.shared.CommonErrorCode;
 import com.jey.core.shared.Idempotent;
 import com.jey.core.shared.NotIdempotent;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,7 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 @AllowedRoles({ UserRole.ADMIN, UserRole.STAFF })
 class StudentController {
 
-	static final int MAX_PAGE_SIZE = 100;
+	private static final Logger log = LoggerFactory.getLogger(StudentController.class);
 
 	private final StudentService studentService;
 
@@ -44,7 +49,14 @@ class StudentController {
 					+ "조회라서 Idempotency-Key는 받지 않는다")
 	@NotIdempotent("바꾸는 자료가 없다. 다시 보내면 다시 조회할 뿐이다")
 	@PostMapping("/search")
-	StudentPageResponse search(@Valid @RequestBody StudentSearchRequest body) {
+	StudentPageResponse search(@Valid @RequestBody StudentSearchRequest body, HttpServletRequest request) {
+		// 조건을 주소에 실어 보낸 요청이다(예전 방식으로 부르는 코드). 읽지 않고 넘기면 조건 없는 목록이 오류 없이 나가고,
+		// 주소에 실린 검색어는 이미 앞단의 접근 로그에 남았는데 아무도 모른다. 거부해서 드러나게 한다.
+		// 이름이나 값은 로그에 남기지 않는다(무엇이 실렸을지 모른다).
+		if (!request.getParameterMap().isEmpty()) {
+			log.warn("학생 검색에 쿼리 문자열이 실려 왔다. 조건은 본문으로만 받는다: 파라미터 {}개", request.getParameterMap().size());
+			throw new BusinessException(CommonErrorCode.BAD_REQUEST, "검색 조건은 주소가 아니라 본문으로 보내야 합니다.");
+		}
 		return StudentPageResponse.from(
 				studentService.search(body.campusId(), body.name(), body.phoneLast4(), body.page(), body.size()));
 	}

@@ -1,5 +1,8 @@
 package com.jey.core.member.web;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
 import com.jey.core.auth.api.UserRole;
@@ -17,9 +20,11 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 import static com.jey.TestCsrf.csrfToken;
 import static com.jey.core.member.MemberFixtures.DONGTAN;
+import static com.jey.core.member.MemberFixtures.NEUNGDONG;
 import static com.jey.core.member.MemberFixtures.mother;
 import static com.jey.core.member.MemberFixtures.randomPhone;
 import static com.jey.core.member.MemberFixtures.registration;
@@ -29,6 +34,7 @@ import static com.jey.core.member.web.StudentSearchRequests.studentSearch;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -112,16 +118,88 @@ class StudentSearchApiTest {
 		mockMvc.perform(get(SEARCH).param("name", "김")).andExpect(status().isBadRequest());
 	}
 
-	// 조건이 주소에 실리면 안 된다. 쿼리 문자열로 보낸 조건은 읽지 않는다.
+	// 조건을 주소에 실어 보낸 요청(예전 방식으로 부르는 코드)은 거부한다. 읽지 않고 넘기면 조건 없는 목록이 오류 없이 나가고,
+	// 주소에 실린 검색어는 이미 앞단의 로그에 남았는데 아무도 모른다. 로그에는 실려 온 이름도 값도 남기지 않는다.
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
-	void 쿼리_문자열로_보낸_조건은_읽지_않는다() throws Exception {
+	void 쿼리_문자열이_실린_검색은_거부한다(CapturedOutput output) throws Exception {
 		String name = uniqueName();
 		studentService.register(registration(name, mother(randomPhone())));
 
-		mockMvc.perform(studentSearch(mockMvc, "name", name).param("name", "없는이름" + name).param("size", "0"))
+		String body = mockMvc.perform(studentSearch(mockMvc).param("name", name))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"))
+			.andExpect(jsonPath("$.detail").value("검색 조건은 주소가 아니라 본문으로 보내야 합니다."))
+			.andExpect(jsonPath("$.items").doesNotExist())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		// 본문에 조건이 제대로 있어도, 조건이 아닌 파라미터여도 같다. 이 경로는 주소로 아무것도 받지 않는다.
+		mockMvc.perform(studentSearch(mockMvc, "name", name).param("page", "0")).andExpect(status().isBadRequest());
+		mockMvc.perform(studentSearch(mockMvc, "name", name).param("주소에실린이름", "x"))
+			.andExpect(status().isBadRequest());
+
+		assertThat(body).doesNotContain(name);
+		assertThat(output).contains("학생 검색에 쿼리 문자열이 실려 왔다. 조건은 본문으로만 받는다: 파라미터 1개");
+		assertThat(output.getAll()).doesNotContain(name).doesNotContain("주소에실린이름");
+	}
+
+	// 조건의 이름을 잘못 적으면 그 조건이 조용히 빠진다. "김"으로 찾았는데 전체 목록이 오류 없이 나가느니 거부한다.
+	// 모르는 필드의 이름은 사용자가 보낸 글자라 응답과 로그에 되돌려 주지 않는다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 모르는_조건이_본문에_있으면_거부한다(CapturedOutput output) throws Exception {
+		studentService.register(registration(uniqueName(), mother(randomPhone())));
+
+		String typo = searchWith("{\"nmae\": \"오타난조건의값\"}").andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"))
+			.andExpect(jsonPath("$.errors").doesNotExist())
+			.andExpect(jsonPath("$.items").doesNotExist())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		// 예전 이름, 대소문자가 다른 이름, 맞는 조건 옆에 낀 모르는 이름도 같다.
+		searchWith("{\"phone\": \"1234\"}").andExpect(status().isBadRequest());
+		searchWith("{\"phonelast4\": \"1234\"}").andExpect(status().isBadRequest());
+		searchWith("{\"name\": \"김\", \"모르는이름\": 1}").andExpect(status().isBadRequest());
+
+		assertThat(typo).doesNotContain("nmae").doesNotContain("오타난조건의값");
+		assertThat(output.getAll()).doesNotContain("오타난조건의값").doesNotContain("모르는이름");
+	}
+
+	// 모르는 필드를 거부하는 것은 그렇게 표시한 본문(@RejectUnknownFields)뿐이다. 다른 요청은 지금처럼 읽지 않고 넘긴다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 표시하지_않은_본문은_모르는_필드를_넘긴다() throws Exception {
+		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
+		long guardianId = student.guardians().getFirst().id();
+
+		mockMvc
+			.perform(put(STUDENTS + "/{id}/guardians/{guardianId}", student.id(), guardianId).with(csrfToken(mockMvc))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"relation\": \"FATHER\", \"모르는이름\": 1}"))
+			.andExpect(status().isOk());
+	}
+
+	// 지점 조건은 서비스 쪽 테스트가 보지만, 본문의 campusId가 서비스까지 가는지는 여기서 본다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 지점_조건으로_거른다() throws Exception {
+		String name = uniqueName();
+		PhoneNumber phone = randomPhone();
+		studentService.register(registration(name, mother(phone)));
+
+		mockMvc.perform(studentSearch(mockMvc, "campusId", DONGTAN, "name", name))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.items.length()").value(1));
+		mockMvc.perform(studentSearch(mockMvc, "campusId", NEUNGDONG, "name", name))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.items").isEmpty());
+		// 뒷자리가 맞아도 지점이 다르면 나오지 않는다.
+		mockMvc
+			.perform(studentSearch(mockMvc, "campusId", NEUNGDONG, "name", name, "phoneLast4", phone.last4()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.items").isEmpty());
 	}
 
 	// 바꾸는 자료가 없다. 키 없이 되고, 같은 키로 다른 조건을 보내도 "키를 다시 썼다"로 거부되지 않는다.
@@ -211,6 +289,11 @@ class StudentSearchApiTest {
 		assertThat(output.getAll().substring(before)).doesNotContain(name);
 	}
 
+	private ResultActions searchWith(String json) throws Exception {
+		return mockMvc
+			.perform(post(SEARCH).with(csrfToken(mockMvc)).contentType(MediaType.APPLICATION_JSON).content(json));
+	}
+
 	// 요청 타입을 로그에 그대로 찍는 실수를 해도 검색어가 남지 않게 한다.
 	@Test
 	void 요청을_글자로_바꿔도_이름과_뒷자리는_드러나지_않는다() {
@@ -227,6 +310,21 @@ class StudentSearchApiTest {
 
 		assertThat(request.page()).isZero();
 		assertThat(request.size()).isEqualTo(20);
+	}
+
+	// 명세에 default가 있으면 프론트의 타입 생성기(openapi-typescript)가 그 필드를 필수로 만든다.
+	// 그러면 "조건이 없으면 빈 객체"라는 계약대로 부르는 코드가 타입 오류가 된다. 기본값은 설명에만 적는다.
+	@Test
+	void 명세의_검색_조건에는_기본값_표시와_필수_표시가_없다() throws Exception {
+		String spec = Files.readString(Path.of("docs/api/openapi.json"));
+		int start = spec.indexOf("\"StudentSearchRequest\" : {");
+		assertThat(start).as("명세의 StudentSearchRequest").isPositive();
+		// 다음 스키마가 시작하기 전까지가 이 타입의 정의다(스키마는 이름 순이고 여섯 칸 들여쓰기로 시작한다).
+		int end = spec.indexOf("\n      \"", start + 1);
+		String schema = spec.substring(start, end);
+
+		assertThat(schema).contains("\"page\"").contains("\"size\"").doesNotContain("\"default\"")
+			.doesNotContain("\"required\"");
 	}
 
 }

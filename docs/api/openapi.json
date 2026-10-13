@@ -791,7 +791,6 @@
             "type" : "string"
           },
           "page" : {
-            "default" : 0,
             "description" : "0부터 10000까지. 없으면 0",
             "format" : "int32",
             "maximum" : 10000,
@@ -804,8 +803,7 @@
             "type" : "string"
           },
           "size" : {
-            "default" : 20,
-            "description" : "한 페이지의 크기. 없으면 20",
+            "description" : "한 페이지의 크기. 100까지. 없으면 20",
             "format" : "int32",
             "maximum" : 100,
             "minimum" : 1,
