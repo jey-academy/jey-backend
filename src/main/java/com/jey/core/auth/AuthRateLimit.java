@@ -10,15 +10,15 @@ enum AuthRateLimit implements RateLimitName {
 	/** 본인 비밀번호 변경에서 지금 비밀번호를 틀린 횟수 (ADR-0030) */
 	PASSWORD_CHANGE("auth.password-change");
 
-	private final String value;
+	private final String code;
 
-	AuthRateLimit(String value) {
-		this.value = value;
+	AuthRateLimit(String code) {
+		this.code = code;
 	}
 
 	@Override
-	public String value() {
-		return value;
+	public String code() {
+		return code;
 	}
 
 }

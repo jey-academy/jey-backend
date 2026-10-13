@@ -1,5 +1,7 @@
 package com.jey.core.auth.api;
 
+import java.time.Duration;
+
 /**
  * {@code RateLimitRulesTest}의 규칙이 위반을 잡는지 보기 위한 본보기다. 운영 코드가 아니다.
  * 이 패키지는 {@code auth} 모듈에 있으므로 이름은 {@code auth.}로 시작해야 한다.
@@ -13,15 +15,15 @@ public final class SampleRateLimits {
 
 		SAMPLE_THING("auth.sample-thing"), OTHER_THING("auth.other-thing");
 
-		private final String value;
+		private final String code;
 
-		Valid(String value) {
-			this.value = value;
+		Valid(String code) {
+			this.code = code;
 		}
 
 		@Override
-		public String value() {
-			return value;
+		public String code() {
+			return code;
 		}
 
 	}
@@ -31,15 +33,15 @@ public final class SampleRateLimits {
 
 		SAMPLE("auth.Sample_Thing");
 
-		private final String value;
+		private final String code;
 
-		BadFormat(String value) {
-			this.value = value;
+		BadFormat(String code) {
+			this.code = code;
 		}
 
 		@Override
-		public String value() {
-			return value;
+		public String code() {
+			return code;
 		}
 
 	}
@@ -48,15 +50,15 @@ public final class SampleRateLimits {
 
 		SAMPLE("billing.sample-thing");
 
-		private final String value;
+		private final String code;
 
-		WrongModule(String value) {
-			this.value = value;
+		WrongModule(String code) {
+			this.code = code;
 		}
 
 		@Override
-		public String value() {
-			return value;
+		public String code() {
+			return code;
 		}
 
 	}
@@ -66,15 +68,15 @@ public final class SampleRateLimits {
 
 		SAMPLE("authx.sample-thing");
 
-		private final String value;
+		private final String code;
 
-		PrefixWithoutDot(String value) {
-			this.value = value;
+		PrefixWithoutDot(String code) {
+			this.code = code;
 		}
 
 		@Override
-		public String value() {
-			return value;
+		public String code() {
+			return code;
 		}
 
 	}
@@ -84,15 +86,15 @@ public final class SampleRateLimits {
 
 		SAMPLE("auth.sample-thing");
 
-		private final String value;
+		private final String code;
 
-		Duplicated(String value) {
-			this.value = value;
+		Duplicated(String code) {
+			this.code = code;
 		}
 
 		@Override
-		public String value() {
-			return value;
+		public String code() {
+			return code;
 		}
 
 	}
@@ -101,15 +103,15 @@ public final class SampleRateLimits {
 
 		FIRST("auth.repeated-thing"), SECOND("auth.repeated-thing");
 
-		private final String value;
+		private final String code;
 
-		DuplicatedWithin(String value) {
-			this.value = value;
+		DuplicatedWithin(String code) {
+			this.code = code;
 		}
 
 		@Override
-		public String value() {
-			return value;
+		public String code() {
+			return code;
 		}
 
 	}
@@ -118,8 +120,55 @@ public final class SampleRateLimits {
 	public static final class NotEnum implements RateLimitName {
 
 		@Override
-		public String value() {
+		public String code() {
 			return "auth.not-enum";
+		}
+
+	}
+
+	// 상수마다 몸통을 가진 enum은 상수의 클래스가 따로 생긴다. 이름을 선언한 것은 그 상수를 가진 enum 하나다.
+	public enum WithConstantBody implements RateLimitName {
+
+		SAMPLE {
+			@Override
+			public String code() {
+				return "auth.constant-body";
+			}
+		}
+
+	}
+
+	// 아래 셋은 "한도는 선언한 이름으로만 만든다"는 규칙의 본보기다.
+	// 생성자를 직접 부른다. 이름을 글자로 적어 만든 한도는 선언된 이름에 없어 겹치는지 미리 볼 수 없다.
+	public static final class CallsConstructor {
+
+		RateLimit make() {
+			return new RateLimit("auth.typed-by-hand", 5, Duration.ofMinutes(1));
+		}
+
+	}
+
+	// 생성자를 부르지 않고 가리키기만 해도(::new) 같은 길이다.
+	public static final class ReferencesConstructor {
+
+		interface Maker {
+
+			RateLimit make(String name, int max, Duration window);
+
+		}
+
+		RateLimit make() {
+			Maker maker = RateLimit::new;
+			return maker.make("auth.typed-by-hand", 5, Duration.ofMinutes(1));
+		}
+
+	}
+
+	// 지키는 쪽.
+	public static final class UsesFactory {
+
+		RateLimit make() {
+			return RateLimit.of(Valid.SAMPLE_THING, 5, Duration.ofMinutes(1));
 		}
 
 	}

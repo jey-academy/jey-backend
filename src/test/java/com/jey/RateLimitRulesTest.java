@@ -11,10 +11,12 @@ import com.jey.core.auth.api.RateLimit;
 import com.jey.core.auth.api.RateLimitName;
 import com.jey.core.auth.api.SampleRateLimits;
 import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import com.tngtech.archunit.lang.ArchRule;
 import org.junit.jupiter.api.Test;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
@@ -34,6 +36,14 @@ class RateLimitRulesTest {
 	private static final JavaClasses SAMPLES = new ClassFileImporter()
 			.importPackages(SampleRateLimits.class.getPackageName());
 
+	// RateLimit 밖에서는 그 생성자를 부르지도(new) 가리키지도(::new) 않는다.
+	private static final ArchRule ONLY_THROUGH_FACTORY = noClasses().that()
+		.doNotHaveFullyQualifiedName(RateLimit.class.getName())
+		.should()
+		.accessTargetWhere(DescribedPredicate.describe("RateLimit의 생성자",
+				(JavaAccess<?> access) -> access.getTargetOwner().isEquivalentTo(RateLimit.class)
+						&& access.getName().equals("<init>")));
+
 	@Test
 	void 운영_코드의_한도_이름은_규칙을_지킨다() {
 		assertThat(violations(declaredNames(MAIN))).isEmpty();
@@ -43,19 +53,32 @@ class RateLimitRulesTest {
 	// 새 이름을 더했을 때도 여기에 더한다.
 	@Test
 	void 지금_쓰는_한도_이름은_그대로다() {
-		assertThat(names(declaredNames(MAIN))).containsExactlyInAnyOrder("auth.password-change",
-				"member.phone-reveal", "member.phone-change", "member.phone-probe");
+		assertThat(names(declaredNames(MAIN)))
+			.as("한도의 이름. 이름을 바꾸면 그때까지 센 횟수를 잃어 막혀 있던 계정이 풀린다. "
+					+ "바꾼 것이 아니라 새로 더한 것일 때만 이 목록에 더한다")
+			.containsExactlyInAnyOrder("auth.password-change", "member.phone-reveal", "member.phone-change",
+					"member.phone-probe");
 	}
 
 	// 이름을 글자로 적어 만든 한도는 선언된 이름에 없어 위의 검사에 걸리지 않는다. 만드는 곳은 RateLimit.of 하나로 한다.
 	@Test
 	void 한도는_선언한_이름으로만_만든다() {
-		noClasses().that()
-				.doNotHaveFullyQualifiedName(RateLimit.class.getName())
-				.should()
-				.callConstructorWhere(DescribedPredicate.describe("RateLimit constructor",
-						call -> call.getTargetOwner().isEquivalentTo(RateLimit.class)))
-				.check(MAIN);
+		ONLY_THROUGH_FACTORY.check(MAIN);
+	}
+
+	// 생성자를 부르는 것(new)뿐 아니라 가리키는 것(::new)도 같은 길이다. 부르는 것만 보면 가리키는 쪽이 빠져나간다.
+	@Test
+	void 생성자를_부르거나_가리키는_코드를_잡고_팩터리를_쓰는_코드는_잡지_않는다() {
+		assertThat(ONLY_THROUGH_FACTORY.evaluate(classesOf(SampleRateLimits.CallsConstructor.class)).hasViolation())
+			.as("new RateLimit(…)")
+			.isTrue();
+		assertThat(
+				ONLY_THROUGH_FACTORY.evaluate(classesOf(SampleRateLimits.ReferencesConstructor.class)).hasViolation())
+			.as("RateLimit::new")
+			.isTrue();
+		assertThat(ONLY_THROUGH_FACTORY.evaluate(classesOf(SampleRateLimits.UsesFactory.class)).hasViolation())
+			.as("RateLimit.of(…)")
+			.isFalse();
 	}
 
 	@Test
@@ -75,12 +98,20 @@ class RateLimitRulesTest {
 		assertThat(limit.max()).isEqualTo(5);
 	}
 
+	// 상수마다 몸통을 가진 enum의 상수 클래스(WithConstantBody$1)는 이름을 선언한 것이 아니다. 그 enum 하나만 든다.
 	@Test
 	void 선언된_이름을_찾아낸다() {
-		assertThat(declaredNames(SAMPLES)).contains(SampleRateLimits.Valid.class, SampleRateLimits.BadFormat.class,
-				SampleRateLimits.WrongModule.class, SampleRateLimits.PrefixWithoutDot.class,
-				SampleRateLimits.Duplicated.class, SampleRateLimits.DuplicatedWithin.class,
-				SampleRateLimits.NotEnum.class);
+		assertThat(declaredNames(SAMPLES)).containsExactlyInAnyOrder(SampleRateLimits.Valid.class,
+				SampleRateLimits.BadFormat.class, SampleRateLimits.WrongModule.class,
+				SampleRateLimits.PrefixWithoutDot.class, SampleRateLimits.Duplicated.class,
+				SampleRateLimits.DuplicatedWithin.class, SampleRateLimits.NotEnum.class,
+				SampleRateLimits.WithConstantBody.class);
+	}
+
+	@Test
+	void 상수마다_몸통을_가진_enum의_이름도_본다() {
+		assertThat(names(List.of(SampleRateLimits.WithConstantBody.class))).containsExactly("auth.constant-body");
+		assertThat(violations(List.of(SampleRateLimits.WithConstantBody.class))).isEmpty();
 	}
 
 	@Test
@@ -163,14 +194,25 @@ class RateLimitRulesTest {
 		return types;
 	}
 
+	// enum이 아닌 것은 건너뛴다(그것은 violations가 위반으로 적는다).
 	private static List<String> names(List<Class<?>> types) {
 		List<String> names = new ArrayList<>();
 		for (Class<?> type : types) {
+			if (!type.isEnum()) {
+				continue;
+			}
 			for (Object constant : type.getEnumConstants()) {
-				names.add(((RateLimitName) constant).value());
+				names.add(((RateLimitName) constant).code());
 			}
 		}
 		return names;
+	}
+
+	private static JavaClasses classesOf(Class<?> type) {
+		// 메서드 참조와 람다는 그 코드를 가진 클래스 안에 남는다. 안쪽에 선언한 타입도 같이 읽는다.
+		List<Class<?>> types = new ArrayList<>(List.of(type));
+		types.addAll(List.of(type.getDeclaredClasses()));
+		return new ClassFileImporter().importClasses(types);
 	}
 
 	// 규칙을 어긴 곳마다 한 줄. 비어 있으면 모두 지킨 것이다.
@@ -189,7 +231,7 @@ class RateLimitRulesTest {
 			}
 			String prefix = module.get() + ".";
 			for (Object constant : type.getEnumConstants()) {
-				String name = ((RateLimitName) constant).value();
+				String name = ((RateLimitName) constant).code();
 				String where = type.getName() + "." + constant + "(" + name + ")";
 				if (!RateLimit.isValidName(name)) {
 					violations.add(where + ": 이름이 {모듈}.{대상} 형식의 소문자가 아니다");
@@ -223,7 +265,7 @@ class RateLimitRulesTest {
 		SAMPLE;
 
 		@Override
-		public String value() {
+		public String code() {
 			return "auth.outside-module";
 		}
 

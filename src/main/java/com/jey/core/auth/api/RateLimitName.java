@@ -12,6 +12,6 @@ package com.jey.core.auth.api;
 public interface RateLimitName {
 
 	/** 예: {@code member.phone-reveal} */
-	String value();
+	String code();
 
 }

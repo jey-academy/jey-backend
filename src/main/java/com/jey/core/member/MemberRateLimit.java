@@ -16,15 +16,15 @@ enum MemberRateLimit implements RateLimitName {
 	/** "그 번호가 이미 있다"가 드러나는 거부 응답 */
 	PHONE_PROBE("member.phone-probe");
 
-	private final String value;
+	private final String code;
 
-	MemberRateLimit(String value) {
-		this.value = value;
+	MemberRateLimit(String code) {
+		this.code = code;
 	}
 
 	@Override
-	public String value() {
-		return value;
+	public String code() {
+		return code;
 	}
 
 }

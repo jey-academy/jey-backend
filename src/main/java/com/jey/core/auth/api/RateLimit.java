@@ -28,18 +28,24 @@ public record RateLimit(String name, int max, Duration window) {
 
 	/**
 	 * @param name 모듈마다 enum으로 선언한 이름
+	 * @throws NullPointerException 이름이나 구간이 없을 때
 	 * @throws IllegalArgumentException 이름이 enum이 아니거나, 이름·횟수·구간이 틀렸을 때
 	 */
 	public static RateLimit of(RateLimitName name, int max, Duration window) {
 		Objects.requireNonNull(name, "name");
 		// 람다나 그때그때 만든 객체로 넘긴 이름은 규칙 테스트가 미리 볼 수 없다. 선언해 둔 enum만 받는다.
-		if (!(name instanceof Enum<?>)) {
+		if (!(name instanceof Enum<?> declared)) {
 			throw new IllegalArgumentException("한도의 이름은 enum으로 선언한다: " + name.getClass().getName());
 		}
-		return new RateLimit(name.value(), max, window);
+		String code = name.code();
+		if (code == null) {
+			throw new IllegalArgumentException(
+					"한도의 이름이 비었다: " + declared.getDeclaringClass().getName() + "." + declared.name());
+		}
+		return new RateLimit(code, max, window);
 	}
 
-	/** 한도의 이름으로 쓸 수 있는 형식인지. {@code {모듈}.{대상}} 꼴의 소문자다. */
+	/** 한도의 이름으로 쓸 수 있는 형식인지. {@code {모듈}.{대상}} 꼴의 소문자다. 형식을 보는 곳은 여기 하나다. */
 	public static boolean isValidName(String name) {
 		return name != null && NAME.matcher(name).matches();
 	}
@@ -47,7 +53,7 @@ public record RateLimit(String name, int max, Duration window) {
 	public RateLimit {
 		Objects.requireNonNull(name, "name");
 		Objects.requireNonNull(window, "window");
-		if (!NAME.matcher(name).matches()) {
+		if (!isValidName(name)) {
 			throw new IllegalArgumentException("한도의 이름은 {모듈}.{대상} 꼴의 소문자여야 한다: " + name);
 		}
 		if (max < 1) {
