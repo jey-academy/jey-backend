@@ -33,6 +33,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 	@Query("select u from User u where u.role = :role and u.status = :status order by u.id")
 	List<User> findAllByRoleAndStatusForUpdate(@Param("role") UserRole role, @Param("status") UserStatus status);
 
+	/** 그 연계 학원의 그 상태인 계정. 잠그지 않는다(차단은 계정마다 잠그고 다시 읽는다). */
+	List<User> findAllByPartnerIdAndStatus(Long partnerId, UserStatus status);
+
 	/** 조건은 모두 선택이다. null이면 그 조건을 걸지 않는다. */
 	@Query("""
 			select u from User u

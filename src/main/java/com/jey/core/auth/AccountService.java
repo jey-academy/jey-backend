@@ -10,6 +10,9 @@ import com.jey.core.auth.api.AccountAuditTrail;
 import com.jey.core.auth.api.AccountRateLimiter;
 import com.jey.core.auth.api.AccountRateLimiter.Permit;
 import com.jey.core.auth.api.CurrentActor;
+import com.jey.core.auth.api.NewPartnerAccount;
+import com.jey.core.auth.api.PartnerAccount;
+import com.jey.core.auth.api.PartnerAccounts;
 import com.jey.core.auth.api.RateLimit;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.auth.domain.User;
@@ -50,10 +53,13 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 기록은 {@link AccountAuditTrail}에 맡기고, 없는 지점은 DB의 외래 키가 걸러낸 것을 받아 알린다.
  *
  * <p>비밀번호 원문은 해시하는 데만 쓰고 로그, 예외 문구, 감사 로그에 넣지 않는다.
+ *
+ * <p>연계 학원 계정은 계정 관리 API로 만들지 않는다. 동탄고 패스 모듈이 연계 학원을 확인한 뒤 {@link PartnerAccounts}로 만든다(ADR-0034).
+ * 만드는 규칙은 직원 계정과 같은 길을 쓴다.
  */
 @Service
 @EnableConfigurationProperties(PasswordChangeLimitProperties.class)
-public class AccountService {
+public class AccountService implements PartnerAccounts {
 
 	private static final Logger log = LoggerFactory.getLogger(AccountService.class);
 
@@ -119,19 +125,38 @@ public class AccountService {
 		requireNoTransaction("create");
 		requireManageable(account.role());
 		requireMatching(account.role(), account.campusId());
-		String loginId = User.normalizeLoginId(account.loginId());
-		requireAcceptable(account.password(), loginId);
+		return createAccount(account.loginId(), account.name(), account.password(), account.role(), account.campusId(),
+				null);
+	}
+
+	/**
+	 * 연계 학원 계정을 만든다. 그 연계 학원이 있고 켜져 있는지는 부르는 쪽(패스 모듈)이 확인했다.
+	 */
+	@Override
+	public PartnerAccount create(NewPartnerAccount account) {
+		requireNoTransaction("create");
+		AccountView created = createAccount(account.loginId(), account.name(), account.password(), UserRole.PARTNER,
+				null, account.partnerId());
+		return new PartnerAccount(created.id(), created.loginId(), created.name(), created.partnerId(),
+				created.createdAt());
+	}
+
+	private AccountView createAccount(String rawLoginId, String name, String password, UserRole role, Long campusId,
+			Long partnerId) {
+		String loginId = User.normalizeLoginId(rawLoginId);
+		requireAcceptable(password, loginId);
 		// 해시는 느리다. DB 연결을 쥐기 전에 계산한다.
-		String passwordHash = passwordEncoder.encode(account.password());
+		String passwordHash = passwordEncoder.encode(password);
 		return recordingDenial(null, () -> {
 			try {
 				return transaction.execute(status -> {
 					if (users.findByLoginId(loginId).isPresent()) {
 						throw new BusinessException(AuthErrorCode.LOGIN_ID_DUPLICATED);
 					}
-					User saved = users.saveAndFlush(User.create(loginId, passwordHash, account.name(), account.role(),
-							account.campusId(), null));
-					trail.done(AccountActivity.created(saved.getId(), saved.getRole(), saved.getCampusId()));
+					User saved = users
+						.saveAndFlush(User.create(loginId, passwordHash, name, role, campusId, partnerId));
+					trail.done(AccountActivity.created(saved.getId(), saved.getRole(), saved.getCampusId(),
+							saved.getPartnerId()));
 					return AccountView.from(saved);
 				});
 			}
@@ -229,6 +254,20 @@ public class AccountService {
 		// 그렇게 살아남은 세션도 차단 전의 번호를 갖고 있어 다음 요청에서 막힌다(ADR-0031).
 		userSessions.terminateAll(userId);
 		return disabled;
+	}
+
+	/**
+	 * 그 연계 학원의 활성 계정을 하나씩 차단한다({@link #disable}). 계정마다 따로 커밋하고 세션을 끊는다.
+	 * 하나라도 실패하면 그대로 던진다. 앞에서 차단한 계정은 차단된 채로 남고, 다시 부르면 남은 계정만 고른다.
+	 */
+	@Override
+	public int disableAll(long partnerId) {
+		requireNoTransaction("disableAll");
+		List<User> active = users.findAllByPartnerIdAndStatus(partnerId, UserStatus.ACTIVE);
+		for (User user : active) {
+			disable(user.getId());
+		}
+		return active.size();
 	}
 
 	/**

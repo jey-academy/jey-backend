@@ -13,13 +13,34 @@ class AccountActivityTest {
 
 	@Test
 	void 만든_계정은_역할과_지점을_싣는다() {
-		AccountActivity created = AccountActivity.created(7, UserRole.STAFF, 1L);
+		AccountActivity created = AccountActivity.created(7, UserRole.STAFF, 1L, null);
 
 		assertThat(created.kind()).isEqualTo(Kind.CREATED);
 		assertThat(created.accountId()).isEqualTo(7L);
 		assertThat(created.role()).isEqualTo(UserRole.STAFF);
 		assertThat(created.campusId()).isEqualTo(1L);
-		assertThat(AccountActivity.created(8, UserRole.ADMIN, null).campusId()).isNull();
+		assertThat(created.partnerId()).isNull();
+		assertThat(AccountActivity.created(8, UserRole.ADMIN, null, null).campusId()).isNull();
+	}
+
+	// 연계 학원 계정은 어느 학원의 것인지가 만든 기록에 남아야 한다. 계정을 만드는 곳(패스 모듈)이 따로 적지 않는다.
+	@Test
+	void 만든_연계_학원_계정은_연계_학원_식별자를_싣는다() {
+		AccountActivity created = AccountActivity.created(7, UserRole.PARTNER, null, 3L);
+
+		assertThat(created.role()).isEqualTo(UserRole.PARTNER);
+		assertThat(created.partnerId()).isEqualTo(3L);
+		assertThat(created.campusId()).isNull();
+	}
+
+	@Test
+	void 연계_학원_식별자는_연계_학원_계정을_만든_기록에만_있다() {
+		assertThatIllegalArgumentException().isThrownBy(() -> AccountActivity.created(7, UserRole.PARTNER, null, null));
+		assertThatIllegalArgumentException().isThrownBy(() -> AccountActivity.created(7, UserRole.STAFF, 1L, 3L));
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> new AccountActivity(Kind.UPDATED, 7L, UserRole.PARTNER, null, 3L, true, false));
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> new AccountActivity(Kind.DISABLED, 7L, null, null, 3L, false, false));
 	}
 
 	@Test
@@ -54,6 +75,7 @@ class AccountActivityTest {
 		assertThat(activity.accountId()).isEqualTo(7L);
 		assertThat(activity.role()).isNull();
 		assertThat(activity.campusId()).isNull();
+		assertThat(activity.partnerId()).isNull();
 	}
 
 	// 역할이 있어야 하는 종류를 계정만으로 만들면 역할 없는 "만들었다"가 된다.
@@ -66,15 +88,15 @@ class AccountActivityTest {
 	@Test
 	void 종류에_맞지_않는_값은_실을_수_없다() {
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> new AccountActivity(Kind.DISABLED, 7L, UserRole.STAFF, null, false, false));
+			.isThrownBy(() -> new AccountActivity(Kind.DISABLED, 7L, UserRole.STAFF, null, null, false, false));
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> new AccountActivity(Kind.DISABLED, 7L, null, 1L, false, false));
+			.isThrownBy(() -> new AccountActivity(Kind.DISABLED, 7L, null, 1L, null, false, false));
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> new AccountActivity(Kind.DISABLED, 7L, null, null, true, false));
+			.isThrownBy(() -> new AccountActivity(Kind.DISABLED, 7L, null, null, null, true, false));
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> new AccountActivity(Kind.DISABLED, null, null, null, false, false));
+			.isThrownBy(() -> new AccountActivity(Kind.DISABLED, null, null, null, null, false, false));
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> new AccountActivity(Kind.CREATED, 7L, UserRole.STAFF, 1L, true, false));
+			.isThrownBy(() -> new AccountActivity(Kind.CREATED, 7L, UserRole.STAFF, 1L, null, true, false));
 	}
 
 	@Test
