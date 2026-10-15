@@ -113,6 +113,24 @@ class AccountApiTest {
 			.andExpect(jsonPath("$.campusId").value(1));
 	}
 
+	// 연계 학원 계정이 어느 학원의 것인지 계정 관리에서 알 수 있어야 한다(학원을 다시 켠 뒤 그 학원의 계정을 찾아 푼다, ADR-0034).
+	@Test
+	void 계정_응답에는_연계_학원_식별자가_있고_연계_학원_계정만_값을_가진다() throws Exception {
+		User partner = users.saveAndFlush(
+				User.create(newLoginId("partner"), passwordHash, "연계학원", UserRole.PARTNER, null, 7L));
+		User staff = saved("desk", "김직원", UserRole.STAFF, 1L);
+
+		asAdmin(get("/api/v1/accounts/" + partner.getId())).exec()
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.role").value("PARTNER"))
+			.andExpect(jsonPath("$.partnerId").value(7))
+			.andExpect(jsonPath("$.campusId").value(nullValue()));
+		asAdmin(get("/api/v1/accounts/" + staff.getId())).exec()
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.partnerId").value(nullValue()))
+			.andExpect(jsonPath("$.partnerId").hasJsonPath());
+	}
+
 	@Test
 	void 관리자_계정은_지점_없이_만든다() throws Exception {
 		asAdmin(post("/api/v1/accounts"))

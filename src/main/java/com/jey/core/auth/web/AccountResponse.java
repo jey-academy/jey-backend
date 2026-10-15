@@ -15,12 +15,14 @@ record AccountResponse(@Schema(requiredMode = RequiredMode.REQUIRED) Long id,
 		@Schema(requiredMode = RequiredMode.REQUIRED) UserRole role,
 		@Schema(description = "소속 지점. 직원만 값이 있고 관리자와 연계 학원은 null이다. 필드는 항상 있다",
 				requiredMode = RequiredMode.REQUIRED, nullable = true) Long campusId,
+		@Schema(description = "연계 학원 식별자. 연계 학원 계정만 값이 있고 그 밖에는 null이다. 필드는 항상 있다",
+				requiredMode = RequiredMode.REQUIRED, nullable = true) Long partnerId,
 		@Schema(description = "DISABLED면 차단된 계정이다. 로그인할 수 없다", requiredMode = RequiredMode.REQUIRED) UserStatus status,
 		@Schema(description = "계정을 만든 시각", requiredMode = RequiredMode.REQUIRED) Instant createdAt) {
 
 	static AccountResponse from(AccountView account) {
 		return new AccountResponse(account.id(), account.loginId(), account.name(), account.role(),
-				account.campusId(), account.status(), account.createdAt());
+				account.campusId(), account.partnerId(), account.status(), account.createdAt());
 	}
 
 }
