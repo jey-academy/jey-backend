@@ -1,7 +1,9 @@
 package com.jey.core.web;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 
 import com.jey.core.shared.Money;
@@ -35,7 +37,7 @@ class StrictRequestJsonTest {
 	}
 
 	record Loose(Long id, Integer page, String name, Boolean flag, Color color, LocalDate date, Money fee,
-			List<Item> items) {
+			List<Item> items, YearMonth month, Instant at) {
 	}
 
 	@RejectUnknownFields
@@ -58,6 +60,13 @@ class StrictRequestJsonTest {
 			"{\"color\":1}|color", "{\"color\":\"1\"}|color", "{\"color\":\"\"}|color",
 			// 날짜 칸: 숫자, 배열, 빈 문자열
 			"{\"date\":20261015}|date", "{\"date\":[2026,10,15]}|date", "{\"date\":\"\"}|date",
+			// 날짜 칸: 날짜·시각 문자열(시각을 잘라 하루가 어긋난다), 앞뒤 공백
+			"{\"date\":\"2026-10-15T15:00:00Z\"}|date", "{\"date\":\"2026-10-15T23:59:59\"}|date",
+			"{\"date\":\"2026-10-15 \"}|date", "{\"date\":\" 2026-10-15\"}|date",
+			// 월 칸: 숫자, 배열
+			"{\"month\":202610}|month", "{\"month\":[2026,10]}|month",
+			// 시각 칸: 숫자(초·밀리초로 해석), 소수, 숫자 문자열, 배열
+			"{\"at\":1760000000}|at", "{\"at\":1.5}|at", "{\"at\":\"1760000000\"}|at", "{\"at\":[2026,10,15]}|at",
 			// 금액 칸: 문자열, 빈 문자열
 			"{\"fee\":\"1000\"}|fee", "{\"fee\":\"\"}|fee" })
 	void 명세의_타입과_다른_값은_그_칸에서_읽기가_실패한다(String json, String field) {
@@ -69,16 +78,17 @@ class StrictRequestJsonTest {
 	void 명세의_타입_그대로인_값은_읽는다() {
 		Loose read = STRICT.readValue("""
 				{"id":7,"page":2,"name":"햇살","flag":true,"color":"GREEN","date":"2026-10-15","fee":1000,
-				 "items":[{"page":1}]}
+				 "items":[{"page":1}],"month":"2026-10","at":"2026-10-15T00:00:00Z"}
 				""", Loose.class);
 
 		assertThat(read).isEqualTo(new Loose(7L, 2, "햇살", true, Color.GREEN, LocalDate.of(2026, 10, 15),
-				Money.of(1000), List.of(new Item(1))));
+				Money.of(1000), List.of(new Item(1)), YearMonth.of(2026, 10), Instant.parse("2026-10-15T00:00:00Z")));
 	}
 
 	// 값 없음과 빈 글자는 막지 않는다. 비울 수 없는 칸은 검증(@NotBlank)이 맡는다. 금액의 소수는 금액 규칙이 본다.
 	@ParameterizedTest
-	@ValueSource(strings = { "{}", "{\"id\":null,\"date\":null,\"fee\":null,\"color\":null}", "{\"name\":\"\"}",
+	@ValueSource(strings = { "{}", "{\"id\":null,\"date\":null,\"fee\":null,\"color\":null,\"month\":null,\"at\":null}",
+			"{\"name\":\"\"}",
 			"{\"name\":\" \"}" })
 	void 값_없음과_빈_글자는_읽는다(String json) {
 		STRICT.readValue(json, Loose.class);

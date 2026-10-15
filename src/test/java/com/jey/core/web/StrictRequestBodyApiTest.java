@@ -52,6 +52,9 @@ class StrictRequestBodyApiTest {
 			.andExpect(jsonPath("$.errors[0].field").value("grade"));
 		register(studentJson("1", "\"HIGH_1\"", "[2026,10,15]", phone)).andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.errors[0].field").value("registeredAt"));
+		// 화면이 Date#toISOString()으로 보내는 모양. 한국 시각 16일 0시가 UTC 15일 15시가 되어, 받으면 하루 앞선 날로 저장된다.
+		register(studentJson("1", "\"HIGH_1\"", "\"2026-10-15T15:00:00.000Z\"", phone)).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errors[0].field").value("registeredAt"));
 
 		// 같은 본문을 명세의 타입 그대로 보내면 등록된다.
 		register(studentJson("1", "\"HIGH_1\"", "\"2026-10-15\"", phone)).andExpect(status().isCreated());

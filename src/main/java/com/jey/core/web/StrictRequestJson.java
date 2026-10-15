@@ -6,6 +6,12 @@ import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.HttpMessageConverters;
 import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZonedDateTime;
+import java.util.Set;
+
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
@@ -32,7 +38,8 @@ import tools.jackson.databind.type.LogicalType;
  * 이 앱이 같은 설정으로 쓴 값이라 조일 이유가 없다. 거기서 읽기가 실패하면 다시 보내도 낫지 않는다.
  *
  * <p>막는 것: 숫자 칸의 문자열·소수·빈 문자열, 글자 칸의 숫자·참거짓, 참거짓 칸의 문자열·숫자, enum 칸의 번호·빈 문자열,
- * 날짜·시각 칸의 숫자·배열·빈 문자열, 금액 칸의 문자열·빈 문자열. 막지 않는 것: {@code null}, 글자 칸의 빈 문자열.
+ * 금액 칸의 문자열·빈 문자열, 날짜·시각 칸의 글자가 아닌 값(숫자, 배열)과 빈 문자열·앞뒤 공백, 날짜 칸의 날짜·시각 문자열(시각을 잘라 하루가 어긋난다),
+ * 시각 칸의 숫자 문자열(초·밀리초로 해석된다). 막지 않는 것: {@code null}, 글자 칸의 빈 문자열.
  * 막힌 값은 그 칸의 경로가 붙은 예외가 되어 그 칸의 오류로 답해진다({@code GlobalExceptionHandler}).
  *
  * <p>HTTP 메시지 변환기의 JSON 변환기를 이 설정으로 바꾼다. 요청 본문을 읽는 곳과 응답을 쓰는 곳이 모두 이 변환기다.
@@ -78,44 +85,60 @@ class StrictRequestJson implements WebMvcConfigurer {
 					config -> config.setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)
 						.setCoercion(CoercionInputShape.Float, CoercionAction.Fail)
 						.setCoercion(CoercionInputShape.Boolean, CoercionAction.Fail))
-			// 20261015 → 날 수로 해석한 날짜
-			.withCoercionConfig(LogicalType.DateTime,
-					config -> config.setCoercion(CoercionInputShape.Integer, CoercionAction.Fail))
-			// [2026,10,15] → 날짜. 날짜 읽기가 배열을 자기 형식으로 받아서 강제 변환 설정으로는 막히지 않는다
-			.addModule(new SimpleModule("strict-request-date-time").setDeserializerModifier(new DateTimeArrayRejection()))
+			// 날짜·시각은 글자로만. 날짜·시각 읽기는 숫자(날 수, 초)와 배열을 자기 형식으로 받아서 강제 변환 설정으로는 다 막히지 않는다
+			.addModule(new SimpleModule("strict-request-date-time").setDeserializerModifier(new TextOnlyDateTime()))
 			.build();
 	}
 
-	// java.time 타입을 읽는 부분을 감싸 배열을 막는다. 그 밖의 입력은 원래 읽기에 넘긴다.
-	private static final class DateTimeArrayRejection extends ValueDeserializerModifier {
+	// java.time 타입을 읽는 부분을 감싸, 명세의 모양(글자, 예: "2026-10-15", "2026-10-15T00:00:00Z")이 아닌 입력을 막는다.
+	// 맞는 입력은 원래 읽기에 넘긴다(형식 검사는 그쪽이 한다).
+	private static final class TextOnlyDateTime extends ValueDeserializerModifier {
 
 		@Override
 		public ValueDeserializer<?> modifyDeserializer(DeserializationConfig config, BeanDescription.Supplier beanDesc,
 				ValueDeserializer<?> deserializer) {
 			if (beanDesc.getBeanClass().getPackageName().equals("java.time")) {
-				return new ArrayRejectingDeserializer(deserializer);
+				return new TextOnlyDateTimeDeserializer(deserializer);
 			}
 			return deserializer;
 		}
 
 	}
 
-	private static final class ArrayRejectingDeserializer extends DelegatingDeserializer {
+	private static final class TextOnlyDateTimeDeserializer extends DelegatingDeserializer {
 
-		ArrayRejectingDeserializer(ValueDeserializer<?> delegatee) {
+		// "YYYY-MM-DD"의 길이. 날짜 읽기는 더 긴 날짜·시각 문자열을 받아 시각을 잘라 버린다.
+		// 날짜 칸에 다른 형식(@JsonFormat)을 쓰게 되면 이 확인도 함께 바꾼다.
+		private static final int ISO_DATE_LENGTH = 10;
+
+		// 숫자만 있는 글자를 초·밀리초로 읽는 시점 타입
+		private static final Set<Class<?>> EPOCH_READING = Set.of(Instant.class, OffsetDateTime.class,
+				ZonedDateTime.class);
+
+		TextOnlyDateTimeDeserializer(ValueDeserializer<?> delegatee) {
 			super(delegatee);
 		}
 
 		@Override
 		protected ValueDeserializer<?> newDelegatingInstance(ValueDeserializer<?> newDelegatee) {
-			return new ArrayRejectingDeserializer(newDelegatee);
+			return new TextOnlyDateTimeDeserializer(newDelegatee);
 		}
 
+		// 칸의 경로는 바깥에서 붙는다. 문구는 응답에 나가지 않는다(그 칸의 고정 문구로 바뀐다).
 		@Override
 		public Object deserialize(JsonParser p, DeserializationContext ctxt) throws JacksonException {
-			if (p.hasToken(JsonToken.START_ARRAY)) {
-				// 칸의 경로는 바깥에서 붙는다. 문구는 응답에 나가지 않는다(그 칸의 고정 문구로 바뀐다).
-				return ctxt.reportInputMismatch(handledType(), "배열로 된 날짜·시각은 받지 않는다");
+			if (!p.hasToken(JsonToken.VALUE_STRING)) {
+				return ctxt.reportInputMismatch(handledType(), "날짜·시각은 글자로만 받는다");
+			}
+			String text = p.getString();
+			if (!text.equals(text.strip())) {
+				return ctxt.reportInputMismatch(handledType(), "날짜·시각의 앞뒤 공백은 받지 않는다");
+			}
+			if (handledType() == LocalDate.class && !text.isEmpty() && text.length() != ISO_DATE_LENGTH) {
+				return ctxt.reportInputMismatch(handledType(), "날짜 칸은 YYYY-MM-DD만 받는다");
+			}
+			if (EPOCH_READING.contains(handledType()) && !text.isEmpty() && text.chars().allMatch(Character::isDigit)) {
+				return ctxt.reportInputMismatch(handledType(), "시각을 숫자로 받지 않는다");
 			}
 			return super.deserialize(p, ctxt);
 		}
