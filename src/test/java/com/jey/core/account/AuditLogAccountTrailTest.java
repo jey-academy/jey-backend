@@ -43,13 +43,25 @@ class AuditLogAccountTrailTest {
 
 	@Test
 	void 만든_계정은_대상과_지점과_역할을_적는다() {
-		trail.done(AccountActivity.created(7, UserRole.STAFF, 2L));
+		trail.done(AccountActivity.created(7, UserRole.STAFF, 2L, null));
 
 		AuditEntry entry = recorded();
 		assertThat(entry.action()).isEqualTo(AccountAuditAction.CREATED);
 		assertThat(entry.target()).isEqualTo(AuthRefs.account(7));
 		assertThat(entry.campusId()).isEqualTo(2L);
 		assertThat(entry.detail()).containsOnlyKeys("role").containsEntry("role", "STAFF");
+	}
+
+	@Test
+	void 만든_연계_학원_계정은_연계_학원_식별자를_적고_지점은_적지_않는다() {
+		trail.done(AccountActivity.created(7, UserRole.PARTNER, null, 3L));
+
+		AuditEntry entry = recorded();
+		assertThat(entry.action()).isEqualTo(AccountAuditAction.CREATED);
+		assertThat(entry.campusId()).isNull();
+		assertThat(entry.detail()).containsOnlyKeys("role", "partnerId")
+			.containsEntry("role", "PARTNER")
+			.containsEntry("partnerId", 3L);
 	}
 
 	// 지점을 옮긴 기록에 어느 지점으로 갔는지가 있어야 권한이 어떻게 바뀌었는지 뒤에서 볼 수 있다.

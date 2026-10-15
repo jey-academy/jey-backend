@@ -51,6 +51,9 @@ class AuditLogAccountTrail implements AccountAuditTrail {
 		if (activity.role() != null) {
 			entry = entry.with("role", activity.role());
 		}
+		if (activity.partnerId() != null) {
+			entry = entry.with("partnerId", activity.partnerId());
+		}
 		if (activity.kind() == AccountActivity.Kind.UPDATED) {
 			entry = entry.with("nameChanged", activity.nameChanged())
 				.with("affiliationChanged", activity.affiliationChanged());

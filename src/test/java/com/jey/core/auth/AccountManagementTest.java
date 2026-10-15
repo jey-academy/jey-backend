@@ -8,10 +8,14 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import com.jey.TestcontainersConfiguration;
 import com.jey.core.auth.api.AuthenticatedUser;
+import com.jey.core.auth.api.NewPartnerAccount;
+import com.jey.core.auth.api.PartnerAccount;
+import com.jey.core.auth.api.PartnerAccounts;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.auth.domain.User;
 import com.jey.core.auth.domain.UserRepository;
@@ -35,6 +39,7 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -68,6 +73,12 @@ class AccountManagementTest {
 
 	@Autowired
 	StringRedisTemplate redis;
+
+	@Autowired
+	PartnerAccounts partnerAccounts;
+
+	@Autowired
+	TransactionTemplate transaction;
 
 	private User admin;
 
@@ -492,6 +503,102 @@ class AccountManagementTest {
 
 		assertThat(detailOf("account.password-change-mismatch", staff.getId())).isNullOrEmpty();
 		assertThat(detailOf("account.password-changed", staff.getId())).isNullOrEmpty();
+	}
+
+	// 연계 학원 계정은 패스 모듈이 이 창구로 만든다(ADR-0034). 연계 학원이 있는지는 부르는 쪽이 확인한다.
+	@Test
+	void 연계_학원_계정을_만들면_그_학원에_속하고_만든_기록에_학원이_남는다() {
+		long partnerId = newPartnerId();
+		String loginId = newLoginId("partner");
+
+		PartnerAccount created = partnerAccounts
+			.create(new NewPartnerAccount(partnerId, loginId, "햇살수학", "partner-password-123"));
+
+		assertThat(created.loginId()).isEqualTo(loginId);
+		assertThat(created.name()).isEqualTo("햇살수학");
+		assertThat(created.partnerId()).isEqualTo(partnerId);
+		assertThat(created.createdAt()).isNotNull();
+		User stored = users.findById(created.id()).orElseThrow();
+		assertThat(stored.getRole()).isEqualTo(UserRole.PARTNER);
+		assertThat(stored.getPartnerId()).isEqualTo(partnerId);
+		assertThat(stored.getCampusId()).isNull();
+		assertThat(stored.isActive()).isTrue();
+		assertThat(passwordEncoder.matches("partner-password-123", stored.getPasswordHash())).isTrue();
+		assertThat(detailOf("account.created", created.id())).contains("\"role\":\"PARTNER\"")
+			.contains("\"partnerId\":" + partnerId)
+			.doesNotContain(loginId)
+			.doesNotContain("partner-password-123");
+	}
+
+	@Test
+	void 연계_학원_계정의_아이디도_소문자로_맞추고_이미_쓰는_아이디면_거부가_기록된다() {
+		String loginId = newLoginId("partner");
+
+		PartnerAccount created = partnerAccounts.create(
+				new NewPartnerAccount(newPartnerId(), "  " + loginId.toUpperCase() + " ", "햇살수학", "partner-password-123"));
+		int before = deniedBy("account.login-id-duplicated", admin);
+
+		assertThat(created.loginId()).isEqualTo(loginId);
+		assertDenied(() -> partnerAccounts
+			.create(new NewPartnerAccount(newPartnerId(), loginId, "달빛영어", "partner-password-456")),
+				AuthErrorCode.LOGIN_ID_DUPLICATED);
+		assertThat(deniedBy("account.login-id-duplicated", admin)).isEqualTo(before + 1);
+	}
+
+	@Test
+	void 연계_학원_계정도_비밀번호_규칙을_따른다() {
+		assertDenied(() -> partnerAccounts
+			.create(new NewPartnerAccount(newPartnerId(), newLoginId("partner"), "햇살수학", "short")),
+				AuthErrorCode.PASSWORD_NOT_ACCEPTABLE);
+	}
+
+	// 만들고 커밋한 뒤의 일(감사 기록과 같이 커밋)이 바깥 트랜잭션에 합류하면 순서가 깨진다. 계정 관리의 다른 메서드와 같다.
+	@Test
+	void 연계_학원_계정의_창구는_트랜잭션_안에서_부를_수_없다() {
+		long partnerId = newPartnerId();
+
+		assertThatThrownBy(() -> transaction.executeWithoutResult(status -> partnerAccounts
+			.create(new NewPartnerAccount(partnerId, newLoginId("partner"), "햇살수학", "partner-password-123"))))
+			.isInstanceOf(IllegalStateException.class);
+		assertThatThrownBy(() -> transaction.executeWithoutResult(status -> partnerAccounts.disableAll(partnerId)))
+			.isInstanceOf(IllegalStateException.class);
+	}
+
+	@Test
+	void 연계_학원의_활성_계정을_모두_차단하고_이미_차단된_계정과_다른_학원의_계정은_건드리지_않는다() {
+		long partnerId = newPartnerId();
+		long otherPartnerId = newPartnerId();
+		PartnerAccount first = newPartnerAccount(partnerId);
+		PartnerAccount second = newPartnerAccount(partnerId);
+		PartnerAccount alreadyDisabled = newPartnerAccount(partnerId);
+		accountService.disable(alreadyDisabled.id());
+		PartnerAccount other = newPartnerAccount(otherPartnerId);
+
+		int disabled = partnerAccounts.disableAll(partnerId);
+
+		assertThat(disabled).isEqualTo(2);
+		assertThat(users.findById(first.id()).orElseThrow().isActive()).isFalse();
+		assertThat(users.findById(second.id()).orElseThrow().isActive()).isFalse();
+		assertThat(users.findById(other.id()).orElseThrow().isActive()).isTrue();
+		assertThat(recordsOf("account.disabled", first.id())).isEqualTo(1);
+		assertThat(recordsOf("account.disabled", alreadyDisabled.id())).isEqualTo(1);
+		assertThat(partnerAccounts.disableAll(partnerId)).isZero();
+	}
+
+	@Test
+	void 계정_관리의_만들기로는_여전히_연계_학원_계정을_만들_수_없다() {
+		assertDenied(() -> accountService.create(new NewAccount(newLoginId("partner"), "햇살수학",
+				"partner-password-123", UserRole.PARTNER, null)), AuthErrorCode.PARTNER_ACCOUNT_NOT_SUPPORTED);
+	}
+
+	private PartnerAccount newPartnerAccount(long partnerId) {
+		return partnerAccounts
+			.create(new NewPartnerAccount(partnerId, newLoginId("partner"), "연계학원", "partner-password-123"));
+	}
+
+	// 연계 학원 테이블은 패스 모듈에 있고 계정은 그 식별자만 가진다(외래 키 없음). 테스트끼리 겹치지 않는 값을 쓴다.
+	private static long newPartnerId() {
+		return ThreadLocalRandom.current().nextLong(1_000_000L, Long.MAX_VALUE / 2);
 	}
 
 	private static List<Long> ids(Page<AccountView> page) {

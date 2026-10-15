@@ -10,11 +10,13 @@ import java.util.Objects;
  * @param accountId 대상 계정. 만들어지지 않은 계정에 대한 거부(아이디 중복)는 {@code null}이다
  * @param role 만든 계정 또는 고친 뒤의 역할. 그 밖의 일에서는 {@code null}이다
  * @param campusId 만든 계정 또는 고친 뒤의 소속 지점. 지점이 없거나 그 밖의 일이면 {@code null}이다
+ * @param partnerId 만든 연계 학원 계정의 연계 학원 식별자. 연계 학원 계정을 만든 일에만 있고 그 밖에는 {@code null}이다
+ * (소속은 만든 뒤 바뀌지 않는다, ADR-0034)
  * @param nameChanged 고치기에서 이름이 바뀌었는지
  * @param affiliationChanged 고치기에서 역할이나 지점이 바뀌었는지
  */
-public record AccountActivity(Kind kind, Long accountId, UserRole role, Long campusId, boolean nameChanged,
-		boolean affiliationChanged) {
+public record AccountActivity(Kind kind, Long accountId, UserRole role, Long campusId, Long partnerId,
+		boolean nameChanged, boolean affiliationChanged) {
 
 	/**
 	 * @throws IllegalArgumentException 종류에 맞지 않는 값의 조합일 때. 그럴듯하지만 틀린 기록이 남지 않게 한다
@@ -32,6 +34,13 @@ public record AccountActivity(Kind kind, Long accountId, UserRole role, Long cam
 		if (campusId != null && !describesAccount) {
 			throw new IllegalArgumentException(kind + ": 지점을 실을 수 없는 종류다");
 		}
+		if (kind == Kind.CREATED) {
+			// 만든 계정의 역할과 소속(지점, 연계 학원 식별자)은 계정과 같은 규칙으로 맞아야 한다. 규칙은 한 곳에 둔다.
+			role.validateAffiliation(campusId, partnerId);
+		}
+		else if (partnerId != null) {
+			throw new IllegalArgumentException(kind + ": 연계 학원 식별자는 계정을 만든 일에만 싣는다(소속은 바뀌지 않는다)");
+		}
 		if (kind == Kind.UPDATED != (nameChanged || affiliationChanged)) {
 			throw new IllegalArgumentException(kind + ": 무엇을 고쳤는지는 고치기에만, 그리고 반드시 싣는다");
 		}
@@ -39,12 +48,16 @@ public record AccountActivity(Kind kind, Long accountId, UserRole role, Long cam
 
 	/** 계정 하나를 가리키는 것 말고는 덧붙일 값이 없는 종류에 쓴다(차단, 풀기, 비밀번호 변경, 거부된 시도). */
 	public static AccountActivity of(Kind kind, long accountId) {
-		return new AccountActivity(kind, accountId, null, null, false, false);
+		return new AccountActivity(kind, accountId, null, null, null, false, false);
 	}
 
-	public static AccountActivity created(long accountId, UserRole role, Long campusId) {
-		return new AccountActivity(Kind.CREATED, accountId, Objects.requireNonNull(role, "role"), campusId, false,
-				false);
+	/**
+	 * @param campusId 소속 지점. 직원만 있다
+	 * @param partnerId 연계 학원 식별자. 연계 학원 계정만 있다
+	 */
+	public static AccountActivity created(long accountId, UserRole role, Long campusId, Long partnerId) {
+		return new AccountActivity(Kind.CREATED, accountId, Objects.requireNonNull(role, "role"), campusId, partnerId,
+				false, false);
 	}
 
 	/**
@@ -53,13 +66,13 @@ public record AccountActivity(Kind kind, Long accountId, UserRole role, Long cam
 	 */
 	public static AccountActivity updated(long accountId, UserRole role, Long campusId, boolean nameChanged,
 			boolean affiliationChanged) {
-		return new AccountActivity(Kind.UPDATED, accountId, Objects.requireNonNull(role, "role"), campusId,
+		return new AccountActivity(Kind.UPDATED, accountId, Objects.requireNonNull(role, "role"), campusId, null,
 				nameChanged, affiliationChanged);
 	}
 
 	/** 이미 쓰는 아이디로 계정을 만들려 했다. 대상 계정이 없다. */
 	public static AccountActivity loginIdDuplicated() {
-		return new AccountActivity(Kind.LOGIN_ID_DUPLICATED, null, null, null, false, false);
+		return new AccountActivity(Kind.LOGIN_ID_DUPLICATED, null, null, null, null, false, false);
 	}
 
 	/** 상수를 더하면 기록하는 쪽이 그것을 어떻게 적을지 정해야 컴파일된다. */
