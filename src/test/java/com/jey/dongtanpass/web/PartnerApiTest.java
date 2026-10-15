@@ -219,6 +219,24 @@ class PartnerApiTest {
 	}
 
 	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 없는_학원은_끄거나_켤_수_없다() throws Exception {
+		send(post(PARTNERS + "/{id}/deactivate", Long.MAX_VALUE), Map.of()).andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PARTNER_NOT_FOUND"));
+		send(post(PARTNERS + "/{id}/activate", Long.MAX_VALUE), Map.of()).andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PARTNER_NOT_FOUND"));
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1)
+	void 직원은_연계_학원을_끄거나_켤_수_없다() throws Exception {
+		send(post(PARTNERS + "/{id}/deactivate", 1), Map.of()).andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
+		send(post(PARTNERS + "/{id}/activate", 1), Map.of()).andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
+	}
+
+	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = 1)
 	void 직원은_연계_학원의_계정을_만들_수_없다() throws Exception {
 		createAccount(1, newLoginId(), "햇살수학", "partner-password-123").andExpect(status().isForbidden())

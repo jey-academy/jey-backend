@@ -14,6 +14,7 @@ import com.jey.dongtanpass.domain.Partner;
 import com.jey.dongtanpass.domain.PartnerRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -85,9 +86,70 @@ public class PartnerService {
 		return partnerAccounts.create(new NewPartnerAccount(partnerId, loginId, name, password));
 	}
 
+	/**
+	 * 학원을 끄고 그 학원의 활성 계정을 모두 차단한다(세션도 끊긴다). 이미 발급한 패스는 그대로 쓸 수 있다.
+	 *
+	 * <p>학원 상태를 먼저 커밋하고, 그 뒤 트랜잭션 밖에서 계정을 하나씩 차단한다(계정 차단은 기초 모듈이 따로 커밋한다).
+	 * 그래서 둘은 한 번에 끝나지 않는다. 막는 기준은 학원 상태다: 끈 학원의 계정은 패스 모듈의 API를 요청마다 막힌다
+	 * ({@code PartnerActiveInterceptor}). 계정 차단이 중간에 실패하면 예외를 그대로 던진다. 학원은 꺼진 채로 남고,
+	 * 다시 부르면 아직 차단되지 않은 계정만 차단한다(이미 꺼진 학원은 기록을 다시 남기지 않는다).
+	 *
+	 * @throws BusinessException 학원이 없을 때
+	 * @throws IllegalStateException 다른 트랜잭션 안에서 불렀을 때
+	 */
+	public PartnerView deactivate(long partnerId) {
+		requireNoTransaction("deactivate");
+		PartnerView deactivated = transaction.execute(status -> {
+			Partner partner = lockedPartner(partnerId);
+			if (partner.deactivate()) {
+				auditLog.record(
+						AuditEntry.of(DongtanpassAuditAction.PARTNER_DEACTIVATED).target(PartnerRefs.partner(partnerId)));
+			}
+			return PartnerView.from(partner);
+		});
+		partnerAccounts.disableAll(partnerId);
+		return deactivated;
+	}
+
+	/**
+	 * 학원을 켠다. 끌 때 차단한 계정은 풀지 않는다(끄기 전에 따로 차단해 둔 계정까지 풀리지 않게). 관리자가 계정 관리에서 푼다.
+	 *
+	 * @throws BusinessException 학원이 없을 때
+	 */
+	public PartnerView activate(long partnerId) {
+		return transaction.execute(status -> {
+			Partner partner = lockedPartner(partnerId);
+			if (partner.activate()) {
+				auditLog.record(
+						AuditEntry.of(DongtanpassAuditAction.PARTNER_ACTIVATED).target(PartnerRefs.partner(partnerId)));
+			}
+			return PartnerView.from(partner);
+		});
+	}
+
+	/**
+	 * 그 학원이 켜져 있는지. 연계 학원 계정의 요청마다 부른다. 없는 학원은 꺼진 것으로 본다.
+	 * 읽다 예외가 나면 그대로 던진다(확인하지 못한 요청을 통과시키지 않는다).
+	 */
+	public boolean isActive(long partnerId) {
+		return partners.findById(partnerId).map(Partner::isActive).orElse(false);
+	}
+
 	/** 만든 순서로 모두 준다. 연계 학원은 몇 곳뿐이라 나누지 않는다. */
 	public List<PartnerView> list() {
 		return partners.findAllByOrderByIdAsc().stream().map(PartnerView::from).toList();
+	}
+
+	private Partner lockedPartner(long partnerId) {
+		return partners.findByIdForUpdate(partnerId)
+			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PARTNER_NOT_FOUND));
+	}
+
+	// 바깥 트랜잭션에 합류하면 학원을 끈 것이 커밋되기 전에 계정을 차단하게 된다(계정 차단도 트랜잭션 밖에서만 부를 수 있다).
+	private static void requireNoTransaction(String method) {
+		if (TransactionSynchronizationManager.isActualTransactionActive()) {
+			throw new IllegalStateException("PartnerService#" + method + "은(는) 트랜잭션 밖에서 호출해야 한다");
+		}
 	}
 
 }

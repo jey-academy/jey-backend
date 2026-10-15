@@ -12,7 +12,16 @@ import com.jey.core.audit.api.AuditOutcome;
 enum DongtanpassAuditAction implements AuditAction {
 
 	/** 대상은 그 연계 학원이다({@code PartnerRefs.partner}). */
-	PARTNER_CREATED("dongtanpass.partner-created", AuditOutcome.DONE);
+	PARTNER_CREATED("dongtanpass.partner-created", AuditOutcome.DONE),
+
+	/**
+	 * 학원을 껐다. 이미 꺼져 있던 학원을 다시 끈 것(남은 계정을 차단하는 복구)은 적지 않는다.
+	 * 그 학원 계정의 차단은 계정마다 {@code account.disabled}로 따로 남는다.
+	 */
+	PARTNER_DEACTIVATED("dongtanpass.partner-deactivated", AuditOutcome.DONE),
+
+	/** 학원을 켰다. 계정은 풀리지 않는다. 이미 켜져 있던 학원을 다시 켠 것은 적지 않는다. */
+	PARTNER_ACTIVATED("dongtanpass.partner-activated", AuditOutcome.DONE);
 
 	private final String code;
 

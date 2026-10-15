@@ -61,6 +61,32 @@ public class Partner extends BaseEntity {
 		return new Partner(stripped, PartnerType.ACADEMY);
 	}
 
+	/**
+	 * 끈다. 그 학원의 계정을 막는 것은 부르는 쪽이 한다(계정 차단은 다른 모듈의 일이다).
+	 *
+	 * @return 실제로 바뀌었는지. 이미 꺼져 있으면 {@code false}
+	 */
+	public boolean deactivate() {
+		if (!active) {
+			return false;
+		}
+		active = false;
+		return true;
+	}
+
+	/**
+	 * 켠다. 끌 때 차단한 계정은 풀지 않는다.
+	 *
+	 * @return 실제로 바뀌었는지. 이미 켜져 있으면 {@code false}
+	 */
+	public boolean activate() {
+		if (active) {
+			return false;
+		}
+		active = true;
+		return true;
+	}
+
 	public Long getId() {
 		return id;
 	}

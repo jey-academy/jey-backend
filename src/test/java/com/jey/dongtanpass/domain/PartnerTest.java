@@ -16,6 +16,19 @@ class PartnerTest {
 		assertThat(partner.isActive()).isTrue();
 	}
 
+	// 끄기와 켜기는 바뀌었는지를 알려 준다. 이미 그 상태면 기록을 남기지 않는다.
+	@Test
+	void 끄고_켜면_바뀌었는지를_돌려준다() {
+		Partner partner = Partner.create("햇살수학");
+
+		assertThat(partner.deactivate()).isTrue();
+		assertThat(partner.isActive()).isFalse();
+		assertThat(partner.deactivate()).isFalse();
+		assertThat(partner.activate()).isTrue();
+		assertThat(partner.isActive()).isTrue();
+		assertThat(partner.activate()).isFalse();
+	}
+
 	@Test
 	void 이름의_앞뒤_공백은_뗀다() {
 		assertThat(Partner.create("  햇살수학 ").getName()).isEqualTo("햇살수학");
