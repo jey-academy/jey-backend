@@ -13,8 +13,11 @@ import com.jey.core.auth.domain.UserRepository;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -45,6 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class PartnerDeactivationTest {
 
 	private static final String PARTNERS = "/api/v1/dongtanpass/partners";
@@ -96,7 +100,7 @@ class PartnerDeactivationTest {
 	}
 
 	@Test
-	void 학원을_끄면_그_학원_계정의_세션이_끊기고_다시_로그인할_수_없다() throws Exception {
+	void 학원을_끄면_그_학원_계정의_세션이_끊기고_다시_로그인할_수_없다(CapturedOutput output) throws Exception {
 		long partnerId = newPartner();
 		Account first = newAccount(partnerId);
 		Account second = newAccount(partnerId);
@@ -114,11 +118,12 @@ class PartnerDeactivationTest {
 		assertThat(partnerRecords("dongtanpass.partner-deactivated", partnerId)).isEqualTo(1);
 		assertThat(accountRecords("account.disabled", first.id())).isEqualTo(1);
 		assertThat(accountRecords("account.disabled", second.id())).isEqualTo(1);
+		assertThat(output).contains("연계 학원 계정을 한꺼번에 차단했다: partnerId=" + partnerId + " disabled=2");
 	}
 
 	// 계정 하나를 차단하다 실패한 경우. 학원은 이미 꺼져 있고, 끄기를 다시 부르면 남은 계정만 차단한다.
 	@Test
-	void 계정_차단이_중간에_실패하면_실패로_답하고_다시_끄면_남은_계정만_차단한다() throws Exception {
+	void 계정_차단이_중간에_실패하면_실패로_답하고_다시_끄면_남은_계정만_차단한다(CapturedOutput output) throws Exception {
 		long partnerId = newPartner();
 		Account first = newAccount(partnerId);
 		Account second = newAccount(partnerId);
@@ -131,6 +136,9 @@ class PartnerDeactivationTest {
 		assertThat(partnerActive(partnerId)).isFalse();
 		assertThat(accountStatus(first.id())).isEqualTo("DISABLED");
 		assertThat(accountStatus(second.id())).isEqualTo("ACTIVE");
+		// 어디까지 됐는지 로그만으로 알 수 있어야 한다(감사 로그를 뒤지지 않고).
+		assertThat(output).contains("연계 학원 계정을 한꺼번에 차단하다 멈췄다")
+			.contains("partnerId=" + partnerId + " failedAccountId=" + second.id() + " disabled=1/2");
 
 		asAdmin(post(PARTNERS + "/{id}/deactivate", partnerId)).andExpect(status().isOk())
 			.andExpect(jsonPath("$.active").value(false));

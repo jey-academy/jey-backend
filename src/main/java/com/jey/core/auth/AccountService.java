@@ -257,17 +257,29 @@ public class AccountService implements PartnerAccounts {
 	}
 
 	/**
-	 * 그 연계 학원의 활성 계정을 하나씩 차단한다({@link #disable}). 계정마다 따로 커밋하고 세션을 끊는다.
+	 * 그 연계 학원의 활성 계정을 ID 순으로 하나씩 차단한다({@link #disable}). 계정마다 따로 커밋하고 세션을 끊는다.
 	 * 하나라도 실패하면 그대로 던진다. 앞에서 차단한 계정은 차단된 채로 남고, 다시 부르면 남은 계정만 고른다.
+	 * 어디까지 됐는지는 로그로 남긴다(학원은 꺼졌는데 계정 일부만 차단된 상태를 감사 로그를 뒤지지 않고 알 수 있게).
 	 */
 	@Override
 	public int disableAll(long partnerId) {
 		requireNoTransaction("disableAll");
-		List<User> active = users.findAllByPartnerIdAndStatus(partnerId, UserStatus.ACTIVE);
+		List<User> active = users.findAllByPartnerIdAndStatusOrderByIdAsc(partnerId, UserStatus.ACTIVE);
+		int disabled = 0;
 		for (User user : active) {
-			disable(user.getId());
+			try {
+				disable(user.getId());
+			}
+			catch (RuntimeException ex) {
+				// 예외는 그대로 던진다. 스택은 요청을 끝내는 쪽(core.web)이 남기므로 여기서는 진행만 적는다.
+				log.error("연계 학원 계정을 한꺼번에 차단하다 멈췄다. 다시 부르면 남은 계정을 차단한다: partnerId={} failedAccountId={} disabled={}/{}",
+						partnerId, user.getId(), disabled, active.size());
+				throw ex;
+			}
+			disabled++;
 		}
-		return active.size();
+		log.info("연계 학원 계정을 한꺼번에 차단했다: partnerId={} disabled={}", partnerId, disabled);
+		return disabled;
 	}
 
 	/**
