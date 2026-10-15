@@ -184,6 +184,24 @@ class PartnerDeactivationTest {
 		assertThat(partnerRecords("dongtanpass.partner-activated", partnerId)).isEqualTo(1);
 	}
 
+	// 끈 학원의 계정을 관리자가 계정 관리에서 풀어도 로그인만 된다. 패스 기능은 학원을 켜야 쓸 수 있다.
+	@Test
+	void 끈_학원의_계정을_풀어도_패스_기능은_학원을_켜야_쓸_수_있다() throws Exception {
+		long partnerId = newPartner();
+		Account account = newAccount(partnerId);
+		asAdmin(post(PARTNERS + "/{id}/deactivate", partnerId)).andExpect(status().isOk());
+
+		asAdmin(post("/api/v1/accounts/{id}/enable", account.id())).andExpect(status().isOk());
+		Cookie session = login(account.loginId(), PASSWORD);
+
+		mockMvc.perform(get(AREA).cookie(session)).andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PARTNER_INACTIVE"));
+
+		asAdmin(post(PARTNERS + "/{id}/activate", partnerId)).andExpect(status().isOk());
+
+		mockMvc.perform(get(AREA).cookie(session)).andExpect(status().isOk());
+	}
+
 	private long newPartner() throws Exception {
 		String body = asAdmin(post(PARTNERS).with(idempotencyKey()), Map.of("name", "끄기확인-" + uuid()))
 			.andExpect(status().isCreated())

@@ -10,12 +10,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -75,6 +77,26 @@ class PartnerActiveInterceptorTest {
 	void 없는_학원의_계정도_막힌다() throws Exception {
 		mockMvc.perform(get(AREA)).andExpect(status().isForbidden())
 			.andExpect(jsonPath("$.code").value("DONGTANPASS_PARTNER_INACTIVE"));
+	}
+
+	// 학원 상태를 읽지 못하면 통과시키지 않는다. 확인하지 못한 요청이 꺼진 학원의 것일 수 있다.
+	@Test
+	@WithJeyUser(role = UserRole.PARTNER, partnerId = ACTIVE)
+	void 학원을_읽지_못하면_통과시키지_않는다() throws Exception {
+		doThrow(new DataAccessResourceFailureException("DB 대신 일부러 낸 장애")).when(partners).findById(ACTIVE);
+
+		mockMvc.perform(get(AREA)).andExpect(status().isInternalServerError())
+			.andExpect(jsonPath("$.code").value("COMMON_INTERNAL_ERROR"));
+	}
+
+	// 막는 범위는 패스 모듈의 API뿐이다. 꺼진 학원의 계정도 로그인 상태 확인이나 본인 비밀번호 변경 같은 기초 기능은 막히지 않는다(ADR-0034).
+	@Test
+	@WithJeyUser(role = UserRole.PARTNER, partnerId = INACTIVE)
+	void 패스_모듈_밖의_API는_꺼진_학원의_계정도_학원을_읽지_않고_지나간다() throws Exception {
+		mockMvc.perform(get("/api/v1/auth/me")).andExpect(status().isOk())
+			.andExpect(jsonPath("$.role").value("PARTNER"));
+
+		verify(partners, never()).findById(any());
 	}
 
 	// 역할 확인이 먼저다. 역할에 맞지 않는 요청은 학원 상태를 읽지 않고 끝난다.
