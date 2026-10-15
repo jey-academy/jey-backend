@@ -329,6 +329,25 @@ class GlobalExceptionHandlerTest {
 				.andExpect(status().isOk());
 	}
 
+	// JSON이 아닌 본문 형식은 받지 않는다. 다른 형식(YAML)의 변환기는 엄격한 설정도, 모르는 필드 거부도 거치지 않아
+	// 명세의 타입 그대로만 읽는다는 규칙을 통째로 우회한다(ADR-0036).
+	@Test
+	void YAML_본문은_받지_않는다() throws Exception {
+		mockMvc.perform(post("/api/v1/test-errors/loose").with(csrfToken(mockMvc))
+						.contentType("application/yaml")
+						.content("id: '1'\ncolor: 1\nflag: 'true'\nunknownField: 3\n"))
+				.andExpect(status().isUnsupportedMediaType())
+				.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+	}
+
+	// 본문 형식을 막아도 API 명세의 YAML 문서는 그대로 나온다(문서는 변환기가 아니라 명세 도구가 직접 쓴다).
+	@Test
+	void API_명세의_YAML_문서는_그대로_나온다() throws Exception {
+		mockMvc.perform(get("/v3/api-docs.yaml"))
+				.andExpect(status().isOk())
+				.andExpect(content().string(containsString("openapi:")));
+	}
+
 	// 엄격하게 읽는 것은 요청 본문뿐이다. 앱 전체의 설정(저장해 둔 이벤트를 되살리는 쪽이 쓴다)은 그대로 느슨하다.
 	@Test
 	void 앱_전체의_JSON_설정은_느슨한_채다() {

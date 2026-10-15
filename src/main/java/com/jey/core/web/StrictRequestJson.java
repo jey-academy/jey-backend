@@ -1,6 +1,8 @@
 package com.jey.core.web;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.HttpMessageConverters;
 import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -34,6 +36,8 @@ import tools.jackson.databind.type.LogicalType;
  * 막힌 값은 그 칸의 경로가 붙은 예외가 되어 그 칸의 오류로 답해진다({@code GlobalExceptionHandler}).
  *
  * <p>HTTP 메시지 변환기의 JSON 변환기를 이 설정으로 바꾼다. 요청 본문을 읽는 곳과 응답을 쓰는 곳이 모두 이 변환기다.
+ * JSON이 아닌 본문 형식의 변환기(YAML)는 뺀다. 명세 도구가 끌어온 라이브러리 때문에 저절로 등록되는데, 엄격한 설정도 모르는 필드 거부도 거치지 않아
+ * 이 규칙을 통째로 우회한다. 이 API는 JSON만 쓴다(그런 본문은 415다). API 명세의 YAML 문서는 명세 도구가 직접 쓰므로 그대로 나온다.
  */
 @Configuration(proxyBeanMethods = false)
 class StrictRequestJson implements WebMvcConfigurer {
@@ -47,6 +51,16 @@ class StrictRequestJson implements WebMvcConfigurer {
 	@Override
 	public void configureMessageConverters(HttpMessageConverters.ServerBuilder builder) {
 		builder.withJsonConverter(new JacksonJsonHttpMessageConverter(strict(app)));
+		builder.configureMessageConvertersList(converters -> converters.removeIf(StrictRequestJson::readsYaml));
+	}
+
+	// YAML을 이름으로 지원하는 변환기. 아무 형식이나 받는 변환기(*/* — 글자, 바이트)는 YAML과 "호환"으로 판정되므로 와일드카드는 보지 않는다.
+	// 그것까지 빼면 글자·바이트를 쓰는 응답(API 명세 문서 등)이 깨진다.
+	private static boolean readsYaml(HttpMessageConverter<?> converter) {
+		return converter.getSupportedMediaTypes()
+			.stream()
+			.anyMatch(type -> !type.isWildcardType() && !type.isWildcardSubtype()
+					&& type.isCompatibleWith(MediaType.APPLICATION_YAML));
 	}
 
 	static JsonMapper strict(JsonMapper app) {
