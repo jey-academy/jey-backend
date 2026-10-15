@@ -26,6 +26,7 @@ import org.springframework.validation.Errors;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
@@ -56,6 +57,10 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
 	@ExceptionHandler(BusinessException.class)
 	ResponseEntity<Object> handleBusiness(BusinessException ex, WebRequest request) {
+		if (ex.getErrorCode().temporaryRejection()) {
+			// 멱등 키의 응답으로 보관하지 않는다. 상태가 풀린 뒤 같은 키로 다시 보낸 요청은 실행돼야 한다(ADR-0027).
+			request.setAttribute(IdempotencyFilter.NOT_STORABLE_ATTRIBUTE, Boolean.TRUE, RequestAttributes.SCOPE_REQUEST);
+		}
 		if (ex.getErrorCode().status() == HttpStatus.FORBIDDEN) {
 			logDenied(ex, request);
 		}

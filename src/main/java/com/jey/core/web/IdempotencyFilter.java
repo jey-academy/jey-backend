@@ -39,7 +39,8 @@ import org.springframework.web.util.ContentCachingResponseWrapper;
  * <p>같은 계정이 같은 키로 같은 요청을 다시 보내면 컨트롤러를 실행하지 않고 처음의 응답을 그대로 돌려준다.
  * 응답을 받지 못한 화면이 다시 보내도 일이 두 번 일어나지 않는다.
  *
- * <p>끝난 요청의 응답은 2xx와 본문이 있는 4xx를 보관한다. 서버 오류(5xx)와 "잠시 후 다시"(429)는 보관하지 않는다. 같은 키로 다시 시도할 수 있어야 한다.
+ * <p>끝난 요청의 응답은 2xx와 본문이 있는 4xx를 보관한다. 서버 오류(5xx)와 "잠시 후 다시"(429), 잠시 막은 거부({@code ErrorCode#temporaryRejection})는
+ * 보관하지 않는다. 같은 키로 다시 시도할 수 있어야 한다.
  * 보관하는 것은 상태와 본문 타입과 본문이다. 그 밖의 응답 헤더는 보관하지 않으므로 다시 돌려줄 때 빠진다.
  * 키를 확인하지 못하면(저장소에 닿지 못함) 요청을 실행하지 않는다.
  *
@@ -69,6 +70,9 @@ class IdempotencyFilter extends OncePerRequestFilter implements Ordered {
 
 	// 보관하는 응답의 크기. 응답은 요청마다 하나씩 보관 기간 내내 저장소에 남는다. 이 장치가 붙는 응답은 작은 JSON이다.
 	static final int MAX_STORED_RESPONSE_BYTES = 256 * 1024;
+
+	/** 이 요청의 응답을 보관하지 않는다는 표시. 잠시 막은 거부를 응답으로 바꾼 쪽({@link GlobalExceptionHandler})이 남긴다. */
+	static final String NOT_STORABLE_ATTRIBUTE = IdempotencyFilter.class.getName() + ".NOT_STORABLE";
 
 	private static final Logger log = LoggerFactory.getLogger(IdempotencyFilter.class);
 
@@ -174,7 +178,7 @@ class IdempotencyFilter extends OncePerRequestFilter implements Ordered {
 					body.length);
 			release(attempt, claim);
 		}
-		else if (isStorable(captured.getStatus(), body)) {
+		else if (isStorable(captured.getStatus(), body) && request.getAttribute(NOT_STORABLE_ATTRIBUTE) == null) {
 			complete(attempt, claim, new StoredResponse(captured.getStatus(), captured.getContentType(), body));
 		}
 		else {
@@ -187,6 +191,7 @@ class IdempotencyFilter extends OncePerRequestFilter implements Ordered {
 	// 서버 오류와 "잠시 후 다시"(429)는 같은 키로 다시 시도할 수 있어야 한다. 보관하면 보관 기간 내내 같은 답이 나간다.
 	// 본문 없는 거부는 여기서 본문을 보지 못한 것이다(컨테이너의 오류 경로로 넘어간 응답). 빈 응답을 보관하지 않는다.
 	// 다른 주소로 보내는 응답(3xx)은 헤더가 전부인데 헤더는 보관하지 않는다.
+	// 잠시 막은 거부는 상태 코드로는 다른 거부와 구분되지 않아 요청에 남긴 표시로 따로 본다(NOT_STORABLE_ATTRIBUTE).
 	static boolean isStorable(int status, byte[] body) {
 		if (status >= 200 && status < 300) {
 			return true;

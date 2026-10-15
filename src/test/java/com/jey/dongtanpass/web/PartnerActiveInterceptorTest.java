@@ -1,5 +1,7 @@
 package com.jey.dongtanpass.web;
 
+import java.util.UUID;
+
 import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
 import com.jey.core.auth.api.UserRole;
@@ -16,12 +18,16 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static com.jey.TestCsrf.csrfToken;
+import static com.jey.TestIdempotency.idempotencyKey;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -77,6 +83,24 @@ class PartnerActiveInterceptorTest {
 	void 없는_학원의_계정도_막힌다() throws Exception {
 		mockMvc.perform(get(AREA)).andExpect(status().isForbidden())
 			.andExpect(jsonPath("$.code").value("DONGTANPASS_PARTNER_INACTIVE"));
+	}
+
+	// 꺼진 학원의 403은 학원 상태 때문에 잠시 막은 것이라 멱등 응답으로 보관하지 않는다(ADR-0027).
+	// 학원을 켠 뒤 같은 키로 다시 보내면 실행된다. 보관하면 켠 뒤에도 보관 기간 내내 403이 다시 나간다.
+	@Test
+	@WithJeyUser(role = UserRole.PARTNER, partnerId = INACTIVE)
+	void 꺼진_학원의_403은_보관하지_않아_켠_뒤_같은_키로_다시_보내면_실행된다() throws Exception {
+		String key = UUID.randomUUID().toString();
+		mockMvc.perform(post(AREA).with(csrfToken(mockMvc)).with(idempotencyKey(key)))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PARTNER_INACTIVE"));
+
+		upsert(INACTIVE, true);
+
+		mockMvc.perform(post(AREA).with(csrfToken(mockMvc)).with(idempotencyKey(key)))
+			.andExpect(status().isOk())
+			.andExpect(content().string("done"))
+			.andExpect(header().doesNotExist("Idempotency-Replayed"));
 	}
 
 	// 학원 상태를 읽지 못하면 통과시키지 않는다. 확인하지 못한 요청이 꺼진 학원의 것일 수 있다.
