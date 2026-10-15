@@ -537,6 +537,92 @@
         "required" : [ "name" ],
         "type" : "object"
       },
+      "LedgerItemResponse" : {
+        "description" : "발급한 패스 하나. 학부모 번호는 없다",
+        "properties" : {
+          "expiresOn" : {
+            "description" : "이날(한국 날짜)까지 쓸 수 있다",
+            "format" : "date",
+            "type" : "string"
+          },
+          "id" : {
+            "description" : "패스 ID. 링크 새로 만들기와 취소에 쓴다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "issuedAt" : {
+            "description" : "발급 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "issuedOn" : {
+            "description" : "발급일(한국 날짜). 기간 조건은 이 날짜로 자른다",
+            "format" : "date",
+            "type" : "string"
+          },
+          "paidAmount" : {
+            "description" : "결제 금액(원)",
+            "type" : "number"
+          },
+          "paidOn" : {
+            "description" : "결제일",
+            "format" : "date",
+            "type" : "string"
+          },
+          "passNo" : {
+            "description" : "패스 번호",
+            "type" : "string"
+          },
+          "paymentMethod" : {
+            "description" : "결제 수단",
+            "enum" : [ "CARD", "CASH", "TRANSFER", "OTHER" ],
+            "type" : "string"
+          },
+          "state" : {
+            "description" : "오늘 기준으로 보이는 상태. EXPIRED는 쓰지 않은 채 만료일이 지난 패스",
+            "enum" : [ "ISSUED", "EXPIRED", "REDEEMED", "CANCELED" ],
+            "type" : "string"
+          },
+          "studentName" : {
+            "description" : "학생 이름",
+            "type" : "string"
+          }
+        },
+        "required" : [ "expiresOn", "id", "issuedAt", "issuedOn", "paidAmount", "paidOn", "passNo", "paymentMethod", "state", "studentName" ],
+        "type" : "object"
+      },
+      "LedgerPageResponse" : {
+        "description" : "발급 장부의 한 페이지. 최신 발급 순이다",
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/LedgerItemResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "description" : "지금 페이지. 0부터",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "size" : {
+            "description" : "한 페이지의 크기",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "totalElements" : {
+            "description" : "조건에 맞는 전체 건수",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalPages" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "items", "page", "size", "totalElements", "totalPages" ],
+        "type" : "object"
+      },
       "LoginRequest" : {
         "properties" : {
           "loginId" : {
@@ -1985,6 +2071,75 @@
       }
     },
     "/api/v1/dongtanpass/passes" : {
+      "get" : {
+        "description" : "이 학원이 발급한 패스. 최신 발급 순이다. 학부모 번호는 없다",
+        "operationId" : "ledger",
+        "parameters" : [ {
+          "description" : "이 발급일(한국 날짜)부터, 포함",
+          "in" : "query",
+          "name" : "from",
+          "required" : false,
+          "schema" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        }, {
+          "description" : "이 발급일(한국 날짜)까지, 포함. from보다 앞이면 400",
+          "in" : "query",
+          "name" : "to",
+          "required" : false,
+          "schema" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        }, {
+          "description" : "오늘 기준으로 보이는 상태. 안 주면 모두",
+          "in" : "query",
+          "name" : "status",
+          "required" : false,
+          "schema" : {
+            "enum" : [ "ISSUED", "EXPIRED", "REDEEMED", "CANCELED" ],
+            "type" : "string"
+          }
+        }, {
+          "description" : "0부터 10000까지",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "format" : "int32",
+            "maximum" : 10000,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LedgerPageResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "발급 장부",
+        "tags" : [ "pass-controller" ]
+      },
       "post" : {
         "description" : "결제를 확인한 뒤 보낸다. 링크 토큰은 이 응답에만 있다. 잃어버리면 링크를 새로 만든다",
         "operationId" : "issue",

@@ -1,12 +1,39 @@
 package com.jey.dongtanpass.domain;
 
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface PassRepository extends JpaRepository<Pass, Long> {
 
 	/** 그 학원이 발급한 패스만 찾는다. 다른 학원의 패스는 없는 것과 같다. */
 	Optional<Pass> findByIdAndPartnerId(Long id, Long partnerId);
+
+	/**
+	 * 발급 장부. 조건은 모두 선택이다(null이면 걸지 않는다).
+	 *
+	 * @param issuedFrom 이 시각부터(포함)
+	 * @param issuedBefore 이 시각 전까지(제외)
+	 * @param expiresOnOrAfter 만료일이 이날 이후(포함)
+	 * @param expiresBefore 만료일이 이날 전(제외)
+	 */
+	@Query("""
+			select p from Pass p where p.partnerId = :partnerId
+			 and (:issuedFrom is null or p.issuedAt >= :issuedFrom)
+			 and (:issuedBefore is null or p.issuedAt < :issuedBefore)
+			 and (:status is null or p.status = :status)
+			 and (:expiresOnOrAfter is null or p.expiresOn >= :expiresOnOrAfter)
+			 and (:expiresBefore is null or p.expiresOn < :expiresBefore)
+			""")
+	Page<Pass> ledger(@Param("partnerId") Long partnerId, @Param("issuedFrom") Instant issuedFrom,
+			@Param("issuedBefore") Instant issuedBefore, @Param("status") PassStatus status,
+			@Param("expiresOnOrAfter") LocalDate expiresOnOrAfter, @Param("expiresBefore") LocalDate expiresBefore,
+			Pageable pageable);
 
 }

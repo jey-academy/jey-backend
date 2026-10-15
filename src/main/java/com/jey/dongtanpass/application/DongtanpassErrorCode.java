@@ -25,7 +25,10 @@ public enum DongtanpassErrorCode implements ErrorCode {
 
 	PAID_ON_IN_FUTURE(HttpStatus.BAD_REQUEST, "결제일은 오늘보다 뒤일 수 없습니다."),
 
-	INVALID_PAID_AMOUNT(HttpStatus.BAD_REQUEST, "결제 금액은 0원보다 커야 하고 1원 단위여야 합니다.");
+	INVALID_PAID_AMOUNT(HttpStatus.BAD_REQUEST, "결제 금액은 0원보다 커야 하고 1원 단위여야 합니다."),
+
+	// 장부의 시작일이 종료일보다 뒤다. 빈 장부로 답하지 않는다(화면의 실수가 "발급 없음"으로 보이지 않게).
+	INVALID_PERIOD(HttpStatus.BAD_REQUEST, "시작일은 종료일보다 뒤일 수 없습니다.");
 
 	private final HttpStatus status;
 
