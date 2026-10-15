@@ -3,6 +3,8 @@ package com.jey.core.web;
 import com.jey.TestcontainersConfiguration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -13,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.json.JsonMapper;
 
 import static com.jey.TestCsrf.csrfToken;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,6 +47,9 @@ class GlobalExceptionHandlerTest {
 
 	@Autowired
 	MockMvc mockMvc;
+
+	@Autowired
+	JsonMapper appJsonMapper;
 
 	@Test
 	void 비즈니스_예외는_에러코드의_상태와_code로_응답한다() throws Exception {
@@ -284,6 +290,88 @@ class GlobalExceptionHandlerTest {
 
 			assertThat(body).as(each[1]).doesNotContain("SECRET").doesNotContain("Color").doesNotContain("java.");
 		}
+	}
+
+	// 요청 본문은 명세의 타입 그대로만 읽는다(ADR-0036). 타입이 다른 값과 범위를 넘는 숫자는 그 칸의 오류다.
+	// 지금까지는 대부분 다른 뜻으로 읽혔고(문자열 "1" → 1, 번호 → enum), 빈 금액은 서버 오류, 범위를 넘는 숫자는 칸 없는 요청 형식 오류였다.
+	@ParameterizedTest(name = "{0}")
+	@CsvSource(delimiter = '|', value = { "{\"id\":\"1\"}|id", "{\"id\":1.9}|id", "{\"id\":\"\"}|id",
+			"{\"page\":99999999999}|page", "{\"items\":[{\"page\":1},{\"page\":99999999999}]}|items[1].page",
+			"{\"name\":1}|name", "{\"name\":true}|name", "{\"flag\":\"true\"}|flag", "{\"flag\":1}|flag",
+			"{\"color\":1}|color", "{\"color\":\"0\"}|color", "{\"date\":20261015}|date",
+			"{\"date\":[2026,10,15]}|date", "{\"date\":\"\"}|date", "{\"fee\":\"1000\"}|fee",
+			"{\"fee\":\"\"}|fee" })
+	void 명세의_타입과_다른_본문_값은_그_칸의_오류다(String json, String field) throws Exception {
+		String body = mockMvc.perform(post("/api/v1/test-errors/loose").with(csrfToken(mockMvc))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(json))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors.length()").value(1))
+				.andExpect(jsonPath("$.errors[0].field").value(field))
+				.andExpect(jsonPath("$.errors[0].message").value("형식이 올바르지 않습니다."))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		// 보낸 값과 내부 타입 이름은 응답에 나가지 않는다.
+		assertThat(body).doesNotContain("99999999999").doesNotContain("java.").doesNotContain("Long");
+	}
+
+	// 칸 이름과 고정 문구만 나간다. 사용자가 보낸 글자는 응답에 되돌아가지 않는다(잘못된 칸에 넣은 개인정보일 수 있다).
+	@ParameterizedTest
+	@CsvSource(delimiter = '|', value = { "{\"id\":\"SECRET-1\"}|id", "{\"color\":\"SECRET\"}|color",
+			"{\"date\":\"SECRET\"}|date", "{\"fee\":\"SECRET\"}|fee", "{\"flag\":\"SECRET\"}|flag" })
+	void 타입이_틀린_칸에_보낸_글자는_응답에_싣지_않는다(String json, String field) throws Exception {
+		String body = mockMvc.perform(post("/api/v1/test-errors/loose").with(csrfToken(mockMvc))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(json))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errors[0].field").value(field))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		assertThat(body).doesNotContain("SECRET");
+	}
+
+	@Test
+	void 명세의_타입_그대로인_본문은_읽는다() throws Exception {
+		mockMvc.perform(post("/api/v1/test-errors/loose").with(csrfToken(mockMvc))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"id":7,"page":2,"name":"","flag":true,"color":"RED","date":"2026-10-15","fee":1000,
+								 "items":[{"page":1}]}
+								"""))
+				.andExpect(status().isOk());
+	}
+
+	// JSON이 아닌 본문 형식은 받지 않는다. 다른 형식(YAML)의 변환기는 엄격한 설정도, 모르는 필드 거부도 거치지 않아
+	// 명세의 타입 그대로만 읽는다는 규칙을 통째로 우회한다(ADR-0036).
+	@Test
+	void YAML_본문은_받지_않는다() throws Exception {
+		mockMvc.perform(post("/api/v1/test-errors/loose").with(csrfToken(mockMvc))
+						.contentType("application/yaml")
+						.content("id: '1'\ncolor: 1\nflag: 'true'\nunknownField: 3\n"))
+				.andExpect(status().isUnsupportedMediaType())
+				.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+	}
+
+	// 본문 형식을 막아도 API 명세의 YAML 문서는 그대로 나온다(문서는 변환기가 아니라 명세 도구가 직접 쓴다).
+	@Test
+	void API_명세의_YAML_문서는_그대로_나온다() throws Exception {
+		mockMvc.perform(get("/v3/api-docs.yaml"))
+				.andExpect(status().isOk())
+				.andExpect(content().string(containsString("openapi:")));
+	}
+
+	// 엄격하게 읽는 것은 요청 본문뿐이다. 앱 전체의 설정(저장해 둔 이벤트를 되살리는 쪽이 쓴다)은 그대로 느슨하다.
+	@Test
+	void 앱_전체의_JSON_설정은_느슨한_채다() {
+		ErrorTestController.Loose read = appJsonMapper.readValue("{\"id\":\"1\",\"date\":[2026,10,15]}",
+				ErrorTestController.Loose.class);
+
+		assertThat(read.id()).isEqualTo(1L);
 	}
 
 	// 값이 있어야 하는 칸에 null이 왔다. 어느 칸인지 알려 준다.

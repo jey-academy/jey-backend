@@ -11,6 +11,7 @@ import com.jey.core.auth.api.AnyRole;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.CommonErrorCode;
 import com.jey.core.shared.ErrorCode;
+import com.jey.core.shared.Money;
 import com.jey.core.shared.NotIdempotent;
 import com.jey.core.shared.RateLimitedException;
 import io.swagger.v3.oas.annotations.Hidden;
@@ -125,6 +126,19 @@ class ErrorTestController {
 	@NotIdempotent("예외 변환만 보는 테스트용이다")
 	@PostMapping("/typed")
 	void typed(@Valid @RequestBody Typed body) {
+	}
+
+	@NotIdempotent("예외 변환만 보는 테스트용이다")
+	@PostMapping("/loose")
+	void loose(@RequestBody Loose body) {
+	}
+
+	// 요청 본문을 명세의 타입 그대로만 읽는지 본다(ADR-0036). 칸마다 타입이 다르다.
+	record Loose(Long id, Integer page, String name, Boolean flag, Color color, LocalDate date, Money fee,
+			List<LooseItem> items) {
+	}
+
+	record LooseItem(Integer page) {
 	}
 
 	// 값의 타입이 여러 가지인 본문. 값 하나를 읽지 못했을 때 어느 칸인지 알려 주는지 본다.

@@ -31,7 +31,7 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import tools.jackson.core.JacksonException;
-import tools.jackson.databind.DatabindException;
+import tools.jackson.core.exc.InputCoercionException;
 import tools.jackson.databind.exc.MismatchedInputException;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
 import tools.jackson.databind.exc.ValueInstantiationException;
@@ -123,17 +123,22 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 			if (cause instanceof UnrecognizedPropertyException) {
 				break;
 			}
-			// 값의 모양이 그 칸의 타입과 맞지 않는다(고를 수 없는 값, 숫자 칸의 글자, 틀린 날짜, 값이 있어야 하는 칸의 null).
-			// 문법이 깨진 본문은 여기에 해당하지 않는다.
+			// 값의 모양이 그 칸의 타입과 맞지 않는다(고를 수 없는 값, 숫자 칸의 글자, 틀린 날짜, 값이 있어야 하는 칸의 null,
+			// 명세의 타입과 다른 값 — ADR-0036). 문법이 깨진 본문은 여기에 해당하지 않는다.
 			if (cause instanceof MismatchedInputException mismatch) {
 				return unreadableValue(ex, mismatch, BINDING_FAILURE_MESSAGE, headers, status, request);
+			}
+			// 숫자가 그 칸의 타입의 범위를 넘는다. 숫자를 읽는 단계의 예외라 위와 종류가 다르지만, 같은 "그 칸의 값이 틀렸다"다.
+			// 범위 안에서 상한을 넘은 값(검증 실패)과 같은 모양으로 답한다.
+			if (cause instanceof InputCoercionException outOfRange) {
+				return unreadableValue(ex, outOfRange, BINDING_FAILURE_MESSAGE, headers, status, request);
 			}
 		}
 		return super.handleHttpMessageNotReadable(ex, headers, status, request);
 	}
 
 	// 문구는 고정이다. 변환 실패 문구에는 내부 타입 이름과 보낸 값이 들어 있다(전화번호가 응답에 실리면 안 된다).
-	private ResponseEntity<Object> unreadableValue(HttpMessageNotReadableException ex, DatabindException failure,
+	private ResponseEntity<Object> unreadableValue(HttpMessageNotReadableException ex, JacksonException failure,
 			String message, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
 		String field = fieldOf(failure.getPath());
 		if (field == null) {
