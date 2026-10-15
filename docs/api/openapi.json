@@ -677,6 +677,77 @@
         "required" : [ "active", "createdAt", "id", "name", "type" ],
         "type" : "object"
       },
+      "PassIssueRequest" : {
+        "description" : "패스 발급. 결제를 확인한 뒤 보낸다. 결제 기록은 발급한 뒤 고칠 수 없다",
+        "properties" : {
+          "consentConfirmed" : {
+            "description" : "학부모에게 고지 문구를 보여 주고 동의를 받았는지. true여야 발급한다",
+            "type" : "boolean"
+          },
+          "guardianPhone" : {
+            "description" : "학부모 휴대전화 번호. 확인용 값으로만 저장되고 다시 보여 주지 않는다",
+            "type" : "string"
+          },
+          "noticeVersion" : {
+            "description" : "보여 준 고지 문구의 버전(고지 문구 API의 version). 지금 버전과 다르면 400",
+            "maxLength" : 20,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "paidAmount" : {
+            "description" : "결제 금액(원). 0보다 큰 1원 단위의 정수",
+            "type" : "number"
+          },
+          "paidOn" : {
+            "description" : "결제일(YYYY-MM-DD). 오늘(한국 날짜)보다 뒤는 안 된다",
+            "format" : "date",
+            "type" : "string"
+          },
+          "paymentMethod" : {
+            "description" : "결제 수단",
+            "enum" : [ "CARD", "CASH", "TRANSFER", "OTHER" ],
+            "type" : "string"
+          },
+          "studentName" : {
+            "description" : "학생 이름. 앞뒤 공백은 뗀다. 데스크에서 등록할 이름과 같아야 한다(띄어쓰기는 달라도 된다)",
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "consentConfirmed", "guardianPhone", "noticeVersion", "paidAmount", "paidOn", "paymentMethod", "studentName" ],
+        "type" : "object"
+      },
+      "PassIssueResponse" : {
+        "description" : "발급한 패스",
+        "properties" : {
+          "expiresOn" : {
+            "description" : "이날(한국 날짜)까지 쓸 수 있다. 발급일에 한 달을 더한 날",
+            "format" : "date",
+            "type" : "string"
+          },
+          "id" : {
+            "description" : "패스 ID. 링크 새로 만들기와 취소에 쓴다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "issuedAt" : {
+            "description" : "발급 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "linkToken" : {
+            "description" : "학부모 링크의 토큰. 이 응답에만 있고 다시 볼 수 없다. 잃어버리면 링크를 새로 만든다",
+            "type" : "string"
+          },
+          "passNo" : {
+            "description" : "패스 번호(예: DT-K7M2QX). 데스크에서 QR이 안 될 때 쓴다",
+            "type" : "string"
+          }
+        },
+        "required" : [ "expiresOn", "id", "issuedAt", "linkToken", "passNo" ],
+        "type" : "object"
+      },
       "PasswordChangeRequest" : {
         "description" : "로그인한 사람이 자기 비밀번호를 바꾼다",
         "properties" : {
@@ -1911,6 +1982,49 @@
         },
         "summary" : "연계 학원 끄기",
         "tags" : [ "partner-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/passes" : {
+      "post" : {
+        "description" : "결제를 확인한 뒤 보낸다. 링크 토큰은 이 응답에만 있다. 잃어버리면 링크를 새로 만든다",
+        "operationId" : "issue",
+        "parameters" : [ {
+          "description" : "이번 시도의 키(UUID). 같은 시도를 다시 보낼 때는 같은 키를, 값을 고쳐 새로 낼 때는 새 키를 쓴다. 같은 키의 같은 요청은 한 번만 실행되고 처음의 응답이 다시 온다(응답 헤더 Idempotency-Replayed: true). 없거나 형식이 틀리면 400(COMMON_IDEMPOTENCY_KEY_REQUIRED), 같은 키에 다른 내용이면 422(COMMON_IDEMPOTENCY_KEY_REUSED), 처음 요청이 처리 중이면 409(COMMON_IDEMPOTENCY_IN_PROGRESS). 409는 업무 규칙의 거부에도 쓰이므로 코드로 가른다. 다시 온 응답에는 상태와 본문만 있다",
+          "example" : "3f2b8c1e-5a7d-4e2f-9b1c-0d6a8e4f2c11",
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 128,
+            "minLength" : 8,
+            "pattern" : "^[A-Za-z0-9_-]{8,128}$",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PassIssueRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PassIssueResponse"
+                }
+              }
+            },
+            "description" : "Created"
+          }
+        },
+        "summary" : "패스 발급",
+        "tags" : [ "pass-controller" ]
       }
     },
     "/api/v1/guardians/{id}" : {

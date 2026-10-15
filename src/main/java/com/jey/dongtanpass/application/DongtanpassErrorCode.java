@@ -15,7 +15,17 @@ public enum DongtanpassErrorCode implements ErrorCode {
 	PARTNER_INACTIVE(HttpStatus.FORBIDDEN, "이용이 중지된 연계 학원입니다.", true),
 
 	// DB의 비교 규칙이 대소문자를 가리지 않아, 대소문자만 다른 이름도 같은 이름이다.
-	PARTNER_NAME_DUPLICATED(HttpStatus.CONFLICT, "같은 이름의 연계 학원이 이미 있습니다.");
+	PARTNER_NAME_DUPLICATED(HttpStatus.CONFLICT, "같은 이름의 연계 학원이 이미 있습니다."),
+
+	// 발급 요청의 동의 칸이 false다. 화면은 고지 문구를 보여 주고 확인을 받은 뒤에 보낸다.
+	CONSENT_NOT_CONFIRMED(HttpStatus.BAD_REQUEST, "학부모에게 고지 문구를 보여 주고 동의를 받은 뒤에 발급할 수 있습니다."),
+
+	// 화면이 예전 문구를 보여 주고 받은 동의다. 화면은 문구를 다시 받아 보여 준다.
+	NOTICE_VERSION_MISMATCH(HttpStatus.BAD_REQUEST, "고지 문구가 바뀌었습니다. 새 문구를 보여 주고 다시 동의를 받아 주세요."),
+
+	PAID_ON_IN_FUTURE(HttpStatus.BAD_REQUEST, "결제일은 오늘보다 뒤일 수 없습니다."),
+
+	INVALID_PAID_AMOUNT(HttpStatus.BAD_REQUEST, "결제 금액은 0원보다 커야 하고 1원 단위여야 합니다.");
 
 	private final HttpStatus status;
 
