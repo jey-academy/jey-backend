@@ -43,6 +43,14 @@ class AccountActivityTest {
 			.isThrownBy(() -> new AccountActivity(Kind.DISABLED, 7L, null, null, 3L, false, false));
 	}
 
+	// 만든 계정의 역할과 소속은 계정과 같은 규칙(UserRole#validateAffiliation)으로 맞아야 한다. 지점 없는 직원의 "만들었다"를 남기지 않는다.
+	@Test
+	void 만든_기록의_역할과_지점은_계정의_소속_규칙에_맞아야_한다() {
+		assertThatIllegalArgumentException().isThrownBy(() -> AccountActivity.created(7, UserRole.STAFF, null, null));
+		assertThatIllegalArgumentException().isThrownBy(() -> AccountActivity.created(7, UserRole.ADMIN, 1L, null));
+		assertThatIllegalArgumentException().isThrownBy(() -> AccountActivity.created(7, UserRole.PARTNER, 1L, 3L));
+	}
+
 	@Test
 	void 고친_계정은_고친_뒤의_역할과_지점과_무엇을_고쳤는지를_싣는다() {
 		AccountActivity moved = AccountActivity.updated(7, UserRole.STAFF, 2L, false, true);

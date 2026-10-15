@@ -34,9 +34,12 @@ public record AccountActivity(Kind kind, Long accountId, UserRole role, Long cam
 		if (campusId != null && !describesAccount) {
 			throw new IllegalArgumentException(kind + ": 지점을 실을 수 없는 종류다");
 		}
-		boolean createsPartnerAccount = kind == Kind.CREATED && role.belongsToPartner();
-		if ((partnerId != null) != createsPartnerAccount) {
-			throw new IllegalArgumentException(kind + ": 연계 학원 식별자는 연계 학원 계정을 만든 일에만, 그리고 반드시 싣는다");
+		if (kind == Kind.CREATED) {
+			// 만든 계정의 역할과 소속(지점, 연계 학원 식별자)은 계정과 같은 규칙으로 맞아야 한다. 규칙은 한 곳에 둔다.
+			role.validateAffiliation(campusId, partnerId);
+		}
+		else if (partnerId != null) {
+			throw new IllegalArgumentException(kind + ": 연계 학원 식별자는 계정을 만든 일에만 싣는다(소속은 바뀌지 않는다)");
 		}
 		if (kind == Kind.UPDATED != (nameChanged || affiliationChanged)) {
 			throw new IllegalArgumentException(kind + ": 무엇을 고쳤는지는 고치기에만, 그리고 반드시 싣는다");
