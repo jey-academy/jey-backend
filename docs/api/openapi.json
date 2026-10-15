@@ -2182,6 +2182,46 @@
         "tags" : [ "pass-controller" ]
       }
     },
+    "/api/v1/dongtanpass/passes/export" : {
+      "get" : {
+        "description" : "장부와 같은 학원·기간 조건이다(상태로 거르지 않는다). UTF-8에 BOM이 붙어 있다. 수식으로 읽힐 칸(=, +, -, @로 시작)은 앞에 '를 붙인다",
+        "operationId" : "export",
+        "parameters" : [ {
+          "description" : "이 발급일(한국 날짜)부터, 포함",
+          "in" : "query",
+          "name" : "from",
+          "required" : false,
+          "schema" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        }, {
+          "description" : "이 발급일(한국 날짜)까지, 포함. from보다 앞이면 400",
+          "in" : "query",
+          "name" : "to",
+          "required" : false,
+          "schema" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "text/csv" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "CSV 파일"
+          }
+        },
+        "summary" : "발급 장부 CSV",
+        "tags" : [ "pass-controller" ]
+      }
+    },
     "/api/v1/guardians/{id}" : {
       "put" : {
         "operationId" : "update_1",

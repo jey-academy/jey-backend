@@ -10,6 +10,7 @@ import com.jey.dongtanpass.domain.PassState;
 import com.jey.dongtanpass.domain.PassStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +43,20 @@ public class PassLedger {
 	 */
 	@Transactional(readOnly = true)
 	public Page<LedgerRow> page(long partnerId, LocalDate from, LocalDate to, PassState state, int page, int size) {
+		return rows(partnerId, from, to, state, PageRequest.of(page, size, NEWEST_FIRST));
+	}
+
+	/**
+	 * 장부를 CSV 파일로 준다(UTF-8 BOM). 상태로 거르지 않고 나누지 않는다. 학원당 발급은 수백 건 규모다.
+	 *
+	 * @throws BusinessException 시작일이 종료일보다 뒤일 때
+	 */
+	@Transactional(readOnly = true)
+	public byte[] csv(long partnerId, LocalDate from, LocalDate to) {
+		return LedgerCsv.write(rows(partnerId, from, to, null, Pageable.unpaged(NEWEST_FIRST)).getContent());
+	}
+
+	private Page<LedgerRow> rows(long partnerId, LocalDate from, LocalDate to, PassState state, Pageable pageable) {
 		if (from != null && to != null && from.isAfter(to)) {
 			throw new BusinessException(DongtanpassErrorCode.INVALID_PERIOD);
 		}
@@ -49,7 +64,7 @@ public class PassLedger {
 		Filter filter = Filter.of(state, today);
 		return passes
 			.ledger(partnerId, startOf(from), startOf(to == null ? null : to.plusDays(1)), filter.status(),
-					filter.expiresOnOrAfter(), filter.expiresBefore(), PageRequest.of(page, size, NEWEST_FIRST))
+					filter.expiresOnOrAfter(), filter.expiresBefore(), pageable)
 			.map(pass -> LedgerRow.of(pass, today, clock.getZone()));
 	}
 

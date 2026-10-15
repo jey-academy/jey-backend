@@ -1,5 +1,6 @@
 package com.jey.dongtanpass.web;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 
 import com.jey.core.auth.api.AllowedRoles;
@@ -13,10 +14,17 @@ import com.jey.dongtanpass.application.PassService;
 import com.jey.dongtanpass.domain.PassState;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,6 +42,8 @@ import org.springframework.web.bind.annotation.RestController;
 class PassController {
 
 	static final int MAX_PAGE_SIZE = 100;
+
+	private static final MediaType CSV = new MediaType("text", "csv", StandardCharsets.UTF_8);
 
 	private final PassService passService;
 
@@ -69,6 +79,25 @@ class PassController {
 					PageLimits.MAX_PAGE) int page,
 			@RequestParam(defaultValue = "20") @Min(1) @Max(MAX_PAGE_SIZE) int size) {
 		return LedgerPageResponse.from(passLedger.page(partnerIdOf(user), from, to, status, page, size));
+	}
+
+	@Operation(summary = "발급 장부 CSV",
+			description = "장부와 같은 학원·기간 조건이다(상태로 거르지 않는다). UTF-8에 BOM이 붙어 있다. 수식으로 읽힐 칸(=, +, -, @로 시작)은 앞에 '를 붙인다")
+	// 파일 바이트다. 적지 않으면 명세에 base64 글자(format: byte)로 나간다.
+	@ApiResponse(responseCode = "200", description = "CSV 파일",
+			content = @Content(mediaType = "text/csv", schema = @Schema(type = "string", format = "binary")))
+	@GetMapping(value = "/passes/export", produces = "text/csv")
+	ResponseEntity<byte[]> export(@AuthenticationPrincipal AuthenticatedUser user,
+			@Parameter(description = "이 발급일(한국 날짜)부터, 포함") @RequestParam(required = false) LocalDate from,
+			@Parameter(description = "이 발급일(한국 날짜)까지, 포함. from보다 앞이면 400") @RequestParam(
+					required = false) LocalDate to) {
+		byte[] file = passLedger.csv(partnerIdOf(user), from, to);
+		// 파일 이름은 영문과 숫자만 쓴다(브라우저마다 한글 파일 이름을 다르게 다룬다).
+		ContentDisposition attachment = ContentDisposition.attachment().filename("dongtanpass-passes.csv").build();
+		return ResponseEntity.ok()
+			.contentType(CSV)
+			.header(HttpHeaders.CONTENT_DISPOSITION, attachment.toString())
+			.body(file);
 	}
 
 	// 연계 학원 계정에는 학원 식별자가 있다(세션 확인이 그 조합만 통과시킨다). 없으면 설정이 어긋난 것이다.
