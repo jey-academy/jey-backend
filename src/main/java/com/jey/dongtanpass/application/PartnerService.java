@@ -4,6 +4,9 @@ import java.util.List;
 
 import com.jey.core.audit.api.AuditEntry;
 import com.jey.core.audit.api.AuditLog;
+import com.jey.core.auth.api.NewPartnerAccount;
+import com.jey.core.auth.api.PartnerAccount;
+import com.jey.core.auth.api.PartnerAccounts;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.UniqueKeys;
 import com.jey.dongtanpass.api.PartnerRefs;
@@ -14,7 +17,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 연계 학원을 만들고 보여 준다 (ADR-0034). 관리자만 쓴다.
+ * 연계 학원과 그 계정을 만들고 보여 준다 (ADR-0034). 관리자만 쓴다.
+ *
+ * <p>계정은 기초 모듈이 만든다({@link PartnerAccounts}). 그 학원이 있고 켜져 있는지는 여기서 확인한다(기초 모듈은 이 모듈을 모른다).
  */
 @Service
 public class PartnerService {
@@ -28,10 +33,14 @@ public class PartnerService {
 
 	private final AuditLog auditLog;
 
-	PartnerService(PartnerRepository partners, TransactionTemplate transaction, AuditLog auditLog) {
+	private final PartnerAccounts partnerAccounts;
+
+	PartnerService(PartnerRepository partners, TransactionTemplate transaction, AuditLog auditLog,
+			PartnerAccounts partnerAccounts) {
 		this.partners = partners;
 		this.transaction = transaction;
 		this.auditLog = auditLog;
+		this.partnerAccounts = partnerAccounts;
 	}
 
 	/**
@@ -58,6 +67,22 @@ public class PartnerService {
 			}
 			throw ex;
 		}
+	}
+
+	/**
+	 * 그 학원의 공용 계정을 만든다. 계정을 만드는 일은 트랜잭션 밖에서 해야 하므로(기초 모듈의 규칙) 학원을 잠그지 않고 읽는다.
+	 * 확인한 직후에 학원이 꺼지면 계정이 차단되지 않은 채 남을 수 있다. 그 계정은 패스 기능을 쓰지 못하고(끈 학원은 요청마다 막힌다),
+	 * 끄기를 다시 부르면 차단된다.
+	 *
+	 * @throws BusinessException 학원이 없거나 꺼져 있을 때, 아이디가 이미 있거나 비밀번호가 규칙에 맞지 않을 때
+	 */
+	public PartnerAccount createAccount(long partnerId, String loginId, String name, String password) {
+		Partner partner = partners.findById(partnerId)
+			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PARTNER_NOT_FOUND));
+		if (!partner.isActive()) {
+			throw new BusinessException(DongtanpassErrorCode.PARTNER_INACTIVE_FOR_ACCOUNT);
+		}
+		return partnerAccounts.create(new NewPartnerAccount(partnerId, loginId, name, password));
 	}
 
 	/** 만든 순서로 모두 준다. 연계 학원은 몇 곳뿐이라 나누지 않는다. */

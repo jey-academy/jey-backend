@@ -564,6 +564,62 @@
         "required" : [ "campusId", "id", "loginId", "name", "role" ],
         "type" : "object"
       },
+      "PartnerAccountCreateRequest" : {
+        "description" : "연계 학원의 계정 만들기. 그 학원의 공용 계정이다. 소속은 만든 뒤 바꿀 수 없다",
+        "properties" : {
+          "loginId" : {
+            "description" : "로그인 아이디. 영문 소문자, 숫자, 점, 밑줄, 하이픈으로 3~50자이고 첫 글자는 영문이나 숫자다. 만든 뒤에는 바꿀 수 없다",
+            "example" : "sunshine.math",
+            "minLength" : 1,
+            "pattern" : "[a-z0-9][a-z0-9._-]{2,49}",
+            "type" : "string"
+          },
+          "name" : {
+            "description" : "화면에 보일 이름",
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "password" : {
+            "description" : "처음 비밀번호. 10자 이상 72자 이하이고(한글은 24자까지) 아이디와 달라야 한다. 연계 학원이 로그인한 뒤 직접 바꾼다",
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "loginId", "name", "password" ],
+        "type" : "object"
+      },
+      "PartnerAccountResponse" : {
+        "description" : "만든 연계 학원 계정. 비밀번호는 어떤 응답에도 없다",
+        "properties" : {
+          "createdAt" : {
+            "description" : "계정을 만든 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "id" : {
+            "description" : "계정 ID. 계정 관리(/api/v1/accounts/{id})에서 쓴다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "loginId" : {
+            "description" : "저장한 로그인 아이디(소문자로 맞춘 것)",
+            "type" : "string"
+          },
+          "name" : {
+            "description" : "화면에 보일 이름",
+            "type" : "string"
+          },
+          "partnerId" : {
+            "description" : "소속 연계 학원",
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "createdAt", "id", "loginId", "name", "partnerId" ],
+        "type" : "object"
+      },
       "PartnerCreateRequest" : {
         "description" : "연계 학원 만들기. 켜진 학원으로 만든다",
         "properties" : {
@@ -1722,6 +1778,45 @@
           }
         },
         "summary" : "연계 학원 만들기",
+        "tags" : [ "partner-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/partners/{id}/accounts" : {
+      "post" : {
+        "description" : "그 학원의 공용 계정을 만든다. 만든 뒤의 이름 고치기, 차단과 풀기, 비밀번호 다시 정하기는 계정 관리(/api/v1/accounts)에서 한다. 소속은 바꿀 수 없다",
+        "operationId" : "createPartnerAccount",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PartnerAccountCreateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PartnerAccountResponse"
+                }
+              }
+            },
+            "description" : "Created"
+          }
+        },
+        "summary" : "연계 학원의 계정 만들기",
         "tags" : [ "partner-controller" ]
       }
     },

@@ -4,6 +4,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
+import com.jey.core.auth.api.AccountRules;
 import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.shared.BaseEntity;
@@ -25,11 +26,11 @@ public class User extends BaseEntity {
 
 	private static final int MAX_LOGIN_ID_LENGTH = 50;
 
-	/** 요청을 받는 쪽의 검증도 이 값을 쓴다. 두 곳에 따로 적으면 한쪽만 바뀌었을 때 검증을 통과한 값이 여기서 예외가 된다. */
-	public static final int MAX_NAME_LENGTH = 50;
+	/** 요청을 받는 쪽의 검증도 같은 값({@link AccountRules})을 쓴다. */
+	public static final int MAX_NAME_LENGTH = AccountRules.MAX_NAME_LENGTH;
 
-	/** 영문 소문자, 숫자, 점, 밑줄, 하이픈만. 3~50자, 첫 글자는 영문이나 숫자. 요청을 받는 쪽의 검증도 이 값을 쓴다. */
-	public static final String LOGIN_ID_PATTERN = "[a-z0-9][a-z0-9._-]{2,49}";
+	/** 영문 소문자, 숫자, 점, 밑줄, 하이픈만. 3~50자, 첫 글자는 영문이나 숫자. 요청을 받는 쪽의 검증도 같은 값({@link AccountRules})을 쓴다. */
+	public static final String LOGIN_ID_PATTERN = AccountRules.LOGIN_ID_PATTERN;
 
 	private static final Pattern LOGIN_ID = Pattern.compile(LOGIN_ID_PATTERN);
 
