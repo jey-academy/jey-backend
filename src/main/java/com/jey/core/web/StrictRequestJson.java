@@ -1,5 +1,9 @@
 package com.jey.core.web;
 
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.converter.HttpMessageConverters;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
@@ -28,10 +32,21 @@ import tools.jackson.databind.type.LogicalType;
  * <p>막는 것: 숫자 칸의 문자열·소수·빈 문자열, 글자 칸의 숫자·참거짓, 참거짓 칸의 문자열·숫자, enum 칸의 번호·빈 문자열,
  * 날짜·시각 칸의 숫자·배열·빈 문자열, 금액 칸의 문자열·빈 문자열. 막지 않는 것: {@code null}, 글자 칸의 빈 문자열.
  * 막힌 값은 그 칸의 경로가 붙은 예외가 되어 그 칸의 오류로 답해진다({@code GlobalExceptionHandler}).
+ *
+ * <p>HTTP 메시지 변환기의 JSON 변환기를 이 설정으로 바꾼다. 요청 본문을 읽는 곳과 응답을 쓰는 곳이 모두 이 변환기다.
  */
-final class StrictRequestJson {
+@Configuration(proxyBeanMethods = false)
+class StrictRequestJson implements WebMvcConfigurer {
 
-	private StrictRequestJson() {
+	private final JsonMapper app;
+
+	StrictRequestJson(JsonMapper app) {
+		this.app = app;
+	}
+
+	@Override
+	public void configureMessageConverters(HttpMessageConverters.ServerBuilder builder) {
+		builder.withJsonConverter(new JacksonJsonHttpMessageConverter(strict(app)));
 	}
 
 	static JsonMapper strict(JsonMapper app) {

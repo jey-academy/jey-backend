@@ -3,6 +3,8 @@ package com.jey.core.web;
 import com.jey.TestcontainersConfiguration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -13,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.json.JsonMapper;
 
 import static com.jey.TestCsrf.csrfToken;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,6 +47,9 @@ class GlobalExceptionHandlerTest {
 
 	@Autowired
 	MockMvc mockMvc;
+
+	@Autowired
+	JsonMapper appJsonMapper;
 
 	@Test
 	void 비즈니스_예외는_에러코드의_상태와_code로_응답한다() throws Exception {
@@ -284,6 +290,52 @@ class GlobalExceptionHandlerTest {
 
 			assertThat(body).as(each[1]).doesNotContain("SECRET").doesNotContain("Color").doesNotContain("java.");
 		}
+	}
+
+	// 요청 본문은 명세의 타입 그대로만 읽는다(ADR-0036). 타입이 다른 값과 범위를 넘는 숫자는 그 칸의 오류다.
+	// 지금까지는 대부분 다른 뜻으로 읽혔고(문자열 "1" → 1, 번호 → enum), 빈 금액은 서버 오류, 범위를 넘는 숫자는 칸 없는 요청 형식 오류였다.
+	@ParameterizedTest(name = "{0}")
+	@CsvSource(delimiter = '|', value = { "{\"id\":\"1\"}|id", "{\"id\":1.9}|id", "{\"id\":\"\"}|id",
+			"{\"page\":99999999999}|page", "{\"items\":[{\"page\":1},{\"page\":99999999999}]}|items[1].page",
+			"{\"name\":1}|name", "{\"name\":true}|name", "{\"flag\":\"true\"}|flag", "{\"flag\":1}|flag",
+			"{\"color\":1}|color", "{\"color\":\"0\"}|color", "{\"date\":20261015}|date",
+			"{\"date\":[2026,10,15]}|date", "{\"date\":\"\"}|date", "{\"fee\":\"1000\"}|fee",
+			"{\"fee\":\"\"}|fee" })
+	void 명세의_타입과_다른_본문_값은_그_칸의_오류다(String json, String field) throws Exception {
+		String body = mockMvc.perform(post("/api/v1/test-errors/loose").with(csrfToken(mockMvc))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(json))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors.length()").value(1))
+				.andExpect(jsonPath("$.errors[0].field").value(field))
+				.andExpect(jsonPath("$.errors[0].message").value("형식이 올바르지 않습니다."))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		// 보낸 값과 내부 타입 이름은 응답에 나가지 않는다.
+		assertThat(body).doesNotContain("99999999999").doesNotContain("java.").doesNotContain("Long");
+	}
+
+	@Test
+	void 명세의_타입_그대로인_본문은_읽는다() throws Exception {
+		mockMvc.perform(post("/api/v1/test-errors/loose").with(csrfToken(mockMvc))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"id":7,"page":2,"name":"","flag":true,"color":"RED","date":"2026-10-15","fee":1000,
+								 "items":[{"page":1}]}
+								"""))
+				.andExpect(status().isOk());
+	}
+
+	// 엄격하게 읽는 것은 요청 본문뿐이다. 앱 전체의 설정(저장해 둔 이벤트를 되살리는 쪽이 쓴다)은 그대로 느슨하다.
+	@Test
+	void 앱_전체의_JSON_설정은_느슨한_채다() {
+		ErrorTestController.Loose read = appJsonMapper.readValue("{\"id\":\"1\",\"date\":[2026,10,15]}",
+				ErrorTestController.Loose.class);
+
+		assertThat(read.id()).isEqualTo(1L);
 	}
 
 	// 값이 있어야 하는 칸에 null이 왔다. 어느 칸인지 알려 준다.
