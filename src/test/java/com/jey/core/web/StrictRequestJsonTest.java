@@ -37,7 +37,11 @@ class StrictRequestJsonTest {
 	}
 
 	record Loose(Long id, Integer page, String name, Boolean flag, Color color, LocalDate date, Money fee,
-			List<Item> items, YearMonth month, Instant at) {
+			List<Item> items, YearMonth month, Instant at, BigDecimal rate) {
+	}
+
+	// 원시 타입 칸. 빠지면 읽기가 실패하므로(Jackson 3 기본) 다른 칸과 따로 둔다.
+	record Primitive(int count) {
 	}
 
 	@RejectUnknownFields
@@ -68,7 +72,9 @@ class StrictRequestJsonTest {
 			// 시각 칸: 숫자(초·밀리초로 해석), 소수, 숫자 문자열, 배열
 			"{\"at\":1760000000}|at", "{\"at\":1.5}|at", "{\"at\":\"1760000000\"}|at", "{\"at\":[2026,10,15]}|at",
 			// 금액 칸: 문자열, 빈 문자열
-			"{\"fee\":\"1000\"}|fee", "{\"fee\":\"\"}|fee" })
+			"{\"fee\":\"1000\"}|fee", "{\"fee\":\"\"}|fee",
+			// 비율 칸(금액이 아닌 BigDecimal — 읽는 길이 다르다): 문자열, 빈 문자열
+			"{\"rate\":\"0.05\"}|rate", "{\"rate\":\"\"}|rate" })
 	void 명세의_타입과_다른_값은_그_칸에서_읽기가_실패한다(String json, String field) {
 		assertThatThrownBy(() -> STRICT.readValue(json, Loose.class)).isInstanceOfSatisfying(JacksonException.class,
 				ex -> assertThat(fieldOf(ex)).isEqualTo(field));
@@ -78,11 +84,24 @@ class StrictRequestJsonTest {
 	void 명세의_타입_그대로인_값은_읽는다() {
 		Loose read = STRICT.readValue("""
 				{"id":7,"page":2,"name":"햇살","flag":true,"color":"GREEN","date":"2026-10-15","fee":1000,
-				 "items":[{"page":1}],"month":"2026-10","at":"2026-10-15T00:00:00Z"}
+				 "items":[{"page":1}],"month":"2026-10","at":"2026-10-15T00:00:00Z","rate":0.05}
 				""", Loose.class);
 
 		assertThat(read).isEqualTo(new Loose(7L, 2, "햇살", true, Color.GREEN, LocalDate.of(2026, 10, 15),
-				Money.of(1000), List.of(new Item(1)), YearMonth.of(2026, 10), Instant.parse("2026-10-15T00:00:00Z")));
+				Money.of(1000), List.of(new Item(1)), YearMonth.of(2026, 10), Instant.parse("2026-10-15T00:00:00Z"),
+				new BigDecimal("0.05")));
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "{\"count\":\"1\"}", "{\"count\":1.5}", "{\"count\":true}", "{\"count\":\"\"}" })
+	void 원시_타입_칸도_명세의_타입과_다른_값은_실패한다(String json) {
+		assertThatThrownBy(() -> STRICT.readValue(json, Primitive.class)).isInstanceOfSatisfying(JacksonException.class,
+				ex -> assertThat(fieldOf(ex)).isEqualTo("count"));
+	}
+
+	@Test
+	void 원시_타입_칸의_명세_그대로인_값은_읽는다() {
+		assertThat(STRICT.readValue("{\"count\":3}", Primitive.class).count()).isEqualTo(3);
 	}
 
 	// 값 없음과 빈 글자는 막지 않는다. 비울 수 없는 칸은 검증(@NotBlank)이 맡는다. 금액의 소수는 금액 규칙이 본다.

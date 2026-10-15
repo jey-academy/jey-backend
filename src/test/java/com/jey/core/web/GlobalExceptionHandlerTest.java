@@ -318,6 +318,23 @@ class GlobalExceptionHandlerTest {
 		assertThat(body).doesNotContain("99999999999").doesNotContain("java.").doesNotContain("Long");
 	}
 
+	// 칸 이름과 고정 문구만 나간다. 사용자가 보낸 글자는 응답에 되돌아가지 않는다(잘못된 칸에 넣은 개인정보일 수 있다).
+	@ParameterizedTest
+	@CsvSource(delimiter = '|', value = { "{\"id\":\"SECRET-1\"}|id", "{\"color\":\"SECRET\"}|color",
+			"{\"date\":\"SECRET\"}|date", "{\"fee\":\"SECRET\"}|fee", "{\"flag\":\"SECRET\"}|flag" })
+	void 타입이_틀린_칸에_보낸_글자는_응답에_싣지_않는다(String json, String field) throws Exception {
+		String body = mockMvc.perform(post("/api/v1/test-errors/loose").with(csrfToken(mockMvc))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(json))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errors[0].field").value(field))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		assertThat(body).doesNotContain("SECRET");
+	}
+
 	@Test
 	void 명세의_타입_그대로인_본문은_읽는다() throws Exception {
 		mockMvc.perform(post("/api/v1/test-errors/loose").with(csrfToken(mockMvc))
