@@ -53,6 +53,17 @@ class HolderRelinkPropertiesTest {
 			.hasMessageContaining("max-failures-per-client");
 	}
 
+	// 30일 상한은 한도(RateLimit)를 만들 때 걸린다. 요청마다 만들면 서버는 뜨고 다시 받기만 500이 된다. 뜰 때 막는다.
+	@Test
+	void 한도로_쓸_수_없는_구간이면_서버가_뜨지_않는다() {
+		assertThatThrownBy(() -> new HolderRelinkProperties(10, 60, Duration.ofDays(31)))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("jey.dongtanpass.holder-relink");
+		runner.withPropertyValues(ALL)
+			.withPropertyValues("jey.dongtanpass.holder-relink.window=31d")
+			.run(context -> assertThat(context).hasFailed());
+	}
+
 	@Test
 	void 설정_키_이름대로_값을_읽는다() {
 		runner.withPropertyValues(ALL).run(context -> {

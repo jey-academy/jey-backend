@@ -33,14 +33,26 @@ record HolderRelinkProperties(int maxFailuresPerPhoneAndClient, int maxFailuresP
 			throw new IllegalArgumentException(
 					PREFIX + "max-failures-per-client는 1 이상이어야 한다: " + maxFailuresPerClient);
 		}
+		// 한도가 받지 않는 값(구간 30일 초과 등)이면 뜰 때 막는다. 요청마다 만들다 실패하면 서버는 뜨고 다시 받기만 500이 된다.
+		try {
+			limit(DongtanpassRateLimit.HOLDER_RELINK, maxFailuresPerPhoneAndClient, window);
+			limit(DongtanpassRateLimit.HOLDER_RELINK_CLIENT, maxFailuresPerClient, window);
+		}
+		catch (IllegalArgumentException ex) {
+			throw new IllegalArgumentException(PREFIX + "* 값으로 한도를 만들 수 없다: " + ex.getMessage(), ex);
+		}
 	}
 
 	RateLimit perPhoneAndClient() {
-		return RateLimit.of(DongtanpassRateLimit.HOLDER_RELINK, maxFailuresPerPhoneAndClient, window);
+		return limit(DongtanpassRateLimit.HOLDER_RELINK, maxFailuresPerPhoneAndClient, window);
 	}
 
 	RateLimit perClient() {
-		return RateLimit.of(DongtanpassRateLimit.HOLDER_RELINK_CLIENT, maxFailuresPerClient, window);
+		return limit(DongtanpassRateLimit.HOLDER_RELINK_CLIENT, maxFailuresPerClient, window);
+	}
+
+	private static RateLimit limit(DongtanpassRateLimit name, int max, Duration window) {
+		return RateLimit.of(name, max, window);
 	}
 
 }
