@@ -28,6 +28,9 @@ public class PassBenefits {
 	}
 
 	/**
+	 * 할인 유형이 꺼져 있어도 그대로 돌려준다(학부모 화면은 발급 때 안내한 혜택을 보여 준다).
+	 * 할인을 새로 적용하는 자리(사용 처리)는 그 할인 유형이 켜져 있는지 따로 확인한다.
+	 *
 	 * @throws IllegalStateException 받는 지점이 한 곳이 아니거나, 그 지점이나 할인 유형이 없을 때(설정 오류)
 	 */
 	public PassBenefit current() {
