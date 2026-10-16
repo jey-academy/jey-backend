@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 
 import com.jey.TestcontainersConfiguration;
 import com.jey.core.shared.Money;
@@ -93,10 +94,13 @@ class HolderQrApiTest {
 		JsonNode response = json(qr(link.raw()).andExpect(status().isOk()));
 		Instant expiresAt = Instant.parse(response.get("expiresAt").asString());
 
-		assertThat(expiresAt).isBetween(before.plus(PassQrCodes.TTL).minusSeconds(1),
+		assertThat(expiresAt).isBetween(before.truncatedTo(ChronoUnit.SECONDS).plus(PassQrCodes.TTL),
 				clock.instant().plus(PassQrCodes.TTL));
 		assertThat(passQrCodes.verify(response.get("qrToken").asString(), clock.instant()))
-			.hasValueSatisfying(verified -> assertThat(verified.passId()).isEqualTo(pass.getId()));
+			.hasValueSatisfying(verified -> {
+				assertThat(verified.passId()).isEqualTo(pass.getId());
+				assertThat(verified.expiresAt()).isEqualTo(expiresAt);
+			});
 	}
 
 	@Test

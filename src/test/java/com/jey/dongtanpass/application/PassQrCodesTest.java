@@ -64,6 +64,19 @@ class PassQrCodesTest {
 		assertThat(codes.verify(codes.issue(7L, NOW).token(), NOW.plusSeconds(60).minusNanos(1))).isPresent();
 	}
 
+	// 운영 시계는 초 아래 자리가 있다. 화면에 알린 만료 시각과 토큰이 무효가 되는 시각이 같아야 한다.
+	@Test
+	void 초_아래_자리가_있는_시각에_만들어도_알린_만료_시각과_토큰의_만료_시각이_같다() {
+		Instant now = NOW.plusMillis(700);
+		QrCode code = codes.issue(7L, now);
+
+		assertThat(code.expiresAt()).isEqualTo(NOW.plus(PassQrCodes.TTL));
+		assertThat(codes.verify(code.token(), now)).hasValueSatisfying(
+				verified -> assertThat(verified.expiresAt()).isEqualTo(code.expiresAt()));
+		assertThat(codes.verify(code.token(), code.expiresAt().minusNanos(1))).isPresent();
+		assertThat(codes.verify(code.token(), code.expiresAt())).isEmpty();
+	}
+
 	@Test
 	void 서명이나_본문을_한_글자라도_바꾸면_무효다() {
 		String token = codes.issue(7L, NOW).token();

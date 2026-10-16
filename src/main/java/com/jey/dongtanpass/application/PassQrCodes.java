@@ -7,6 +7,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.HexFormat;
@@ -32,7 +33,7 @@ import org.springframework.stereotype.Component;
 @EnableConfigurationProperties(QrSigningProperties.class)
 public class PassQrCodes {
 
-	/** 토큰의 수명. 만료 시각 정각부터 무효다. 화면은 그 전에 새로 받는다. */
+	/** 토큰의 수명. 만드는 시각을 초로 내린 데서 센다(그래서 실제로는 59초 넘게 60초 이하). 만료 시각 정각부터 무효다. 화면은 그 전에 새로 받는다. */
 	public static final Duration TTL = Duration.ofSeconds(60);
 
 	private static final String HMAC = "HmacSHA256";
@@ -59,9 +60,12 @@ public class PassQrCodes {
 			.forEach(version -> keys.put(version, new SecretKeySpec(properties.keyBytes(version), HMAC)));
 	}
 
-	/** 그 패스의 토큰을 지금 버전의 키로 만든다. 쓸 수 있는 패스인지는 부르는 쪽이 먼저 본다. */
+	/**
+	 * 그 패스의 토큰을 지금 버전의 키로 만든다. 쓸 수 있는 패스인지는 부르는 쪽이 먼저 본다.
+	 * 만료 시각은 초 단위다(지금을 초로 내린 뒤 수명을 더한다). 본문에 적는 값과 돌려주는 값이 같다.
+	 */
 	public QrCode issue(long passId, Instant now) {
-		Instant expiresAt = now.plus(TTL);
+		Instant expiresAt = now.truncatedTo(ChronoUnit.SECONDS).plus(TTL);
 		byte[] tokenId = new byte[TOKEN_ID_BYTES];
 		random.nextBytes(tokenId);
 		byte[] body = ByteBuffer.allocate(BODY_BYTES)
