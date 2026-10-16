@@ -1,5 +1,6 @@
 package com.jey.dongtanpass.domain;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -168,6 +169,21 @@ class PassTest {
 				ISSUED_AT, SEOUL, ISSUED_ON, Money.of(150000), null));
 		assertThatIllegalArgumentException().isThrownBy(() -> Pass.issue(1L, "DT-ABC234", HASH, "김하윤", "idx",
 				ISSUED_AT, null, ISSUED_ON, Money.of(150000), PaymentMethod.CARD));
+	}
+
+	// 서비스가 먼저 업무 오류(400)로 거르지만, 다른 길로 만들어도 저장할 수 없는 금액을 받지 않는다.
+	@ParameterizedTest
+	@ValueSource(strings = { "0", "0.5", "150000.1" })
+	void 결제_금액이_0원이거나_1원_단위가_아니면_만들지_않는다(String amount) {
+		assertThatIllegalArgumentException().isThrownBy(() -> Pass.issue(1L, "DT-ABC234", HASH, "김하윤", "idx",
+				ISSUED_AT, SEOUL, ISSUED_ON, Money.of(new BigDecimal(amount)), PaymentMethod.CARD));
+	}
+
+	// 상태 예외는 "그 상태라서 할 수 없다"는 뜻이다. 발급 상태는 무엇이든 할 수 있으므로 그 상태로는 만들 수 없다.
+	@Test
+	void 발급_상태로는_상태_예외를_만들_수_없다() {
+		assertThatIllegalArgumentException().isThrownBy(() -> new PassStatusException(PassStatus.ISSUED));
+		assertThat(new PassStatusException(PassStatus.CANCELED).status()).isEqualTo(PassStatus.CANCELED);
 	}
 
 	@Test

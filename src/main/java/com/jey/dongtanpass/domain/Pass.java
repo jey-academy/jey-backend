@@ -95,13 +95,14 @@ public class Pass extends BaseEntity {
 	}
 
 	/**
-	 * 발급한 패스를 만든다. 결제일과 금액이 업무 규칙에 맞는지(미래 날짜, 0원)는 부르는 쪽이 먼저 본다.
+	 * 발급한 패스를 만든다. 결제일과 금액이 업무 규칙에 맞는지(미래 날짜, 0원)는 부르는 쪽이 먼저 보고 업무 오류로 답한다.
+	 * 여기서는 저장할 수 없는 금액(0원, 1원 미만)을 다시 막는다(다른 길로 만들어도 DB가 조용히 반올림하지 않게).
 	 *
 	 * @param studentName 앞뒤 공백만 떼고 저장한다(가운데 띄어쓰기는 그대로. 비교는 사용 처리 때 따로 정리해서 한다)
 	 * @param guardianPhoneIndex 학부모 번호의 전체 번호 색인
 	 * @param zone 발급일을 정하는 시간대. 발급일은 발급 시각을 이 시간대의 날짜로 바꾼 것이고 만료일을 정한다
 	 * (발급일을 따로 받지 않는다. 시계를 두 번 읽으면 자정을 사이에 두고 둘이 어긋난다)
-	 * @throws IllegalArgumentException 빈 값, 형식에 맞지 않는 패스 번호·링크 해시, 비었거나 긴 이름
+	 * @throws IllegalArgumentException 빈 값, 형식에 맞지 않는 패스 번호·링크 해시, 비었거나 긴 이름, 0원이거나 1원 단위가 아닌 금액
 	 */
 	public static Pass issue(long partnerId, String passNo, String linkTokenHash, String studentName,
 			String guardianPhoneIndex, Instant issuedAt, ZoneId zone, LocalDate paidOn, Money paidAmount,
@@ -115,6 +116,9 @@ public class Pass extends BaseEntity {
 		}
 		if (issuedAt == null || zone == null || paidOn == null || paidAmount == null || paymentMethod == null) {
 			throw new IllegalArgumentException("발급 시각, 시간대, 결제일, 결제 금액, 결제 수단은 비울 수 없다");
+		}
+		if (paidAmount.isZero() || !paidAmount.isWholeWon()) {
+			throw new IllegalArgumentException("paidAmount는 0원보다 크고 1원 단위여야 한다");
 		}
 		return new Pass(partnerId, passNo, linkTokenHash, validName(studentName), guardianPhoneIndex, issuedAt,
 				expiryOf(LocalDate.ofInstant(issuedAt, zone)), paidOn, paidAmount, paymentMethod);
