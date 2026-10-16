@@ -54,9 +54,12 @@ public class HolderPassService {
 		Partner partner = partners.findById(pass.getPartnerId())
 			.orElseThrow(() -> new IllegalStateException("패스의 연계 학원이 없다: passId=" + pass.getId()));
 		PassBenefit benefit = passBenefits.current();
+		// 상태와 남은 일수가 같은 날을 보게 오늘을 한 번만 읽는다.
+		LocalDate today = LocalDate.now(clock);
 		return new HolderPassView(pass.getPassNo(), partner.getName(), MaskedName.of(pass.getStudentName()),
-				pass.getExpiresOn(), pass.stateOn(LocalDate.now(clock)), benefit.discountRate(), benefit.campusName(),
-				ConsentNotice.CURRENT.version(), ConsentNotice.CURRENT.text());
+				pass.issuedOn(clock.getZone()), pass.getExpiresOn(), pass.stateOn(today), pass.daysLeftOn(today),
+				benefit.discountRate(), benefit.campusName(), ConsentNotice.CURRENT.version(),
+				ConsentNotice.CURRENT.text());
 	}
 
 	/**

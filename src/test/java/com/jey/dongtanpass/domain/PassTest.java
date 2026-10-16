@@ -38,14 +38,40 @@ class PassTest {
 	}
 
 	// 발급일은 발급 시각을 그 시간대의 날짜로 바꾼 것이다. 따로 받지 않아 둘이 어긋날 수 없다.
-	@ParameterizedTest(name = "{0} 발급 → {1}까지")
-	@CsvSource({ "2026-10-16T14:59:59.999999Z,2026-11-16", "2026-10-16T15:00:00Z,2026-11-17" })
-	void 발급일은_발급_시각의_서울_날짜다(Instant issuedAt, LocalDate expiresOn) {
+	@ParameterizedTest(name = "{0} 발급 → 발급일 {1}, {2}까지")
+	@CsvSource({ "2026-10-16T14:59:59.999999Z,2026-10-16,2026-11-16", "2026-10-16T15:00:00Z,2026-10-17,2026-11-17" })
+	void 발급일은_발급_시각의_서울_날짜다(Instant issuedAt, LocalDate issuedOn, LocalDate expiresOn) {
 		Pass pass = Pass.issue(1L, "DT-ABC234", HASH, "김하윤", "idx", issuedAt, SEOUL, ISSUED_ON, Money.of(150000),
 				PaymentMethod.CARD);
 
 		assertThat(pass.getIssuedAt()).isEqualTo(issuedAt);
+		assertThat(pass.issuedOn(SEOUL)).isEqualTo(issuedOn);
 		assertThat(pass.getExpiresOn()).isEqualTo(expiresOn);
+	}
+
+	// 오늘을 포함해 쓸 수 있는 날 수다. 만료일 당일은 1, 그다음 날부터 0.
+	@ParameterizedTest(name = "{0} → {1}일")
+	@CsvSource({ "2026-10-14,32", "2026-11-13,2", "2026-11-14,1", "2026-11-15,0", "2027-01-01,0" })
+	void 남은_일수는_오늘을_포함해_센다(LocalDate today, int daysLeft) {
+		assertThat(issue("김하윤", ISSUED_ON).daysLeftOn(today)).isEqualTo(daysLeft);
+	}
+
+	@Test
+	void 달_끝에_발급하면_다음_달_마지막_날까지_센다() {
+		Pass pass = issue("김하윤", LocalDate.of(2026, 10, 31));
+
+		assertThat(pass.daysLeftOn(LocalDate.of(2026, 11, 30))).isEqualTo(1);
+		assertThat(pass.daysLeftOn(LocalDate.of(2026, 12, 1))).isZero();
+	}
+
+	// 사용됨은 바꾸는 메서드가 아직 없어 학부모 열람 API 테스트에서 본다.
+	@Test
+	void 취소한_패스는_기한이_남아도_0일이다() {
+		Pass pass = issue("김하윤", ISSUED_ON);
+
+		pass.cancel();
+
+		assertThat(pass.daysLeftOn(ISSUED_ON)).isZero();
 	}
 
 	// 만료일은 결제일이 아니라 발급일로 정한다.
