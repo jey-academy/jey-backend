@@ -27,7 +27,7 @@ class HolderController {
 	@PublicEndpoint
 	@NotIdempotent("로그인하지 않은 경로라 키를 계정별로 볼 수 없다. 바꾸는 자료가 없다")
 	@PostMapping("/view")
-	HolderPassResponse view(@Valid @RequestBody HolderTokenRequest body) {
+	HolderPassResponse viewHolderPass(@Valid @RequestBody HolderTokenRequest body) {
 		return HolderPassResponse.from(holderPassService.view(body.token()));
 	}
 
@@ -37,7 +37,7 @@ class HolderController {
 	@PublicEndpoint
 	@NotIdempotent("로그인하지 않은 경로라 키를 계정별로 볼 수 없다. 부를 때마다 새 QR 토큰을 준다")
 	@PostMapping("/qr")
-	HolderQrResponse qr(@Valid @RequestBody HolderTokenRequest body) {
+	HolderQrResponse issueHolderQr(@Valid @RequestBody HolderTokenRequest body) {
 		return HolderQrResponse.from(holderPassService.qr(body.token()));
 	}
 

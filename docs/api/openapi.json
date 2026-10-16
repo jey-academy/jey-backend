@@ -2019,7 +2019,7 @@
     "/api/v1/dongtanpass/holder/qr" : {
       "post" : {
         "description" : "데스크에 보여 줄 QR 토큰을 준다. 60초 동안 쓸 수 있고 부를 때마다 새 토큰이다. 화면은 expiresAt 전에 다시 받는다. 쓸 수 있는 패스만 받는다(기간이 지났거나 취소됐거나 사용됐으면 409)",
-        "operationId" : "qr",
+        "operationId" : "issueHolderQr",
         "requestBody" : {
           "content" : {
             "application/json" : {
@@ -2049,7 +2049,7 @@
     "/api/v1/dongtanpass/holder/view" : {
       "post" : {
         "description" : "링크 토큰으로 패스를 연다. 로그인 없이 부르고 CSRF 토큰은 싣는다. 없거나 바뀐 링크는 404(DONGTANPASS_PASS_NOT_FOUND) 하나로 답한다",
-        "operationId" : "view",
+        "operationId" : "viewHolderPass",
         "requestBody" : {
           "content" : {
             "application/json" : {
