@@ -28,10 +28,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 연계 학원이 패스를 발급하고, 학부모 링크를 새로 만든다(ADR-0001, ADR-0035).
+ * 연계 학원이 패스를 발급하고, 학부모 링크를 새로 만들고, 쓰지 않은 패스를 취소한다(ADR-0001, ADR-0035).
  *
  * <p>학부모 번호는 전체 번호 색인만 저장한다. 링크 토큰은 해시만 저장하고 원문은 돌려주는 값에만 싣는다.
- * 발급은 이벤트({@code dongtanpass.pass-issued})로, 링크 새로 만들기는 직접 감사 로그에 남긴다.
+ * 발급은 이벤트({@code dongtanpass.pass-issued})로, 링크 새로 만들기와 취소는 직접 감사 로그에 남긴다.
  * 다른 학원의 패스는 없는 것과 같다(404).
  */
 @Service
@@ -115,6 +115,20 @@ public class PassService {
 			changeState(() -> pass.renewLink(link.hash()));
 			auditLog.record(AuditEntry.of(DongtanpassAuditAction.PASS_LINK_RENEWED).target(PassRefs.pass(passId)));
 			return new RenewedLink(passId, link.raw());
+		});
+	}
+
+	/**
+	 * 쓰지 않은 패스를 취소한다. 기간이 지난 패스도 된다. 결제 환불은 연계 학원이 따로 한다.
+	 *
+	 * @throws BusinessException 이 학원의 패스가 아닐 때(404), 사용됐거나 이미 취소된 패스일 때(409)
+	 */
+	public CanceledPass cancel(long partnerId, long passId) {
+		return transaction.execute(status -> {
+			Pass pass = lockedPass(partnerId, passId);
+			changeState(pass::cancel);
+			auditLog.record(AuditEntry.of(DongtanpassAuditAction.PASS_CANCELED).target(PassRefs.pass(passId)));
+			return new CanceledPass(passId, pass.stateOn(LocalDate.now(clock)));
 		});
 	}
 

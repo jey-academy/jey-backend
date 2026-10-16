@@ -77,6 +77,13 @@ class PassController {
 		return PassLinkResponse.from(passService.renewLink(partnerIdOf(user), id));
 	}
 
+	@Operation(summary = "패스 취소", description = "쓰지 않은 패스를 취소한다. 기간이 지난 패스도 된다. 결제 환불은 따로 한다. 사용됐거나 이미 취소된 패스는 409")
+	@Idempotent
+	@PostMapping("/passes/{id}/cancel")
+	PassCancelResponse cancel(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable long id) {
+		return PassCancelResponse.from(passService.cancel(partnerIdOf(user), id));
+	}
+
 	@Operation(summary = "발급 장부", description = "이 학원이 발급한 패스. 최신 발급 순이다. 학부모 번호는 없다")
 	@GetMapping("/passes")
 	LedgerPageResponse ledger(@AuthenticationPrincipal AuthenticatedUser user,
