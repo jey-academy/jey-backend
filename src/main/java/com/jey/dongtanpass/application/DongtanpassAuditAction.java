@@ -21,7 +21,10 @@ enum DongtanpassAuditAction implements AuditAction {
 	PARTNER_DEACTIVATED("dongtanpass.partner-deactivated", AuditOutcome.DONE),
 
 	/** 학원을 켰다. 계정은 풀리지 않는다. 이미 켜져 있던 학원을 다시 켠 것은 적지 않는다. */
-	PARTNER_ACTIVATED("dongtanpass.partner-activated", AuditOutcome.DONE);
+	PARTNER_ACTIVATED("dongtanpass.partner-activated", AuditOutcome.DONE),
+
+	/** 학부모 링크를 새로 만들었다. 대상은 그 패스다({@code PassRefs.pass}). 토큰은 싣지 않는다. */
+	PASS_LINK_RENEWED("dongtanpass.pass-link-renewed", AuditOutcome.DONE);
 
 	private final String code;
 

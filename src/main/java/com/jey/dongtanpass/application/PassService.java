@@ -5,17 +5,21 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 
+import com.jey.core.audit.api.AuditEntry;
+import com.jey.core.audit.api.AuditLog;
 import com.jey.core.auth.api.CurrentActor;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.EventMetadata;
 import com.jey.core.shared.PhoneProtector;
 import com.jey.core.shared.UniqueKeys;
 import com.jey.dongtanpass.api.PassIssued;
+import com.jey.dongtanpass.api.PassRefs;
 import com.jey.dongtanpass.domain.Consent;
 import com.jey.dongtanpass.domain.ConsentRepository;
 import com.jey.dongtanpass.domain.LinkToken;
 import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PassRepository;
+import com.jey.dongtanpass.domain.PassStatusException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -24,10 +28,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 연계 학원이 패스를 발급한다(ADR-0001, ADR-0035).
+ * 연계 학원이 패스를 발급하고, 학부모 링크를 새로 만든다(ADR-0001, ADR-0035).
  *
  * <p>학부모 번호는 전체 번호 색인만 저장한다. 링크 토큰은 해시만 저장하고 원문은 돌려주는 값에만 싣는다.
- * 발급은 이벤트({@code dongtanpass.pass-issued})로 감사 로그에 남는다.
+ * 발급은 이벤트({@code dongtanpass.pass-issued})로, 링크 새로 만들기는 직접 감사 로그에 남긴다.
+ * 다른 학원의 패스는 없는 것과 같다(404).
  */
 @Service
 public class PassService {
@@ -56,11 +61,13 @@ public class PassService {
 
 	private final PassNumbers passNumbers;
 
+	private final AuditLog auditLog;
+
 	private final SecureRandom random = new SecureRandom();
 
 	PassService(PassRepository passes, ConsentRepository consents, TransactionTemplate transaction,
 			PhoneProtector phoneProtector, ApplicationEventPublisher events, CurrentActor currentActor, Clock clock,
-			PassNumbers passNumbers) {
+			PassNumbers passNumbers, AuditLog auditLog) {
 		this.passes = passes;
 		this.consents = consents;
 		this.transaction = transaction;
@@ -69,6 +76,7 @@ public class PassService {
 		this.currentActor = currentActor;
 		this.clock = clock;
 		this.passNumbers = passNumbers;
+		this.auditLog = auditLog;
 	}
 
 	/**
@@ -92,6 +100,42 @@ public class PassService {
 				}
 				log.warn("패스 번호가 이미 있는 번호와 겹쳐 다시 발급한다: attempt={}", attempt);
 			}
+		}
+	}
+
+	/**
+	 * 학부모 링크를 새로 만든다. 예전 링크는 바로 쓸 수 없다. 기간이 지난 패스도 된다.
+	 *
+	 * @throws BusinessException 이 학원의 패스가 아닐 때(404), 사용됐거나 취소된 패스일 때(409)
+	 */
+	public RenewedLink renewLink(long partnerId, long passId) {
+		return transaction.execute(status -> {
+			Pass pass = lockedPass(partnerId, passId);
+			LinkToken link = LinkToken.generate(random);
+			changeState(() -> pass.renewLink(link.hash()));
+			auditLog.record(AuditEntry.of(DongtanpassAuditAction.PASS_LINK_RENEWED).target(PassRefs.pass(passId)));
+			return new RenewedLink(passId, link.raw());
+		});
+	}
+
+	private Pass lockedPass(long partnerId, long passId) {
+		return passes.findByIdAndPartnerIdForUpdate(passId, partnerId)
+			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
+	}
+
+	// 지금 상태에서 할 수 없는 일이면 상태에 맞는 오류로 바꾼다.
+	private static void changeState(Runnable change) {
+		try {
+			change.run();
+		}
+		catch (PassStatusException ex) {
+			DongtanpassErrorCode code = switch (ex.status()) {
+				case CANCELED -> DongtanpassErrorCode.PASS_CANCELED;
+				case REDEEMED -> DongtanpassErrorCode.PASS_ALREADY_REDEEMED;
+				// 발급 상태에서는 상태 예외가 나지 않는다. 났다면 코드의 버그다.
+				case ISSUED -> throw new IllegalStateException("발급 상태인데 상태 예외가 났다", ex);
+			};
+			throw new BusinessException(code, null, ex);
 		}
 	}
 

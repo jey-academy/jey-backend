@@ -27,6 +27,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -66,6 +67,14 @@ class PassController {
 	@ResponseStatus(HttpStatus.CREATED)
 	PassIssueResponse issue(@AuthenticationPrincipal AuthenticatedUser user, @Valid @RequestBody PassIssueRequest body) {
 		return PassIssueResponse.from(passService.issue(partnerIdOf(user), body.toNewPass()));
+	}
+
+	@Operation(summary = "링크 새로 만들기",
+			description = "학부모 링크의 토큰을 새로 만든다. 예전 링크는 바로 쓸 수 없게 된다. 새 토큰은 이 응답에만 있다. 사용됐거나 취소된 패스는 409")
+	@Idempotent
+	@PostMapping("/passes/{id}/link")
+	PassLinkResponse renewLink(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable long id) {
+		return PassLinkResponse.from(passService.renewLink(partnerIdOf(user), id));
 	}
 
 	@Operation(summary = "발급 장부", description = "이 학원이 발급한 패스. 최신 발급 순이다. 학부모 번호는 없다")

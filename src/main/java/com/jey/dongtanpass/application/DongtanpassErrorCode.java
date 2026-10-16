@@ -27,6 +27,13 @@ public enum DongtanpassErrorCode implements ErrorCode {
 
 	INVALID_PAID_AMOUNT(HttpStatus.BAD_REQUEST, "결제 금액은 0원보다 커야 하고 1원 단위여야 합니다."),
 
+	// 없는 패스이거나 다른 연계 학원의 패스다. 있는지를 드러내지 않는다.
+	PASS_NOT_FOUND(HttpStatus.NOT_FOUND, "패스를 찾을 수 없습니다."),
+
+	PASS_CANCELED(HttpStatus.CONFLICT, "취소된 패스입니다."),
+
+	PASS_ALREADY_REDEEMED(HttpStatus.CONFLICT, "이미 사용된 패스입니다."),
+
 	// 장부의 시작일이 종료일보다 뒤다. 빈 장부로 답하지 않는다(화면의 실수가 "발급 없음"으로 보이지 않게).
 	INVALID_PERIOD(HttpStatus.BAD_REQUEST, "시작일은 종료일보다 뒤일 수 없습니다.");
 
