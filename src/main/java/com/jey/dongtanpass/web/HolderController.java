@@ -58,8 +58,9 @@ class HolderController {
 					+ "그 패스의 예전 링크는 바로 막힌다(다른 보호자가 갖고 있던 링크도). "
 					+ "이름이나 번호가 맞지 않으면 어느 쪽인지 알리지 않고 404(DONGTANPASS_PASS_NOT_FOUND) 하나로 답한다. "
 					+ "맞았지만 쓸 수 있는 패스가 없으면 가장 최근 패스의 사정으로 409(DONGTANPASS_PASS_ALREADY_REDEEMED, DONGTANPASS_PASS_EXPIRED, DONGTANPASS_PASS_CANCELED). "
-					+ "맞지 않은 요청이 한 기기에서 한 번호로 5분에 10번, 번호와 무관하게 5분에 60번을 넘으면 그 5분이 끝날 때까지 429(DONGTANPASS_HOLDER_RELINK_LIMITED)이고 "
-					+ "Retry-After 헤더(초)에 남은 시간을 싣는다. 이름과 번호는 주소가 아니라 본문으로만 보낸다(쿼리 문자열이 있으면 400)")
+					+ "맞지 않은 요청이 같은 접속 주소(같은 와이파이 등)에서 한 번호로, 또는 번호와 무관하게 정해진 횟수를 넘으면 잠시 429(DONGTANPASS_HOLDER_RELINK_LIMITED)이다. "
+					+ "같은 와이파이를 쓰는 다른 사람의 시도로 막힐 수도 있다. 다시 할 수 있을 때까지 남은 시간은 "
+					+ "Retry-After 헤더(초)에 싣는다. 이름과 번호는 주소가 아니라 본문으로만 보낸다(쿼리 문자열이 있으면 400)")
 	@PublicEndpoint
 	@NotIdempotent("로그인하지 않은 경로라 키를 계정별로 볼 수 없다. 다시 보내면 링크를 한 번 더 새로 만들고, 앞서 받은 링크는 막힌다")
 	@PostMapping("/relink")
