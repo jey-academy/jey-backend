@@ -5,7 +5,8 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 
 /**
- * 한 계정이 어떤 일을 얼마 동안 몇 번까지 할 수 있는지. 무엇을 제한할지는 쓰는 모듈이 정한다.
+ * 한 계정이(또는 로그인 없는 경로에서 한 접속 주소가) 어떤 일을 얼마 동안 몇 번까지 할 수 있는지. 무엇을 제한할지는 쓰는 모듈이 정한다.
+ * 계정별로는 {@link AccountRateLimiter}, 로그인 없는 경로에서는 {@link ClientAttemptLimiter}가 센다.
  *
  * <p>{@link #of}로 만든다. 이름은 모듈마다 enum으로 선언한 {@link RateLimitName}이다. 생성자는 직접 부르지 않는다
  * ({@code RateLimitRulesTest}가 막는다). 이름을 글자로 적어 만들면 다른 한도와 겹치는지 미리 볼 수 없다.
