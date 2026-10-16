@@ -1,6 +1,5 @@
 package com.jey.core.auth.api;
 
-import java.util.Objects;
 import java.util.function.Consumer;
 
 import com.jey.core.shared.ErrorCode;
@@ -42,25 +41,15 @@ public interface ClientAttemptLimiter {
 	/**
 	 * 센 한 번을 되돌린다. 기준마다, 그 한 번을 센 구간이 이미 끝났으면 그 기준은 건드리지 않는다.
 	 * 구간이 바뀐 뒤에 되돌리면 새 구간에서 센 것이 지워지기 때문이다.
+	 *
+	 * @throws IllegalArgumentException 이 장치의 {@link #acquire}가 돌려준 것이 아닐 때
 	 */
 	void refund(Attempt attempt);
 
 	/**
-	 * {@link #acquire}가 센 한 번.
-	 *
-	 * @param subjectAndClientKey "대상 + 접속 주소" 기준의 키
-	 * @param subjectAndClientWindow 그 기준에서 센 구간의 표식
-	 * @param clientKey "접속 주소" 기준의 키
-	 * @param clientWindow 그 기준에서 센 구간의 표식
+	 * {@link #acquire}가 센 한 번. 되돌릴 때 그대로 넘긴다. 무엇을 들고 있는지(저장소의 키 등)는 드러내지 않고, 장치만 만든다.
 	 */
-	record Attempt(String subjectAndClientKey, String subjectAndClientWindow, String clientKey, String clientWindow) {
-
-		public Attempt {
-			Objects.requireNonNull(subjectAndClientKey, "subjectAndClientKey");
-			Objects.requireNonNull(subjectAndClientWindow, "subjectAndClientWindow");
-			Objects.requireNonNull(clientKey, "clientKey");
-			Objects.requireNonNull(clientWindow, "clientWindow");
-		}
+	interface Attempt {
 
 	}
 

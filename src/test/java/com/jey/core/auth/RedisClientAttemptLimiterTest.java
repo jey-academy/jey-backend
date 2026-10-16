@@ -250,11 +250,27 @@ class RedisClientAttemptLimiterTest {
 	// 대상은 번호의 대조값 같은 것이지만, 원문이 그대로 키에 들어가지 않게 한 번 더 줄인다.
 	@Test
 	void 키에_대상_원문이_없다() {
+		pass(subject, address);
+
+		Set<String> keys = redis.keys("jey:auth:client-limit:*" + address);
+		assertThat(keys).hasSize(2).allSatisfy(key -> assertThat(key).doesNotContain(subject));
+	}
+
+	// 센 한 번은 장치만 만든다. 키를 들고 다니는 값이라 밖에서 만든 것으로 남의 횟수를 줄이지 못하게 한다.
+	@Test
+	void 장치가_세지_않은_시도는_되돌릴_수_없다() {
+		Attempt forged = new Attempt() {
+		};
+
+		assertThatThrownBy(() -> limiter.refund(forged)).isInstanceOf(IllegalArgumentException.class);
+	}
+
+	// 로그에 찍혀도 접속 주소와 대상의 해시가 남지 않는다.
+	@Test
+	void 센_한_번을_문자열로_바꿔도_키가_나오지_않는다() {
 		Attempt attempt = pass(subject, address);
 
-		assertThat(attempt.subjectAndClientKey()).doesNotContain(subject).startsWith("jey:auth:client-limit:");
-		Set<String> keys = redis.keys("jey:auth:client-limit:*" + address);
-		assertThat(keys).isNotEmpty().allSatisfy(key -> assertThat(key).doesNotContain(subject));
+		assertThat(attempt.toString()).doesNotContain(address).doesNotContain("client-limit");
 	}
 
 	@Test

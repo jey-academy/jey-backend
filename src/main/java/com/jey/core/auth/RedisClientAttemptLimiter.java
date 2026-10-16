@@ -167,7 +167,7 @@ class RedisClientAttemptLimiter implements ClientAttemptLimiter {
 		}
 		int blockedBy = ((Number) result.get(0)).intValue();
 		if (blockedBy == 0) {
-			return new Attempt(subjectKey, subjectWindow, clientKey, clientWindow);
+			return new CountedAttempt(subjectKey, subjectWindow, clientKey, clientWindow);
 		}
 		String blockedKey = switch (blockedBy) {
 			case 1 -> subjectKey;
@@ -208,8 +208,25 @@ class RedisClientAttemptLimiter implements ClientAttemptLimiter {
 
 	@Override
 	public void refund(Attempt attempt) {
-		redis.execute(REFUND, List.of(attempt.subjectAndClientKey(), attempt.clientKey()),
-				attempt.subjectAndClientWindow(), attempt.clientWindow());
+		if (!(attempt instanceof CountedAttempt counted)) {
+			throw new IllegalArgumentException("이 장치가 센 시도가 아니다");
+		}
+		redis.execute(REFUND, List.of(counted.subjectKey(), counted.clientKey()), counted.subjectWindow(),
+				counted.clientWindow());
+	}
+
+	/**
+	 * 센 한 번. 두 기준의 키와 각 키에서 센 구간의 표식을 든다. 이 장치만 만든다.
+	 */
+	private record CountedAttempt(String subjectKey, String subjectWindow, String clientKey, String clientWindow)
+			implements Attempt {
+
+		// 키에 접속 주소와 대상의 해시가 있다. 로그에 찍혀도 남지 않게 한다.
+		@Override
+		public String toString() {
+			return "CountedAttempt[***]";
+		}
+
 	}
 
 	// 대상은 이미 대조값이지만 길이를 줄이고, 원문을 넘긴 실수가 있어도 키에 그대로 남지 않게 한다.
