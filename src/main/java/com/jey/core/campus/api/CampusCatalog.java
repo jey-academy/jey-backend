@@ -12,6 +12,9 @@ public interface CampusCatalog {
 
 	boolean campusExists(long campusId);
 
+	/** 지점의 이름. 다른 모듈이 화면에 지점을 보여 줄 때 쓴다. */
+	Optional<CampusInfo> findCampus(long campusId);
+
 	Optional<ClassInfo> findClass(long classId);
 
 	/**

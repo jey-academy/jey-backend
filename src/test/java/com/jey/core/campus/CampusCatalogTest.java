@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import com.jey.TestcontainersConfiguration;
 import com.jey.core.campus.api.CampusCatalog;
+import com.jey.core.campus.api.CampusInfo;
 import com.jey.core.campus.api.ClassFee;
 import com.jey.core.campus.api.ClassInfo;
 import com.jey.core.campus.api.DiscountTypeInfo;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,6 +31,9 @@ class CampusCatalogTest {
 	CampusCatalog catalog;
 
 	@Autowired
+	JdbcTemplate jdbc;
+
+	@Autowired
 	ClassService classService;
 
 	@Autowired
@@ -39,6 +44,15 @@ class CampusCatalogTest {
 		assertThat(catalog.campusExists(1)).isTrue();
 		assertThat(catalog.campusExists(2)).isTrue();
 		assertThat(catalog.campusExists(999_999)).isFalse();
+	}
+
+	// 다른 모듈이 화면에 지점 이름을 보여 줄 때 쓴다(패스를 받는 지점 등).
+	@Test
+	void 지점의_이름을_돌려준다() {
+		String name = jdbc.queryForObject("SELECT name FROM core_campus WHERE id = 2", String.class);
+
+		assertThat(catalog.findCampus(2)).contains(new CampusInfo(2, name));
+		assertThat(catalog.findCampus(999_999)).isEmpty();
 	}
 
 	@Test
