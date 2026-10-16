@@ -267,20 +267,6 @@ class LoginAttemptLimiterTest {
 		assertThat(limiter.countAttempt(loginId, newIpv6Prefix() + "::1")).isEmpty();
 	}
 
-	@Test
-	void 키에_넣는_주소() {
-		assertThat(LoginAttemptLimiter.ipKeyPart("203.0.113.7")).isEqualTo("203.0.113.7");
-		assertThat(LoginAttemptLimiter.ipKeyPart("2001:db8:12:3400:1:2:3:4")).isEqualTo("2001:0db8:0012:3400::/64");
-		assertThat(LoginAttemptLimiter.ipKeyPart("2001:DB8:12:3400::ffff")).isEqualTo("2001:0db8:0012:3400::/64");
-		assertThat(LoginAttemptLimiter.ipKeyPart("0:0:0:0:0:0:0:1")).isEqualTo("0000:0000:0000:0000::/64");
-		// IPv4를 IPv6로 감싼 표기는 IPv4와 같은 곳이다.
-		assertThat(LoginAttemptLimiter.ipKeyPart("::ffff:203.0.113.7")).isEqualTo("203.0.113.7");
-		assertThat(LoginAttemptLimiter.ipKeyPart(null)).isEqualTo("unknown");
-		assertThat(LoginAttemptLimiter.ipKeyPart(" ")).isEqualTo("unknown");
-		// 주소로 읽을 수 없는 값도 세기는 한다. 키에는 원문 대신 해시가 들어간다.
-		assertThat(LoginAttemptLimiter.ipKeyPart("not:an:address")).matches("invalid-[0-9a-f]+");
-	}
-
 	// 비밀번호 해시 계산은 느리다. "확인 후 증가"로 만들면 동시에 보낸 요청이 모두 확인을 통과한다.
 	@Test
 	void 동시에_보내도_아이디_한도만큼만_허용된다() throws Exception {

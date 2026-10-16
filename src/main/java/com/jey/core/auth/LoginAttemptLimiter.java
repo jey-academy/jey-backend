@@ -1,8 +1,5 @@
 package com.jey.core.auth;
 
-import java.net.Inet6Address;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.time.Duration;
@@ -118,7 +115,7 @@ class LoginAttemptLimiter {
 	 * @return 막혔으면 어느 기준에 걸렸는지와 다시 시도할 수 있을 때까지 남은 시간. 통과했으면 빈 값
 	 */
 	Optional<Blocked> countAttempt(String loginId, String clientIp) {
-		String ip = ipKeyPart(clientIp);
+		String ip = ClientAddresses.keyPart(clientIp);
 		String loginIdKey = loginIdKey(loginId, ip);
 		String ipKey = ipKey(ip);
 		List<?> result = redis.execute(COUNT, List.of(loginIdKey, ipKey),
@@ -145,7 +142,7 @@ class LoginAttemptLimiter {
 
 	/** 로그인에 성공했을 때 부른다. 이 IP에서 이 아이디로 실패한 횟수를 지운다. */
 	void loginSucceeded(String loginId, String clientIp) {
-		String ip = ipKeyPart(clientIp);
+		String ip = ClientAddresses.keyPart(clientIp);
 		redis.execute(FORGET, List.of(loginIdKey(loginId, ip), ipKey(ip)));
 	}
 
@@ -156,34 +153,6 @@ class LoginAttemptLimiter {
 
 	private static String ipKey(String ip) {
 		return KEY_PREFIX + "ip:" + ip;
-	}
-
-	/**
-	 * 키에 넣을 주소. IPv6는 앞 64비트(대역)만 쓴다.
-	 * IPv6 가입자는 보통 /64 대역을 통째로 받아서, 주소 전체로 세면 기기 한 대가 주소를 바꿔 가며 한도를 끝없이 새로 받는다.
-	 */
-	static String ipKeyPart(String clientIp) {
-		if (clientIp == null || clientIp.isBlank()) {
-			return "unknown";
-		}
-		// 콜론이 있으면 IPv6 표기다. 이름이 아니라 주소 표기만 해석하므로 DNS를 조회하지 않는다.
-		if (clientIp.indexOf(':') >= 0) {
-			try {
-				InetAddress address = InetAddress.getByName(clientIp);
-				if (address instanceof Inet6Address) {
-					String prefix = HexFormat.of().formatHex(address.getAddress(), 0, 8);
-					return prefix.substring(0, 4) + ":" + prefix.substring(4, 8) + ":" + prefix.substring(8, 12) + ":"
-							+ prefix.substring(12, 16) + "::/64";
-				}
-				// IPv4를 IPv6로 감싼 표기(::ffff:192.0.2.1)는 IPv4로 읽힌다.
-				return address.getHostAddress();
-			}
-			catch (UnknownHostException ex) {
-				// 주소로 읽을 수 없는 값이다. 그대로 세되 키에 들어갈 수 없는 문자가 섞이지 않게 16진수로 바꾼다.
-				return "invalid-" + HexFormat.of().formatHex(clientIp.getBytes(StandardCharsets.UTF_8));
-			}
-		}
-		return clientIp;
 	}
 
 	// 비밀키 없는 해시는 Redis 내용이 새면 흔한 값을 대입해서 원문을 찾을 수 있다. 비밀키를 섞어 그것을 막는다.
