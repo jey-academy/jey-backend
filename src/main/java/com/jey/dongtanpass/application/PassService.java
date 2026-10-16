@@ -95,10 +95,15 @@ public class PassService {
 			}
 			catch (DataIntegrityViolationException ex) {
 				// 다른 제약에 걸린 것은 그대로 던진다(서버 오류로 드러나야 한다).
-				if (!UniqueKeys.isViolationOf(ex, PASS_NO_UNIQUE_KEY) || attempt == MAX_PASS_NO_ATTEMPTS) {
+				if (!UniqueKeys.isViolationOf(ex, PASS_NO_UNIQUE_KEY)) {
 					throw ex;
 				}
-				log.warn("패스 번호가 이미 있는 번호와 겹쳐 다시 발급한다: attempt={}", attempt);
+				if (attempt == MAX_PASS_NO_ATTEMPTS) {
+					// 일반 저장 오류와 가려 볼 수 있게 남긴다. 계속 겹치면 번호 공간이나 생성기를 봐야 한다.
+					log.error("패스 번호가 {}번 연속 겹쳐 발급을 포기한다: partnerId={}", attempt, partnerId);
+					throw ex;
+				}
+				log.warn("패스 번호가 이미 있는 번호와 겹쳐 다시 발급한다: attempt={}, partnerId={}", attempt, partnerId);
 			}
 		}
 	}
