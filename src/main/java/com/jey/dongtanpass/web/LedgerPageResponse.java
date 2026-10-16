@@ -42,6 +42,12 @@ record LedgerPageResponse(@Schema(requiredMode = RequiredMode.REQUIRED) List<Led
 					row.expiresOn(), row.state(), row.paidOn(), row.paidAmount(), row.paymentMethod());
 		}
 
+		// 학생 이름이 로그에 찍히지 않게 한다(응답을 쓰는 쪽이 DEBUG 로그에 앞부분을 찍는다). 바깥 record도 이것을 쓴다.
+		@Override
+		public String toString() {
+			return "LedgerItemResponse[id=" + id + ", passNo=" + passNo + ", state=" + state + "]";
+		}
+
 	}
 
 }
