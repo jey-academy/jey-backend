@@ -125,7 +125,7 @@ class PassQrCodesTest {
 	@ParameterizedTest
 	@NullAndEmptySource
 	@ValueSource(strings = { "x", "1.a", "1.a.b.c", "1.!!!.@@@", "a.b.c", "1..", "-1.AAAA.AAAA", "99999999999.AAAA.AAAA",
-			"1.AAAA.AAAA" })
+			"1.AAAA.AAAA", "١.AAAA.AAAA", "１.AAAA.AAAA" })
 	void 모양이_틀린_토큰은_예외_없이_무효다(String token) {
 		Optional<VerifiedQr> verified = codes.verify(token, NOW);
 

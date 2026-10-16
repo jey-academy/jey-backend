@@ -121,9 +121,10 @@ public class PassQrCodes {
 		return Optional.of(new VerifiedQr(passId, HexFormat.of().formatHex(tokenId), expiresAt));
 	}
 
-	// 토큰에 적힌 키 버전의 키. 숫자가 아니거나 모르는 버전이면 null.
+	// 토큰에 적힌 키 버전의 키. ASCII 숫자가 아니거나 모르는 버전이면 null.
+	// Character.isDigit은 다른 문자의 숫자(١, １)도 참이고, 그런 글자를 parseInt가 받는지는 JDK에 따라 다르다.
 	private SecretKeySpec keyOf(String version) {
-		if (version.isEmpty() || version.length() > 9 || !version.chars().allMatch(Character::isDigit)) {
+		if (version.isEmpty() || version.length() > 9 || !version.chars().allMatch(c -> c >= '0' && c <= '9')) {
 			return null;
 		}
 		return keys.get(Integer.parseInt(version));
