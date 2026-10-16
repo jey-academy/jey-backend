@@ -4,6 +4,7 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.stream.Stream;
 
 import com.jey.TestcontainersConfiguration;
@@ -98,8 +99,12 @@ class HolderViewApiTest {
 			.andExpect(jsonPath("$.passNo").value(pass.getPassNo()))
 			.andExpect(jsonPath("$.partnerName").value("테스트학원-" + PARTNER))
 			.andExpect(jsonPath("$.studentName").value("김*윤"))
+			.andExpect(jsonPath("$.issuedOn").value(today().toString()))
 			.andExpect(jsonPath("$.expiresOn").value(today().plusMonths(1).toString()))
 			.andExpect(jsonPath("$.state").value("ISSUED"))
+			// 숫자로 온다(문자열이면 같지 않다). 오늘과 만료일을 모두 센다.
+			.andExpect(jsonPath("$.daysLeft").value(
+					Math.toIntExact(ChronoUnit.DAYS.between(today(), today().plusMonths(1)) + 1)))
 			.andExpect(jsonPath("$.discountRate").value(0.05))
 			.andExpect(jsonPath("$.campusName").value(passBenefits.current().campusName()))
 			.andExpect(jsonPath("$.noticeVersion").value(ConsentNotice.CURRENT.version()))
@@ -110,16 +115,19 @@ class HolderViewApiTest {
 			.andExpect(header().doesNotExist("Set-Cookie"));
 	}
 
-	// 만료는 저장하지 않고 오늘로 계산한다. 화면은 넷을 따로 그린다.
-	@ParameterizedTest(name = "{0}, 만료일 오늘{1}일 → {2}")
-	@CsvSource({ "ISSUED,0,ISSUED", "ISSUED,-1,EXPIRED", "REDEEMED,-1,REDEEMED", "CANCELED,10,CANCELED" })
-	void 보이는_상태_넷을_구분한다(String stored, int expiresInDays, String shown) throws Exception {
+	// 만료는 저장하지 않고 오늘로 계산한다. 화면은 넷을 따로 그린다. 남은 일수는 쓸 수 있을 때만 센다.
+	@ParameterizedTest(name = "{0}, 만료일 오늘{1}일 → {2}, {3}일 남음")
+	@CsvSource({ "ISSUED,0,ISSUED,1", "ISSUED,-1,EXPIRED,0", "REDEEMED,-1,REDEEMED,0", "REDEEMED,10,REDEEMED,0",
+			"CANCELED,10,CANCELED,0" })
+	void 보이는_상태_넷을_구분한다(String stored, int expiresInDays, String shown, int daysLeft) throws Exception {
 		LinkToken link = LinkToken.generate(RANDOM);
 		Pass pass = save(PARTNER, link, "김하윤");
 		jdbc.update("UPDATE dongtanpass_pass SET status = ?, expires_on = ? WHERE id = ?", stored,
 				today().plusDays(expiresInDays), pass.getId());
 
-		view(link.raw()).andExpect(status().isOk()).andExpect(jsonPath("$.state").value(shown));
+		view(link.raw()).andExpect(status().isOk())
+			.andExpect(jsonPath("$.state").value(shown))
+			.andExpect(jsonPath("$.daysLeft").value(daysLeft));
 	}
 
 	@Test

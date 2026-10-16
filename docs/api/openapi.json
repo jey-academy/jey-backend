@@ -544,12 +544,22 @@
             "description" : "패스를 받는 지점",
             "type" : "string"
           },
+          "daysLeft" : {
+            "description" : "오늘(서버 기준 한국 날짜)을 포함해 쓸 수 있는 날 수. 사용 기한 당일이면 1. 상태가 ISSUED가 아니면 0",
+            "format" : "int32",
+            "type" : "integer"
+          },
           "discountRate" : {
             "description" : "할인율. 5%는 0.05",
             "type" : "number"
           },
           "expiresOn" : {
             "description" : "이날(한국 날짜)까지 쓸 수 있다",
+            "format" : "date",
+            "type" : "string"
+          },
+          "issuedOn" : {
+            "description" : "발급일(한국 날짜). 남은 기간 막대의 시작",
             "format" : "date",
             "type" : "string"
           },
@@ -579,7 +589,7 @@
             "type" : "string"
           }
         },
-        "required" : [ "campusName", "discountRate", "expiresOn", "noticeText", "noticeVersion", "partnerName", "passNo", "state", "studentName" ],
+        "required" : [ "campusName", "daysLeft", "discountRate", "expiresOn", "issuedOn", "noticeText", "noticeVersion", "partnerName", "passNo", "state", "studentName" ],
         "type" : "object"
       },
       "HolderQrResponse" : {

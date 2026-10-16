@@ -20,8 +20,8 @@ public record LedgerRow(long id, String passNo, String studentName, Instant issu
 
 	static LedgerRow of(Pass pass, LocalDate today, ZoneId zone) {
 		return new LedgerRow(pass.getId(), pass.getPassNo(), pass.getStudentName(), pass.getIssuedAt(),
-				pass.getIssuedAt().atZone(zone).toLocalDate(), pass.getExpiresOn(), pass.stateOn(today),
-				pass.getPaidOn(), pass.getPaidAmount(), pass.getPaymentMethod());
+				pass.issuedOn(zone), pass.getExpiresOn(), pass.stateOn(today), pass.getPaidOn(), pass.getPaidAmount(),
+				pass.getPaymentMethod());
 	}
 
 	// 학생 이름이 로그에 찍히지 않게 한다.

@@ -3,6 +3,7 @@ package com.jey.dongtanpass.domain;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.regex.Pattern;
 
 import com.jey.core.shared.BaseEntity;
@@ -141,6 +142,19 @@ public class Pass extends BaseEntity {
 	/** 만료일이 지났는지. 만료일 당일은 지나지 않은 것이다. 상태와 무관하게 날짜만 본다. */
 	public boolean isExpiredOn(LocalDate today) {
 		return today.isAfter(expiresOn);
+	}
+
+	/** 발급일. 발급 시각을 그 시간대의 날짜로 바꾼 것이다(만료일을 셀 때 쓴 시간대를 넘긴다). */
+	public LocalDate issuedOn(ZoneId zone) {
+		return LocalDate.ofInstant(issuedAt, zone);
+	}
+
+	/** 오늘을 포함해 쓸 수 있는 날 수. 만료일 당일이면 1이다. 보이는 상태가 발급됨이 아니면(만료, 사용됨, 취소됨) 0이다. */
+	public int daysLeftOn(LocalDate today) {
+		if (stateOn(today) != PassState.ISSUED) {
+			return 0;
+		}
+		return Math.toIntExact(ChronoUnit.DAYS.between(today, expiresOn) + 1);
 	}
 
 	/**
