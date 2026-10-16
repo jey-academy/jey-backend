@@ -86,6 +86,19 @@ class PassQrCodesTest {
 		assertThat(codes.verify(parts[0] + "." + flip(parts[1]) + "." + parts[2], NOW)).isEmpty();
 	}
 
+	// 같은 바이트로 풀리는 다른 글자(패딩, 마지막 글자의 쓰이지 않는 낮은 비트)도 받으면 한 토큰이 여러 문자열이 된다.
+	@Test
+	void 같은_서명을_다른_글자로_적으면_무효다() {
+		String token = codes.issue(7L, NOW).token();
+		String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+		char last = token.charAt(token.length() - 1);
+		char sameBytes = alphabet.charAt(alphabet.indexOf(last) ^ 1);
+		String head = token.substring(0, token.length() - 1);
+
+		assertThat(codes.verify(token + "=", NOW)).isEmpty();
+		assertThat(codes.verify(head + sameBytes, NOW)).isEmpty();
+	}
+
 	@Test
 	void 다른_키로_서명한_토큰은_무효다() {
 		PassQrCodes other = new PassQrCodes(new QrSigningProperties(1, Map.of(1, KEY_2)));

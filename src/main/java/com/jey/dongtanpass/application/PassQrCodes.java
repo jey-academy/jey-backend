@@ -102,6 +102,10 @@ public class PassQrCodes {
 		catch (IllegalArgumentException ex) {
 			return Optional.empty();
 		}
+		// 해독기는 패딩과 마지막 글자의 쓰이지 않는 비트를 눈감아 준다. 만든 그대로의 글자만 받아 한 토큰이 한 문자열이게 한다.
+		if (!ENCODER.encodeToString(signature).equals(parts[2])) {
+			return Optional.empty();
+		}
 		// 길이가 달라도 같은 시간에 끝나는 비교. 서명을 한 글자씩 맞춰 보는 공격을 막는다.
 		if (!MessageDigest.isEqual(sign(key, parts[0] + "." + parts[1]), signature) || body.length != BODY_BYTES) {
 			return Optional.empty();
