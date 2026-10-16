@@ -10,6 +10,8 @@ import com.jey.dongtanpass.domain.Partner;
 import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PartnerRepository;
 import com.jey.dongtanpass.domain.PassRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 public class HolderPassService {
+
+	private static final Logger log = LoggerFactory.getLogger(HolderPassService.class);
 
 	private final PassRepository passes;
 
@@ -75,12 +79,17 @@ public class HolderPassService {
 	}
 
 	// 모양을 먼저 본다. 해시는 ASCII가 아닌 글자를 ?로 바꾸므로 그 전에 걸러야 한다.
+	// 응답은 어느 경우든 같은 404다. 운영에서 "링크가 안 열린다"는 문의를 가리려고 이유만 로그에 남긴다(토큰과 해시는 남기지 않는다).
+	// 막힌 옛 링크(다시 받았거나 연계 학원이 새로 만든 것)는 not_found다. 해시만 저장하므로 없는 링크와 구별되지 않는다.
 	private Pass passOf(String rawToken) {
 		if (!LinkToken.isWellFormed(rawToken)) {
+			log.info("학부모 링크로 패스를 찾지 못했다: reason=malformed");
 			throw new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND);
 		}
-		return passes.findByLinkTokenHash(LinkToken.hashOf(rawToken))
-			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
+		return passes.findByLinkTokenHash(LinkToken.hashOf(rawToken)).orElseThrow(() -> {
+			log.info("학부모 링크로 패스를 찾지 못했다: reason=not_found");
+			return new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND);
+		});
 	}
 
 }

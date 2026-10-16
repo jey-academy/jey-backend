@@ -93,6 +93,16 @@ jey:
       window: 15m
       max: 10
 
+  dongtanpass:
+    # 학부모 링크 다시 받기의 틀린 시도 (ADR-0035). 이름과 번호가 맞은 요청은 세지 않는다. 넘으면 구간이 끝날 때까지 429로 응답한다.
+    # 테스트도 이 값을 그대로 쓴다(테스트마다 다른 접속 주소를 쓰고 횟수 키를 비운다).
+    holder-relink:
+      window: 5m
+      # 한 접속 주소에서 한 번호로
+      max-failures-per-phone-and-client: 10
+      # 한 접속 주소에서 번호와 무관하게. 학원 와이파이처럼 여러 사람이 주소 하나를 함께 쓰므로 넉넉하게 둔다
+      max-failures-per-client: 60
+
   events:
     # 처리에 실패한 이벤트를 주기적으로 다시 보낸다 (ADR-0025).
     resubmission:

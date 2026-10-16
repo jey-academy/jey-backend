@@ -26,6 +26,18 @@ enum DongtanpassAuditAction implements AuditAction {
 	/** 학부모 링크를 새로 만들었다. 대상은 그 패스다({@code PassRefs.pass}). 토큰은 싣지 않는다. */
 	PASS_LINK_RENEWED("dongtanpass.pass-link-renewed", AuditOutcome.DONE),
 
+	/** 학부모가 학생 이름과 번호로 링크를 다시 받았다. 대상은 그 패스다. 행위자는 없다(로그인 없는 요청). 토큰은 싣지 않는다. */
+	HOLDER_LINK_RENEWED("dongtanpass.holder-link-renewed", AuditOutcome.DONE),
+
+	/**
+	 * 학부모 링크 다시 받기에서 이름과 번호는 맞았지만 쓸 수 있는 패스가 없어 거부했다. 대상은 사정을 알린 패스이고,
+	 * {@code reason}에 거부의 에러 코드를 싣는다. 그 이름과 번호의 패스가 있다는 사실이 드러난 응답이라 남긴다.
+	 */
+	HOLDER_LINK_DENIED("dongtanpass.holder-link-denied", AuditOutcome.DENIED),
+
+	/** 학부모 링크 다시 받기가 틀린 시도 한도에 처음 막혔다(구간마다 한 번). 대상은 없다. */
+	HOLDER_RELINK_LIMITED("dongtanpass.holder-relink-limited", AuditOutcome.DENIED),
+
 	/** 쓰지 않은 패스를 취소했다. 대상은 그 패스다. 결제 환불은 연계 학원이 따로 한다. */
 	PASS_CANCELED("dongtanpass.pass-canceled", AuditOutcome.DONE);
 

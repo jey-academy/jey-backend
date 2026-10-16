@@ -49,7 +49,7 @@ class RateLimitRulesTest {
 			.as("한도의 이름. 이름을 바꾸면 그때까지 센 횟수를 잃어 막혀 있던 계정이 풀린다. "
 					+ "바꾼 것이 아니라 새로 더한 것일 때만 이 목록에 더한다")
 			.containsExactlyInAnyOrder("auth.password-change", "member.phone-reveal", "member.phone-change",
-					"member.phone-probe");
+					"member.phone-probe", "dongtanpass.holder-relink", "dongtanpass.holder-relink-client");
 	}
 
 	// 이름을 글자로 적어 만든 한도는 선언된 이름에 없어 위의 검사에 걸리지 않는다. 만드는 곳은 RateLimit.of 하나로 한다.
