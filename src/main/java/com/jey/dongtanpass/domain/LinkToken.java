@@ -6,6 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.regex.Pattern;
 
 /**
  * 학부모에게 보내는 링크의 토큰. 256비트 난수라 추측할 수 없다.
@@ -20,11 +21,22 @@ public record LinkToken(String raw, String hash) {
 
 	private static final int BYTES = 32;
 
+	// 32바이트의 Base64url(패딩 없음)
+	private static final Pattern RAW = Pattern.compile("[A-Za-z0-9_-]{43}");
+
 	public static LinkToken generate(SecureRandom random) {
 		byte[] bytes = new byte[BYTES];
 		random.nextBytes(bytes);
 		String raw = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
 		return new LinkToken(raw, hashOf(raw));
+	}
+
+	/**
+	 * 받은 원문이 이 토큰의 모양인지. 해시하기 전에 본다. 모양이 틀린 토큰은 없는 토큰과 같이 답한다
+	 * (어느 쪽인지 드러내지 않는다). {@link #hashOf}는 ASCII가 아닌 글자를 {@code ?}로 바꾸므로 그 전에 걸러야 한다.
+	 */
+	public static boolean isWellFormed(String raw) {
+		return raw != null && RAW.matcher(raw).matches();
 	}
 
 	public static String hashOf(String raw) {

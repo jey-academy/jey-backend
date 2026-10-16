@@ -16,6 +16,11 @@ jey:
       encryption-keys:
         1: dGVzdC1vbmx5LXBob25lLWVuYy1rZXktMDAwMDAwMDE=
       hmac-key: dGVzdC1vbmx5LXBob25lLWhtYWMta2V5LTAwMDAwMDE=
+  dongtanpass:
+    qr:
+      active-key-version: 1
+      keys:
+        1: dGVzdC1vbmx5LWRvbmd0YW5wYXNzLXFyLWtleS0wMDE=
   member:
     # 테스트는 한 계정으로 거부되는 요청을 되풀이하고 Redis의 횟수는 테스트 사이에 남는다.
     # 한도를 그대로 두면 순서에 따라 엉뚱한 테스트가 429를 받는다. 한도를 보는 테스트는 값을 직접 정한다.

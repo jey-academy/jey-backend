@@ -3,6 +3,7 @@ package com.jey.core.campus;
 import java.util.Optional;
 
 import com.jey.core.campus.api.CampusCatalog;
+import com.jey.core.campus.api.CampusInfo;
 import com.jey.core.campus.api.ClassFee;
 import com.jey.core.campus.api.ClassInfo;
 import com.jey.core.campus.api.DiscountTypeInfo;
@@ -32,6 +33,11 @@ class CampusCatalogService implements CampusCatalog {
 	@Override
 	public boolean campusExists(long campusId) {
 		return campuses.existsById(campusId);
+	}
+
+	@Override
+	public Optional<CampusInfo> findCampus(long campusId) {
+		return campuses.findById(campusId).map(found -> new CampusInfo(found.getId(), found.getName()));
 	}
 
 	@Override
