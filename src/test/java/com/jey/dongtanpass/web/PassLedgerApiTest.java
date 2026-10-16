@@ -199,20 +199,20 @@ class PassLedgerApiTest {
 	private Pass save(long partnerId, String name, LocalDate issuedOn) {
 		Instant issuedAt = issuedOn.atTime(10, 0).atZone(SEOUL).toInstant();
 		return passes.saveAndFlush(Pass.issue(partnerId, PassNumber.generate(RANDOM), LinkToken.generate(RANDOM).hash(),
-				name, "phone-index", issuedAt, issuedOn, issuedOn, Money.of(150000), PaymentMethod.CARD));
+				name, "phone-index", issuedAt, SEOUL, issuedOn, Money.of(150000), PaymentMethod.CARD));
 	}
 
 	private Pass saveAt(long partnerId, Instant issuedAt) {
 		LocalDate issuedOn = issuedAt.atZone(SEOUL).toLocalDate();
 		return passes.saveAndFlush(Pass.issue(partnerId, PassNumber.generate(RANDOM), LinkToken.generate(RANDOM).hash(),
-				"김하윤", "phone-index", issuedAt, issuedOn, issuedOn, Money.of(150000), PaymentMethod.CARD));
+				"김하윤", "phone-index", issuedAt, SEOUL, issuedOn, Money.of(150000), PaymentMethod.CARD));
 	}
 
 	// 발급 시각은 순서대로(분 단위로 늦게) 두고 만료일만 정한다.
 	private Pass saveExpiringOn(String name, LocalDate expiresOn, int minute) {
 		Instant issuedAt = today().atTime(9, minute).atZone(SEOUL).toInstant();
 		Pass pass = passes.saveAndFlush(Pass.issue(PARTNER, PassNumber.generate(RANDOM), LinkToken.generate(RANDOM).hash(),
-				name, "phone-index", issuedAt, today(), today(), Money.of(150000), PaymentMethod.CARD));
+				name, "phone-index", issuedAt, SEOUL, today(), Money.of(150000), PaymentMethod.CARD));
 		jdbc.update("UPDATE dongtanpass_pass SET expires_on = ? WHERE id = ?", expiresOn, pass.getId());
 		return pass;
 	}

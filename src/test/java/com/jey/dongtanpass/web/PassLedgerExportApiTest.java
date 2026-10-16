@@ -146,7 +146,7 @@ class PassLedgerExportApiTest {
 	private Pass save(long partnerId, String name, LocalDate issuedOn) {
 		Instant issuedAt = issuedOn.atTime(10, 0).atZone(SEOUL).toInstant();
 		return passes.saveAndFlush(Pass.issue(partnerId, PassNumber.generate(RANDOM), LinkToken.generate(RANDOM).hash(),
-				name, "phone-index", issuedAt, issuedOn, issuedOn, Money.of(150000), PaymentMethod.CARD));
+				name, "phone-index", issuedAt, SEOUL, issuedOn, Money.of(150000), PaymentMethod.CARD));
 	}
 
 }

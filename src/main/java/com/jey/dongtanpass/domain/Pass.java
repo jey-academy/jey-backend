@@ -2,6 +2,7 @@ package com.jey.dongtanpass.domain;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.regex.Pattern;
 
 import com.jey.core.shared.BaseEntity;
@@ -98,11 +99,12 @@ public class Pass extends BaseEntity {
 	 *
 	 * @param studentName 앞뒤 공백만 떼고 저장한다(가운데 띄어쓰기는 그대로. 비교는 사용 처리 때 따로 정리해서 한다)
 	 * @param guardianPhoneIndex 학부모 번호의 전체 번호 색인
-	 * @param issuedOn 발급일(한국 날짜). 만료일을 정한다
+	 * @param zone 발급일을 정하는 시간대. 발급일은 발급 시각을 이 시간대의 날짜로 바꾼 것이고 만료일을 정한다
+	 * (발급일을 따로 받지 않는다. 시계를 두 번 읽으면 자정을 사이에 두고 둘이 어긋난다)
 	 * @throws IllegalArgumentException 빈 값, 형식에 맞지 않는 패스 번호·링크 해시, 비었거나 긴 이름
 	 */
 	public static Pass issue(long partnerId, String passNo, String linkTokenHash, String studentName,
-			String guardianPhoneIndex, Instant issuedAt, LocalDate issuedOn, LocalDate paidOn, Money paidAmount,
+			String guardianPhoneIndex, Instant issuedAt, ZoneId zone, LocalDate paidOn, Money paidAmount,
 			PaymentMethod paymentMethod) {
 		if (!PassNumber.isValid(passNo)) {
 			throw new IllegalArgumentException("passNo의 형식이 틀렸다");
@@ -111,11 +113,11 @@ public class Pass extends BaseEntity {
 		if (guardianPhoneIndex == null || guardianPhoneIndex.isBlank()) {
 			throw new IllegalArgumentException("guardianPhoneIndex는 비울 수 없다");
 		}
-		if (issuedAt == null || issuedOn == null || paidOn == null || paidAmount == null || paymentMethod == null) {
-			throw new IllegalArgumentException("발급 시각, 발급일, 결제일, 결제 금액, 결제 수단은 비울 수 없다");
+		if (issuedAt == null || zone == null || paidOn == null || paidAmount == null || paymentMethod == null) {
+			throw new IllegalArgumentException("발급 시각, 시간대, 결제일, 결제 금액, 결제 수단은 비울 수 없다");
 		}
 		return new Pass(partnerId, passNo, linkTokenHash, validName(studentName), guardianPhoneIndex, issuedAt,
-				expiryOf(issuedOn), paidOn, paidAmount, paymentMethod);
+				expiryOf(LocalDate.ofInstant(issuedAt, zone)), paidOn, paidAmount, paymentMethod);
 	}
 
 	/** 발급일에 한 달을 더한 날. 그날까지 쓸 수 있다. 다음 달에 그날이 없으면 그 달의 마지막 날이다(10-31 → 11-30). */

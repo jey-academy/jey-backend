@@ -3,6 +3,7 @@ package com.jey.dongtanpass.domain;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 
 import com.jey.TestcontainersConfiguration;
@@ -74,7 +75,7 @@ class ConsentPersistenceTest {
 			.saveAndFlush(Partner.create("동의확인-" + UUID.randomUUID().toString().substring(0, 8)))
 			.getId();
 		return passes.saveAndFlush(Pass.issue(partnerId, PassNumber.generate(RANDOM), LinkToken.generate(RANDOM).hash(),
-				"김하윤", "phone-index", Instant.parse("2026-10-14T01:00:00Z"), LocalDate.of(2026, 10, 14),
+				"김하윤", "phone-index", Instant.parse("2026-10-14T01:00:00Z"), ZoneId.of("Asia/Seoul"),
 				LocalDate.of(2026, 10, 14), Money.of(150000), PaymentMethod.CARD));
 	}
 

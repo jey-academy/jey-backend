@@ -193,7 +193,7 @@ class PassCancelApiTest {
 	private Pass save(long partnerId, LocalDate issuedOn) {
 		Instant issuedAt = issuedOn.atTime(10, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
 		return passes.saveAndFlush(Pass.issue(partnerId, PassNumber.generate(RANDOM), LinkToken.generate(RANDOM).hash(),
-				"김하윤", "phone-index", issuedAt, issuedOn, issuedOn, Money.of(150000), PaymentMethod.CARD));
+				"김하윤", "phone-index", issuedAt, ZoneId.of("Asia/Seoul"), issuedOn, Money.of(150000), PaymentMethod.CARD));
 	}
 
 	private String statusOf(Pass pass) {

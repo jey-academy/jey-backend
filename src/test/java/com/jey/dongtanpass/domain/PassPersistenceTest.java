@@ -3,6 +3,7 @@ package com.jey.dongtanpass.domain;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
@@ -27,6 +28,8 @@ class PassPersistenceTest {
 
 	private static final SecureRandom RANDOM = new SecureRandom();
 
+	private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+
 	@Autowired
 	PassRepository passes;
 
@@ -45,7 +48,7 @@ class PassPersistenceTest {
 	void 저장한_패스를_다시_읽으면_모든_칸이_같다() {
 		Instant issuedAt = Instant.parse("2026-10-14T01:00:00.123456Z");
 		Pass saved = passes.saveAndFlush(Pass.issue(partnerId, PassNumber.generate(RANDOM),
-				LinkToken.generate(RANDOM).hash(), "김하윤", "phone-index", issuedAt, LocalDate.of(2026, 10, 14),
+				LinkToken.generate(RANDOM).hash(), "김하윤", "phone-index", issuedAt, SEOUL,
 				LocalDate.of(2026, 10, 13), Money.of(150000), PaymentMethod.TRANSFER));
 
 		Pass read = passes.findById(saved.getId()).orElseThrow();
@@ -85,7 +88,7 @@ class PassPersistenceTest {
 
 	private Pass newPass(String passNo) {
 		return Pass.issue(partnerId, passNo, LinkToken.generate(RANDOM).hash(), "김하윤", "phone-index",
-				Instant.parse("2026-10-14T01:00:00Z"), LocalDate.of(2026, 10, 14), LocalDate.of(2026, 10, 14),
+				Instant.parse("2026-10-14T01:00:00Z"), SEOUL, LocalDate.of(2026, 10, 14),
 				Money.of(150000), PaymentMethod.CARD);
 	}
 

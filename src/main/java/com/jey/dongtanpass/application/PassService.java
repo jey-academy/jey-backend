@@ -158,7 +158,7 @@ public class PassService {
 		LinkToken link = LinkToken.generate(random);
 		// 번호가 겹치면 여기서 유니크 제약에 걸린다(커밋 때까지 미루지 않는다).
 		Pass pass = passes.saveAndFlush(Pass.issue(partnerId, passNumbers.next(), link.hash(),
-				input.studentName(), phoneIndex, now, LocalDate.now(clock), input.paidOn(), input.paidAmount(),
+				input.studentName(), phoneIndex, now, clock.getZone(), input.paidOn(), input.paidAmount(),
 				input.paymentMethod()));
 		consents.save(Consent.thirdPartyProvision(pass.getId(), input.noticeVersion(), now));
 		// 같은 트랜잭션에서 낸다. 발급이 커밋돼야 이벤트도 나간다.

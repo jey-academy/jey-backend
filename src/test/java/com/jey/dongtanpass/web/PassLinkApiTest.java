@@ -205,7 +205,7 @@ class PassLinkApiTest {
 	private Pass save(long partnerId, LinkToken link, LocalDate issuedOn) {
 		Instant issuedAt = issuedOn.atTime(10, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
 		return passes.saveAndFlush(Pass.issue(partnerId, PassNumber.generate(RANDOM), link.hash(), "김하윤",
-				"phone-index", issuedAt, issuedOn, issuedOn, Money.of(150000), PaymentMethod.CARD));
+				"phone-index", issuedAt, ZoneId.of("Asia/Seoul"), issuedOn, Money.of(150000), PaymentMethod.CARD));
 	}
 
 	private String hashOf(Pass pass) {

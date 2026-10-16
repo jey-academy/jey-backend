@@ -204,10 +204,16 @@ class PassIssueApiTest {
 
 	@Test
 	@WithJeyUser(role = UserRole.PARTNER, id = ACCOUNT, partnerId = PARTNER)
-	void 결제일이_오늘이나_지난_날이면_발급한다() throws Exception {
-		issue(body("김하윤", randomPhone().value(), today().minusDays(3).toString(), "150000", "\"CARD\"", true,
-				version()))
-			.andExpect(status().isCreated());
+	void 결제일이_지난_날이어도_만료일은_발급일에서_센다() throws Exception {
+		long id = idOf(issue(body("김하윤", randomPhone().value(), today().minusDays(3).toString(), "150000",
+				"\"CARD\"", true, version()))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.expiresOn").value(today().plusMonths(1).toString()))
+			.andReturn());
+
+		assertThat(jdbc.queryForMap("SELECT paid_on, expires_on FROM dongtanpass_pass WHERE id = ?", id))
+			.containsEntry("paid_on", java.sql.Date.valueOf(today().minusDays(3)))
+			.containsEntry("expires_on", java.sql.Date.valueOf(today().plusMonths(1)));
 	}
 
 	@ParameterizedTest

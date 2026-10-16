@@ -2,6 +2,7 @@ package com.jey.dongtanpass.domain;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.stream.Stream;
 
 import com.jey.core.shared.Money;
@@ -20,6 +21,8 @@ class PassTest {
 
 	private static final String HASH = "a".repeat(64);
 
+	private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+
 	private static final LocalDate ISSUED_ON = LocalDate.of(2026, 10, 14);
 
 	// 서울 기준 2026-10-14 10:00
@@ -31,6 +34,27 @@ class PassTest {
 	void 유효기간은_발급일에_한_달을_더한_날까지다(LocalDate issuedOn, LocalDate expiresOn) {
 		assertThat(Pass.expiryOf(issuedOn)).isEqualTo(expiresOn);
 		assertThat(issue("김하윤", issuedOn).getExpiresOn()).isEqualTo(expiresOn);
+	}
+
+	// 발급일은 발급 시각을 그 시간대의 날짜로 바꾼 것이다. 따로 받지 않아 둘이 어긋날 수 없다.
+	@ParameterizedTest(name = "{0} 발급 → {1}까지")
+	@CsvSource({ "2026-10-16T14:59:59.999999Z,2026-11-16", "2026-10-16T15:00:00Z,2026-11-17" })
+	void 발급일은_발급_시각의_서울_날짜다(Instant issuedAt, LocalDate expiresOn) {
+		Pass pass = Pass.issue(1L, "DT-ABC234", HASH, "김하윤", "idx", issuedAt, SEOUL, ISSUED_ON, Money.of(150000),
+				PaymentMethod.CARD);
+
+		assertThat(pass.getIssuedAt()).isEqualTo(issuedAt);
+		assertThat(pass.getExpiresOn()).isEqualTo(expiresOn);
+	}
+
+	// 만료일은 결제일이 아니라 발급일로 정한다.
+	@Test
+	void 결제일이_발급일보다_앞서도_만료일은_발급일에서_센다() {
+		Pass pass = Pass.issue(1L, "DT-ABC234", HASH, "김하윤", "idx", ISSUED_AT, SEOUL, ISSUED_ON.minusDays(3),
+				Money.of(150000), PaymentMethod.CARD);
+
+		assertThat(pass.getExpiresOn()).isEqualTo(LocalDate.of(2026, 11, 14));
+		assertThat(pass.getPaidOn()).isEqualTo(LocalDate.of(2026, 10, 11));
 	}
 
 	@Test
@@ -127,21 +151,23 @@ class PassTest {
 	@Test
 	void 패스_번호와_링크_해시가_형식에_맞지_않으면_만들지_않는다() {
 		assertThatIllegalArgumentException().isThrownBy(() -> Pass.issue(1L, "DT-ABC23O", HASH, "김하윤", "idx",
-				ISSUED_AT, ISSUED_ON, ISSUED_ON, Money.of(150000), PaymentMethod.CARD));
+				ISSUED_AT, SEOUL, ISSUED_ON, Money.of(150000), PaymentMethod.CARD));
 		assertThatIllegalArgumentException().isThrownBy(() -> Pass.issue(1L, "DT-ABC234", "x", "김하윤", "idx",
-				ISSUED_AT, ISSUED_ON, ISSUED_ON, Money.of(150000), PaymentMethod.CARD));
+				ISSUED_AT, SEOUL, ISSUED_ON, Money.of(150000), PaymentMethod.CARD));
 	}
 
 	@Test
 	void 번호_색인과_결제_기록은_비울_수_없다() {
 		assertThatIllegalArgumentException().isThrownBy(() -> Pass.issue(1L, "DT-ABC234", HASH, "김하윤", " ",
-				ISSUED_AT, ISSUED_ON, ISSUED_ON, Money.of(150000), PaymentMethod.CARD));
+				ISSUED_AT, SEOUL, ISSUED_ON, Money.of(150000), PaymentMethod.CARD));
 		assertThatIllegalArgumentException().isThrownBy(() -> Pass.issue(1L, "DT-ABC234", HASH, "김하윤", "idx",
-				ISSUED_AT, ISSUED_ON, null, Money.of(150000), PaymentMethod.CARD));
+				ISSUED_AT, SEOUL, null, Money.of(150000), PaymentMethod.CARD));
 		assertThatIllegalArgumentException().isThrownBy(() -> Pass.issue(1L, "DT-ABC234", HASH, "김하윤", "idx",
-				ISSUED_AT, ISSUED_ON, ISSUED_ON, null, PaymentMethod.CARD));
+				ISSUED_AT, SEOUL, ISSUED_ON, null, PaymentMethod.CARD));
 		assertThatIllegalArgumentException().isThrownBy(() -> Pass.issue(1L, "DT-ABC234", HASH, "김하윤", "idx",
-				ISSUED_AT, ISSUED_ON, ISSUED_ON, Money.of(150000), null));
+				ISSUED_AT, SEOUL, ISSUED_ON, Money.of(150000), null));
+		assertThatIllegalArgumentException().isThrownBy(() -> Pass.issue(1L, "DT-ABC234", HASH, "김하윤", "idx",
+				ISSUED_AT, null, ISSUED_ON, Money.of(150000), PaymentMethod.CARD));
 	}
 
 	@Test
@@ -156,9 +182,10 @@ class PassTest {
 		assertThat(PaymentMethod.OTHER.label()).isEqualTo("기타");
 	}
 
+	// 발급일(서울) 오전 10시에 발급한 패스
 	private static Pass issue(String name, LocalDate issuedOn) {
-		return Pass.issue(1L, "DT-ABC234", HASH, name, "idx", ISSUED_AT, issuedOn, issuedOn, Money.of(150000),
-				PaymentMethod.CARD);
+		return Pass.issue(1L, "DT-ABC234", HASH, name, "idx", issuedOn.atTime(10, 0).atZone(SEOUL).toInstant(), SEOUL,
+				issuedOn, Money.of(150000), PaymentMethod.CARD);
 	}
 
 }
