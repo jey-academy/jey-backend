@@ -1,6 +1,7 @@
 package com.jey.dongtanpass.application;
 
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -43,6 +44,20 @@ class QrSigningPropertiesTest {
 		assertThatIllegalArgumentException().isThrownBy(() -> new QrSigningProperties(1, null));
 		assertThatIllegalArgumentException().isThrownBy(() -> new QrSigningProperties(1, Map.of()));
 		assertThatIllegalArgumentException().isThrownBy(() -> new QrSigningProperties(1, Map.of(1, " ")));
+	}
+
+	// 널은 Map.copyOf가 먼저 NPE로 떨어뜨렸다. 어느 칸이 틀렸는지 적힌 문구로 실패한다.
+	@Test
+	void 키나_버전이_널이면_어느_칸인지_적힌_문구로_받지_않는다() {
+		Map<Integer, String> nullKey = new HashMap<>();
+		nullKey.put(1, null);
+		Map<Integer, String> nullVersion = new HashMap<>();
+		nullVersion.put(null, KEY_1);
+
+		assertThatIllegalArgumentException().isThrownBy(() -> new QrSigningProperties(1, nullKey))
+			.withMessageContaining("keys.1");
+		assertThatIllegalArgumentException().isThrownBy(() -> new QrSigningProperties(1, nullVersion))
+			.withMessageContaining("버전");
 	}
 
 	@Test

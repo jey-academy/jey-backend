@@ -31,7 +31,7 @@ record QrSigningProperties(int activeKeyVersion, Map<Integer, String> keys) {
 		if (keys == null || keys.isEmpty()) {
 			throw new IllegalArgumentException(PREFIX + "keys가 없다");
 		}
-		keys = Map.copyOf(keys);
+		// 복사하기 전에 본다. Map.copyOf는 널 키·값을 문구 없는 NPE로 떨어뜨린다.
 		keys.forEach((version, key) -> {
 			if (version == null || version < 1) {
 				throw new IllegalArgumentException(PREFIX + "keys의 버전은 1 이상이어야 한다");
@@ -41,6 +41,7 @@ record QrSigningProperties(int activeKeyVersion, Map<Integer, String> keys) {
 						PREFIX + "keys." + version + "는 Base64로 적은 " + MIN_KEY_BYTES + "바이트 이상이어야 한다");
 			}
 		});
+		keys = Map.copyOf(keys);
 		if (!keys.containsKey(activeKeyVersion)) {
 			throw new IllegalArgumentException(PREFIX + "keys에 active-key-version(" + activeKeyVersion + ")의 키가 없다");
 		}
