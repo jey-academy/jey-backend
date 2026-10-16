@@ -1,8 +1,11 @@
 package com.jey.dongtanpass.domain;
 
+import java.text.Normalizer;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -25,6 +28,22 @@ class MaskedNameTest {
 	@Test
 	void 전각_공백도_뺀다() {
 		assertThat(MaskedName.of("김　하윤")).isEqualTo("김*윤");
+	}
+
+	// 붙여 넣은 이름은 한글이 자모로 풀려(NFD) 들어올 수 있다. 음절로 모은 뒤 센다.
+	@Test
+	void 자모로_풀린_이름도_음절로_센다() {
+		String decomposed = Normalizer.normalize("김하윤", Normalizer.Form.NFD);
+
+		assertThat(decomposed).hasSize(8);
+		assertThat(MaskedName.of(decomposed)).isEqualTo("김*윤");
+	}
+
+	// 저장된 이름은 비어 있지 않다(Pass가 막는다). 들어오더라도 예외 없이 빈 문자열이다.
+	@ParameterizedTest
+	@ValueSource(strings = { "", " ", "　" })
+	void 비었거나_공백뿐이면_빈_문자열이다(String name) {
+		assertThat(MaskedName.of(name)).isEmpty();
 	}
 
 }
