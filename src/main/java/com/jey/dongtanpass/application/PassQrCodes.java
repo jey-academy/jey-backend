@@ -24,7 +24,7 @@ import org.springframework.stereotype.Component;
  * 학부모 화면의 QR에 넣는 서명 토큰을 만들고 확인한다(ADR-0010). 만드는 쪽(학부모 QR)과 확인하는 쪽(데스크)이 이것 하나를 쓴다.
  *
  * <p>토큰은 {@code {키 버전}.{본문}.{서명}}이다. 본문은 패스 ID, 만료 시각(초), 무작위 토큰 ID 16바이트를 이은 32바이트이고,
- * 서명은 {@code {키 버전}.{본문}}의 HMAC-SHA256이다. 본문과 서명은 Base64url(패딩 없음)이다.
+ * 서명은 용도 문자열({@code dongtanpass.pass|}) 뒤에 {@code {키 버전}.{본문}}을 이은 것의 HMAC-SHA256이다. 본문과 서명은 Base64url(패딩 없음)이다.
  * 만들 때 저장하지 않는다. 같은 토큰을 두 번 쓰지 못하게 하는 것은 확인하는 쪽의 일이다(토큰 ID를 남은 수명만큼 적는다).
  *
  * <p>시각은 부르는 쪽이 준다(주입한 시계에서 읽은 값).
@@ -37,6 +37,9 @@ public class PassQrCodes {
 	public static final Duration TTL = Duration.ofSeconds(60);
 
 	private static final String HMAC = "HmacSHA256";
+
+	// 서명 입력의 맨 앞에 붙인다. 같은 키를 다른 QR(쿠폰 등)에 쓰더라도 그 토큰이 패스 토큰으로 통과하지 않는다. 토큰에는 싣지 않는다.
+	private static final String PURPOSE = "dongtanpass.pass|";
 
 	private static final int TOKEN_ID_BYTES = 16;
 
@@ -134,7 +137,7 @@ public class PassQrCodes {
 		try {
 			Mac mac = Mac.getInstance(HMAC);
 			mac.init(key);
-			return mac.doFinal(signed.getBytes(StandardCharsets.US_ASCII));
+			return mac.doFinal((PURPOSE + signed).getBytes(StandardCharsets.US_ASCII));
 		}
 		catch (GeneralSecurityException ex) {
 			// 모든 JVM에 있어야 하는 알고리즘이고 키는 시작할 때 확인했다.

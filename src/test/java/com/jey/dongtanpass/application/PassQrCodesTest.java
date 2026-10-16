@@ -1,9 +1,17 @@
 package com.jey.dongtanpass.application;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -18,6 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PassQrCodesTest {
 
 	private static final Instant NOW = Instant.parse("2026-10-16T01:00:00Z");
+
+	private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
 
 	private final PassQrCodes codes = new PassQrCodes(new QrSigningProperties(1, Map.of(1, KEY_1)));
 
@@ -132,9 +142,34 @@ class PassQrCodesTest {
 		assertThat(verified).isEmpty();
 	}
 
+	// 같은 키를 다른 QR(쿠폰 등)에 쓰더라도 그 토큰이 패스 토큰으로 통과하지 않게, 서명 입력에 용도를 넣는다.
+	@Test
+	void 용도_없이_같은_키로_서명한_토큰은_무효다() {
+		String signed = "1." + ENCODER.encodeToString(body(7L, NOW.plusSeconds(60), 32));
+
+		assertThat(codes.verify(signed + "." + ENCODER.encodeToString(hmac(KEY_1, signed)), NOW)).isEmpty();
+	}
+
 	@Test
 	void 문자열로_바꿔도_키가_나오지_않는다() {
 		assertThat(codes.toString()).doesNotContain(KEY_1);
+	}
+
+	// 패스 ID, 만료 시각(초), 나머지는 0인 토큰 ID로 채운 본문. 길이를 정할 수 있다.
+	private static byte[] body(long passId, Instant expiresAt, int length) {
+		ByteBuffer buffer = ByteBuffer.allocate(Math.max(length, 16)).putLong(passId).putLong(expiresAt.getEpochSecond());
+		return Arrays.copyOf(buffer.array(), length);
+	}
+
+	private static byte[] hmac(String base64Key, String signed) {
+		try {
+			Mac mac = Mac.getInstance("HmacSHA256");
+			mac.init(new SecretKeySpec(Base64.getDecoder().decode(base64Key), "HmacSHA256"));
+			return mac.doFinal(signed.getBytes(StandardCharsets.US_ASCII));
+		}
+		catch (GeneralSecurityException ex) {
+			throw new IllegalStateException(ex);
+		}
 	}
 
 	// 첫 글자를 바꾼다. 마지막 글자는 낮은 비트가 쓰이지 않아(32바이트의 Base64는 43자) 바꿔도 같은 바이트일 수 있다.
