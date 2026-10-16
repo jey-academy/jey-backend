@@ -313,6 +313,35 @@ class HolderRelinkServiceTest {
 		assertThat(passes.findById(pass.getId()).orElseThrow().getLinkTokenHash()).isEqualTo(link.hash());
 	}
 
+	// 고른 패스가 잠그기 전에 쓰였어도, 쓸 수 있는 다른 패스가 있으면 그것을 다시 골라 링크를 준다(한 번만 다시 고른다).
+	@Test
+	void 고른_패스가_잠그기_전에_쓰이면_쓸_수_있는_다른_패스를_다시_고른다() throws Exception {
+		LinkToken olderLink = LinkToken.generate(RANDOM);
+		LinkToken newerLink = LinkToken.generate(RANDOM);
+		Pass older = save(olderLink, NAME, -2);
+		Pass newer = save(newerLink, NAME, 0);
+		ExecutorService executor = Executors.newSingleThreadExecutor();
+		try (Connection desk = dataSource.getConnection()) {
+			desk.setAutoCommit(false);
+			try (PreparedStatement lock = desk.prepareStatement(
+					"UPDATE dongtanpass_pass SET status = 'REDEEMED' WHERE id = ?")) {
+				lock.setLong(1, newer.getId());
+				assertThat(lock.executeUpdate()).isEqualTo(1);
+			}
+			Future<RelinkedLink> relink = executor.submit(() -> holderRelink.relink(NAME, phone, address));
+			awaitLockWait();
+			desk.commit();
+
+			RelinkedLink relinked = relink.get(30, TimeUnit.SECONDS);
+			assertThat(holderPass.view(relinked.linkToken()).passNo()).isEqualTo(older.getPassNo());
+		}
+		finally {
+			executor.shutdownNow();
+		}
+		assertThat(passes.findById(newer.getId()).orElseThrow().getLinkTokenHash()).isEqualTo(newerLink.hash());
+		assertNotFound(() -> holderPass.view(olderLink.raw()));
+	}
+
 	// 다시 받기의 잠금 조회가 다른 연결의 잠금을 기다리기 시작할 때까지 기다린다.
 	private void awaitLockWait() throws InterruptedException {
 		long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);

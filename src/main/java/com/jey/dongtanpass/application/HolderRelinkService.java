@@ -87,9 +87,15 @@ public class HolderRelinkService {
 				DongtanpassErrorCode.HOLDER_RELINK_LIMITED, denial -> DeniedAttempts.record(auditLog,
 						() -> AuditEntry.of(DongtanpassAuditAction.HOLDER_RELINK_LIMITED), denial));
 		try {
-			// 후보는 따로 읽는다. 같은 트랜잭션에서 읽은 엔티티는 잠가 읽어도 상태가 새로 읽히지 않는다.
-			long passId = transaction.execute(status -> choose(nameKeyOf(studentName), phoneIndex));
-			RelinkedLink relinked = transaction.execute(status -> renew(passId));
+			Optional<StudentNameKey> name = nameKeyOf(studentName);
+			RelinkedLink relinked;
+			try {
+				relinked = chooseAndRenew(name, phoneIndex);
+			}
+			catch (UnusablePassException changed) {
+				// 고른 패스가 잠그기 전에 쓰이거나 취소됐다. 쓸 수 있는 다른 패스가 있을 수 있어 한 번만 다시 고른다.
+				relinked = chooseAndRenew(name, phoneIndex);
+			}
 			refund(attempt);
 			return relinked;
 		}
@@ -107,6 +113,12 @@ public class HolderRelinkService {
 			}
 			throw denial;
 		}
+	}
+
+	// 후보는 따로 읽는다. 같은 트랜잭션에서 읽은 엔티티는 잠가 읽어도 상태가 새로 읽히지 않는다.
+	private RelinkedLink chooseAndRenew(Optional<StudentNameKey> name, String phoneIndex) {
+		long passId = transaction.execute(status -> choose(name, phoneIndex));
+		return transaction.execute(status -> renew(passId));
 	}
 
 	// 공백뿐인 이름(줄바꿈하지 않는 공백 등, 요청 검증을 지나온 것)은 어떤 패스와도 맞지 않는다. 틀린 시도로 센다.
