@@ -17,6 +17,9 @@ public interface PassRepository extends JpaRepository<Pass, Long> {
 	/** 그 학원이 발급한 패스만 찾는다. 다른 학원의 패스는 없는 것과 같다. */
 	Optional<Pass> findByIdAndPartnerId(Long id, Long partnerId);
 
+	/** 학부모가 링크로 연다. 해시는 유니크다. */
+	Optional<Pass> findByLinkTokenHash(String linkTokenHash);
+
 	/** 링크 새로 만들기와 취소. 같은 패스를 고치는 요청이 차례로 돈다(사용 처리와 겹치면 버전이 막는다). */
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select p from Pass p where p.id = :id and p.partnerId = :partnerId")
