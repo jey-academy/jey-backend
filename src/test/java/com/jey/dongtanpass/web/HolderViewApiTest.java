@@ -149,7 +149,8 @@ class HolderViewApiTest {
 	@Test
 	void 없는_토큰은_404다() throws Exception {
 		view(LinkToken.generate(RANDOM).raw()).andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_FOUND"));
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_FOUND"))
+			.andExpect(header().doesNotExist("Set-Cookie"));
 	}
 
 	@ParameterizedTest

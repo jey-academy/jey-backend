@@ -39,6 +39,7 @@ import static com.jey.TestCsrf.csrfToken;
 import static com.jey.dongtanpass.DongtanpassFixtures.upsertPartner;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -136,6 +137,17 @@ class HolderQrApiTest {
 		qr(LinkToken.generate(RANDOM).raw()).andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_FOUND"));
 		qr("x").andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_FOUND"));
+	}
+
+	// 공개 경로가 세션을 만들면 로그인 없이 세션 저장소를 채울 수 있다.
+	@Test
+	void 로그인_없는_요청은_성공이든_404든_세션을_만들지_않는다() throws Exception {
+		LinkToken link = LinkToken.generate(RANDOM);
+		save(PARTNER, link);
+
+		qr(link.raw()).andExpect(status().isOk()).andExpect(header().doesNotExist("Set-Cookie"));
+		qr(LinkToken.generate(RANDOM).raw()).andExpect(status().isNotFound())
+			.andExpect(header().doesNotExist("Set-Cookie"));
 	}
 
 	@Test
