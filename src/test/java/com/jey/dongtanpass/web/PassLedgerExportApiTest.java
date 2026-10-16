@@ -108,6 +108,17 @@ class PassLedgerExportApiTest {
 		assertThat(text).contains("\"시월\"").doesNotContain("\"구월\"");
 	}
 
+	// 한국 0시에 발급한 패스의 발급일은 그날이다(UTC로는 전날 15시).
+	@Test
+	@WithJeyUser(role = UserRole.PARTNER, partnerId = PARTNER)
+	void 발급일은_한국_날짜로_쓴다() throws Exception {
+		Instant issuedAt = Instant.parse("2026-10-14T15:00:00Z");
+		passes.saveAndFlush(Pass.issue(PARTNER, PassNumber.generate(RANDOM), LinkToken.generate(RANDOM).hash(), "자정발급",
+				"phone-index", issuedAt, SEOUL, LocalDate.of(2026, 10, 15), Money.of(150000), PaymentMethod.CARD));
+
+		assertThat(csv(EXPORT)).contains("\"자정발급\",\"2026-10-15\",\"2026-11-15\"");
+	}
+
 	@Test
 	@WithJeyUser(role = UserRole.PARTNER, partnerId = PARTNER)
 	void 수식으로_시작하는_이름은_글자로_나간다() throws Exception {

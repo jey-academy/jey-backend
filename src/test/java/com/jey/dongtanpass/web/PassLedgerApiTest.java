@@ -121,6 +121,19 @@ class PassLedgerApiTest {
 			.andExpect(jsonPath("$.totalElements").value(3));
 	}
 
+	// 거르기와 따로, 줄에 찍히는 발급일도 한국 날짜다. UTC로 바꾸면 한국 0~9시 발급이 전날로 보인다.
+	@Test
+	@WithJeyUser(role = UserRole.PARTNER, partnerId = PARTNER)
+	void 줄의_발급일은_한국_날짜다() throws Exception {
+		Pass lastOf14 = saveAt(PARTNER, Instant.parse("2026-10-14T14:59:59.999999Z"));
+		Pass firstOf15 = saveAt(PARTNER, Instant.parse("2026-10-14T15:00:00Z"));
+
+		mockMvc.perform(get(LEDGER).param("from", "2026-10-14").param("to", "2026-10-15"))
+			.andExpect(jsonPath("$.items[?(@.id == " + lastOf14.getId() + ")].issuedOn").value(contains("2026-10-14")))
+			.andExpect(jsonPath("$.items[?(@.id == " + firstOf15.getId() + ")].issuedOn").value(contains("2026-10-15")))
+			.andExpect(jsonPath("$.items[?(@.id == " + firstOf15.getId() + ")].expiresOn").value(contains("2026-11-15")));
+	}
+
 	// 만료일은 오늘을 기준으로 직접 정한다(달마다 날 수가 달라 발급일로 맞추면 날짜에 따라 깨진다).
 	@Test
 	@WithJeyUser(role = UserRole.PARTNER, partnerId = PARTNER)
