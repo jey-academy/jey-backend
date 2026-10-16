@@ -151,6 +151,17 @@ class HolderQrApiTest {
 	}
 
 	@Test
+	void 링크를_새로_만든_뒤의_옛_토큰은_404다() throws Exception {
+		LinkToken old = LinkToken.generate(RANDOM);
+		Pass pass = save(PARTNER, old);
+		jdbc.update("UPDATE dongtanpass_pass SET link_token_hash = ? WHERE id = ?",
+				LinkToken.generate(RANDOM).hash(), pass.getId());
+
+		qr(old.raw()).andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_FOUND"));
+	}
+
+	@Test
 	void 꺼진_학원이_발급한_패스도_QR을_받는다() throws Exception {
 		LinkToken link = LinkToken.generate(RANDOM);
 		save(INACTIVE, link);

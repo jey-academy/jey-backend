@@ -153,6 +153,20 @@ class HolderViewApiTest {
 			.andExpect(header().doesNotExist("Set-Cookie"));
 	}
 
+	// 코드만 같고 문구나 다른 칸이 다르면 어느 경우인지 드러난다. 요청 ID를 맞춰 본문 전체를 비교한다.
+	@Test
+	void 없는_토큰과_모양이_틀린_토큰과_막힌_토큰의_404_본문이_같다() throws Exception {
+		LinkToken old = LinkToken.generate(RANDOM);
+		Pass pass = save(PARTNER, old, "김하윤");
+		jdbc.update("UPDATE dongtanpass_pass SET link_token_hash = ? WHERE id = ?",
+				LinkToken.generate(RANDOM).hash(), pass.getId());
+
+		String missing = notFoundBody(LinkToken.generate(RANDOM).raw());
+
+		assertThat(notFoundBody("x")).isEqualTo(missing);
+		assertThat(notFoundBody(old.raw())).isEqualTo(missing);
+	}
+
 	@ParameterizedTest
 	@CsvSource(delimiter = '|', value = { "{}", "{\"token\":null}", "{\"token\":\"\"}", "{\"token\":1}" })
 	void 토큰이_없거나_글자가_아니면_그_칸의_400이다(String body) throws Exception {
@@ -204,6 +218,18 @@ class HolderViewApiTest {
 		view(missing.raw()).andExpect(status().isNotFound());
 
 		assertThat(output.getAll()).doesNotContain(link.raw()).doesNotContain(missing.raw()).doesNotContain("로그확인이름");
+	}
+
+	private String notFoundBody(String token) throws Exception {
+		return mockMvc
+			.perform(post(VIEW).with(csrfToken(mockMvc))
+				.header("X-Request-Id", "holder-view-404")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"token\":\"" + token + "\"}"))
+			.andExpect(status().isNotFound())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
 	}
 
 	private ResultActions view(String token) throws Exception {
