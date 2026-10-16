@@ -29,6 +29,9 @@ class PassQrCodesTest {
 
 	private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
 
+	// 운영 코드의 서명 입력 앞부분과 같은 값(테스트에서 토큰을 직접 서명할 때 쓴다).
+	private static final String PURPOSE = "dongtanpass.pass|";
+
 	private final PassQrCodes codes = new PassQrCodes(new QrSigningProperties(1, Map.of(1, KEY_1)));
 
 	@Test
@@ -123,6 +126,32 @@ class PassQrCodesTest {
 		assertThat(codes.verify("9" + token.substring(1), NOW)).isEmpty();
 	}
 
+	// 서명은 맞지만 그 버전의 키가 없다. 다른 키로 대신 확인하지 않는다.
+	@Test
+	void 모르는_버전을_적고_아는_키로_서명한_토큰도_무효다() {
+		String body = ENCODER.encodeToString(body(7L, NOW.plusSeconds(60), 32));
+
+		// 같은 방법으로 버전 1을 적으면 유효하다(직접 서명한 토큰이 맞는 모양인지 확인)
+		assertThat(codes.verify(signedToken(KEY_1, "1." + body), NOW)).isPresent();
+		assertThat(codes.verify(signedToken(KEY_1, "9." + body), NOW)).isEmpty();
+	}
+
+	// 키 회전의 마지막 단계.
+	@Test
+	void 옛_키를_지우면_그_버전의_토큰은_무효다() {
+		PassQrCodes removed = new PassQrCodes(new QrSigningProperties(2, Map.of(2, KEY_2)));
+
+		assertThat(removed.verify(codes.issue(7L, NOW).token(), NOW)).isEmpty();
+	}
+
+	// 키를 가진 쪽만 만들 수 있는 입력이지만, 확인은 예외를 던지지 않는다.
+	@Test
+	void 서명은_맞고_본문_길이가_틀리면_예외_없이_무효다() {
+		assertThat(codes.verify(signedToken(KEY_1, "1." + ENCODER.encodeToString(body(7L, NOW.plusSeconds(60), 16))),
+				NOW))
+			.isEmpty();
+	}
+
 	// 키를 바꾸는 동안 옛 버전으로 만든 토큰도 확인된다.
 	@Test
 	void 옛_버전의_키가_남아_있으면_그_버전의_토큰도_유효하고_새_토큰은_새_버전이다() {
@@ -159,6 +188,11 @@ class PassQrCodesTest {
 	private static byte[] body(long passId, Instant expiresAt, int length) {
 		ByteBuffer buffer = ByteBuffer.allocate(Math.max(length, 16)).putLong(passId).putLong(expiresAt.getEpochSecond());
 		return Arrays.copyOf(buffer.array(), length);
+	}
+
+	// 운영 코드와 같은 방식(용도 + 서명할 부분)으로 직접 서명한 토큰.
+	private static String signedToken(String base64Key, String signed) {
+		return signed + "." + ENCODER.encodeToString(hmac(base64Key, PURPOSE + signed));
 	}
 
 	private static byte[] hmac(String base64Key, String signed) {
