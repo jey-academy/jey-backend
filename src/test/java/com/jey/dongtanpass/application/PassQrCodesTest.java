@@ -1,5 +1,6 @@
 package com.jey.dongtanpass.application;
 
+import java.lang.reflect.Modifier;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -177,6 +178,14 @@ class PassQrCodesTest {
 		String signed = "1." + ENCODER.encodeToString(body(7L, NOW.plusSeconds(60), 32));
 
 		assertThat(codes.verify(signed + "." + ENCODER.encodeToString(hmac(KEY_1, signed)), NOW)).isEmpty();
+	}
+
+	// 확인을 거친 값이라는 뜻이 있으므로 다른 패키지에서 만들 수 없다.
+	@Test
+	void 확인한_토큰의_내용은_밖에서_만들_수_없다() {
+		assertThat(VerifiedQr.class.getDeclaredConstructors())
+			.allSatisfy(constructor -> assertThat(Modifier.isPublic(constructor.getModifiers())
+					|| Modifier.isProtected(constructor.getModifiers())).isFalse());
 	}
 
 	@Test
