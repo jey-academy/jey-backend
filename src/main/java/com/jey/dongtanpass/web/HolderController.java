@@ -32,7 +32,7 @@ class HolderController {
 	}
 
 	@Operation(summary = "학부모 QR 받기",
-			description = "데스크에 보여 줄 QR 토큰을 준다. 60초 동안 쓸 수 있고 부를 때마다 새 토큰이다. 화면은 expiresAt 전에 다시 받는다. "
+			description = "데스크에 보여 줄 QR 토큰을 준다. 약 60초(59초 넘게 60초 이하) 쓸 수 있고 부를 때마다 새 토큰이다. 화면은 expiresAt 전에 다시 받는다. "
 					+ "쓸 수 있는 패스만 받는다(기간이 지났거나 취소됐거나 사용됐으면 409)")
 	@PublicEndpoint
 	@NotIdempotent("로그인하지 않은 경로라 키를 계정별로 볼 수 없다. 부를 때마다 새 QR 토큰을 준다")

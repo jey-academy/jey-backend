@@ -586,7 +586,7 @@
         "description" : "데스크에 보여 줄 QR",
         "properties" : {
           "expiresAt" : {
-            "description" : "이 시각부터 쓸 수 없다. 화면은 그 전에 다시 받는다",
+            "description" : "이 시각부터 쓸 수 없다(초 단위, 받은 때부터 59초 넘게 60초 이하). 화면은 그 전에 다시 받는다",
             "format" : "date-time",
             "type" : "string"
           },
@@ -2018,7 +2018,7 @@
     },
     "/api/v1/dongtanpass/holder/qr" : {
       "post" : {
-        "description" : "데스크에 보여 줄 QR 토큰을 준다. 60초 동안 쓸 수 있고 부를 때마다 새 토큰이다. 화면은 expiresAt 전에 다시 받는다. 쓸 수 있는 패스만 받는다(기간이 지났거나 취소됐거나 사용됐으면 409)",
+        "description" : "데스크에 보여 줄 QR 토큰을 준다. 약 60초(59초 넘게 60초 이하) 쓸 수 있고 부를 때마다 새 토큰이다. 화면은 expiresAt 전에 다시 받는다. 쓸 수 있는 패스만 받는다(기간이 지났거나 취소됐거나 사용됐으면 409)",
         "operationId" : "issueHolderQr",
         "requestBody" : {
           "content" : {
