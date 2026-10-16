@@ -132,6 +132,21 @@ class HolderRelinkServiceTest {
 		assertThat(holderPass.view(canceledLink.raw()).passNo()).isEqualTo(canceled.getPassNo());
 	}
 
+	// 발급 시각이 같으면 나중에 저장된 것(ID가 큰 것)을 고른다.
+	@Test
+	void 발급_시각이_같으면_나중에_저장된_패스를_고른다() {
+		LinkToken firstLink = LinkToken.generate(RANDOM);
+		Pass first = save(firstLink, NAME, 0);
+		Pass second = save(LinkToken.generate(RANDOM), NAME, 0);
+		jdbc.update("UPDATE dongtanpass_pass SET issued_at = (SELECT t.issued_at FROM (SELECT issued_at FROM dongtanpass_pass WHERE id = ?) t) WHERE id = ?",
+				first.getId(), second.getId());
+
+		RelinkedLink relinked = holderRelink.relink(NAME, phone, address);
+
+		assertThat(holderPass.view(relinked.linkToken()).passNo()).isEqualTo(second.getPassNo());
+		assertThat(holderPass.view(firstLink.raw()).passNo()).isEqualTo(first.getPassNo());
+	}
+
 	// 만료는 저장하지 않고 오늘로 계산한다. 만료일까지 쓸 수 있다.
 	@Test
 	void 만료일_당일은_다시_받고_다음_날은_만료로_거부한다() {
