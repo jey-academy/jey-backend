@@ -23,7 +23,10 @@ import com.jey.dongtanpass.domain.PassRepository;
 import com.jey.dongtanpass.domain.PaymentMethod;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -40,6 +43,7 @@ import static org.mockito.Mockito.when;
 // 맞은 요청의 횟수를 되돌리는 일은 링크를 바꾼 트랜잭션이 커밋된 뒤에 한다. 되돌리기가 실패해도(저장소 장애)
 // 일의 결과는 그대로 나가야 한다. 500이 되면 옛 링크는 이미 막혔는데 새 토큰은 학부모에게 가지 못한다.
 // 장치를 일부러 실패시켜야 해서 Spring 없이 만든다(컨텍스트를 늘리지 않는다).
+@ExtendWith(OutputCaptureExtension.class)
 class HolderRelinkRefundFailureTest {
 
 	private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
@@ -83,16 +87,20 @@ class HolderRelinkRefundFailureTest {
 		when(passes.findByIdForUpdate(7L)).thenReturn(Optional.of(pass));
 	}
 
+	// 어느 접속 주소가 까닭 없이 막혔다는 문의를 이 로그와 맞춰 볼 수 있게 한도와 결과를 남긴다. 이름과 번호는 남기지 않는다.
 	@Test
-	void 되돌리기가_실패해도_새_링크를_준다() {
+	void 되돌리기가_실패해도_새_링크를_주고_한도와_결과를_로그에_남긴다(CapturedOutput output) {
 		RelinkedLink relinked = service.relink("김하윤", PHONE, "10.0.0.1");
 
 		assertThat(LinkToken.hashOf(relinked.linkToken())).isEqualTo(pass.getLinkTokenHash());
 		verify(limiter).refund(any());
+		assertThat(output.getAll()).contains("dongtanpass.holder-relink", "result=renewed")
+			.doesNotContain("김하윤")
+			.doesNotContain("90001234");
 	}
 
 	@Test
-	void 되돌리기가_실패해도_쓸_수_없는_패스의_거부는_409로_나가고_감사_로그에_남는다() {
+	void 되돌리기가_실패해도_쓸_수_없는_패스의_거부는_409로_나가고_감사_로그에_남는다(CapturedOutput output) {
 		pass.cancel();
 
 		BusinessException denial = catchThrowableOfType(BusinessException.class,
@@ -103,6 +111,7 @@ class HolderRelinkRefundFailureTest {
 		ArgumentCaptor<AuditEntry> entry = ArgumentCaptor.forClass(AuditEntry.class);
 		verify(auditLog).record(entry.capture());
 		assertThat(entry.getValue().action()).isEqualTo(DongtanpassAuditAction.HOLDER_LINK_DENIED);
+		assertThat(output.getAll()).contains("result=DONGTANPASS_PASS_CANCELED");
 	}
 
 }

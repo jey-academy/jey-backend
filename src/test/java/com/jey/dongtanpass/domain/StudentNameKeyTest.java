@@ -33,6 +33,12 @@ class StudentNameKeyTest {
 		assertThat(StudentNameKey.of("김하윤").matches(stored)).isFalse();
 	}
 
+	// 0폭 공백(U+200B)은 공백이 아니라 형식 문자다. 다른 글자로 보고 맞추지 않는다(붙여 넣은 이름에 섞이면 404).
+	@Test
+	void 폭_없는_공백은_다른_글자로_본다() {
+		assertThat(StudentNameKey.of("김\u200B하윤").matches("김하윤")).isFalse();
+	}
+
 	@Test
 	void 저장된_이름이_없으면_맞지_않는다() {
 		assertThat(StudentNameKey.of("김하윤").matches(null)).isFalse();

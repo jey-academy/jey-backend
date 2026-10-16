@@ -3,11 +3,11 @@ package com.jey.dongtanpass.domain;
 import java.text.Normalizer;
 
 /**
- * 패스의 학생 이름과 맞춰 보는 대조 값(ADR-0035). 학부모가 링크를 다시 받을 때와 사용 처리의 확인이 같은 기준을 쓴다.
+ * 패스의 학생 이름과 맞춰 보는 대조 값(ADR-0035). 학부모가 링크를 다시 받을 때 쓰고, 사용 처리의 확인(이슈 6)도 이것을 쓴다.
  *
  * <p>NFC로 모으고 공백을 모두 뺀다. 기기에 따라 한글이 자모로 풀려 들어오는 일과 띄어쓰기 차이를 흡수한다.
  * 공백은 {@link Character#isWhitespace}(탭, 줄바꿈, 전각 공백)와 {@link Character#isSpaceChar}(줄바꿈하지 않는 공백 등)를 모두 뺀다.
- * 다른 글자는 다른 이름이다.
+ * 다른 글자는 다른 이름이다. 0폭 공백(U+200B) 같은 형식 문자도 공백이 아니라 글자로 본다.
  */
 public final class StudentNameKey {
 

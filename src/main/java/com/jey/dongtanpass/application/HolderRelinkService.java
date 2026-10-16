@@ -96,11 +96,11 @@ public class HolderRelinkService {
 				// 고른 패스가 잠그기 전에 쓰이거나 취소됐다. 쓸 수 있는 다른 패스가 있을 수 있어 한 번만 다시 고른다.
 				relinked = chooseAndRenew(name, phoneIndex);
 			}
-			refund(attempt);
+			refund(attempt, "renewed");
 			return relinked;
 		}
 		catch (UnusablePassException denial) {
-			refund(attempt);
+			refund(attempt, denial.code.code());
 			DeniedAttempts.record(auditLog, () -> AuditEntry.of(DongtanpassAuditAction.HOLDER_LINK_DENIED)
 				.target(PassRefs.pass(denial.passId))
 				.with("reason", denial.code), denial);
@@ -162,13 +162,16 @@ public class HolderRelinkService {
 		return new RelinkedLink(link.raw());
 	}
 
-	private void refund(Attempt attempt) {
+	// result: 맞은 요청이 어떻게 끝났는지(renewed 또는 409의 에러 코드). 이름과 번호는 남기지 않는다.
+	private void refund(Attempt attempt, String result) {
 		try {
 			limiter.refund(attempt);
 		}
 		catch (RuntimeException ex) {
 			// 되돌리지 못하면 틀린 시도가 하나 더 세어진 채로 남을 뿐이다(막는 쪽으로 틀린다). 일의 결과는 바꾸지 않는다.
-			log.error("학부모 링크 다시 받기: 맞은 요청의 횟수를 되돌리지 못했다", ex);
+			// 어느 접속 주소가 까닭 없이 막혔다는 문의를 이 로그와 맞춰 볼 수 있게 한도와 결과를 남긴다.
+			log.error("학부모 링크 다시 받기: 맞은 요청의 횟수를 되돌리지 못했다: limits={}, {} result={}",
+					limits.perPhoneAndClient().name(), limits.perClient().name(), result, ex);
 		}
 	}
 
