@@ -1,6 +1,7 @@
 package com.jey.dongtanpass.web;
 
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -65,6 +66,9 @@ class PassLinkApiTest {
 	PassRepository passes;
 
 	@Autowired
+	Clock clock;
+
+	@Autowired
 	JsonMapper jsonMapper;
 
 	@BeforeEach
@@ -78,7 +82,7 @@ class PassLinkApiTest {
 	@WithJeyUser(role = UserRole.PARTNER, id = ACCOUNT, partnerId = PARTNER)
 	void 링크를_새로_만들면_새_토큰을_주고_예전_토큰의_해시는_남지_않는다() throws Exception {
 		LinkToken old = LinkToken.generate(RANDOM);
-		Pass pass = save(PARTNER, old, LocalDate.of(2026, 10, 14));
+		Pass pass = save(PARTNER, old, today());
 
 		JsonNode response = json(renew(pass.getId()).andExpect(status().isOk())
 			.andExpect(jsonPath("$.id").value(pass.getId()))
@@ -95,7 +99,7 @@ class PassLinkApiTest {
 	@Test
 	@WithJeyUser(role = UserRole.PARTNER, id = ACCOUNT, partnerId = PARTNER)
 	void 링크를_새로_만든_일은_감사_로그에_남는다() throws Exception {
-		Pass pass = save(PARTNER, LinkToken.generate(RANDOM), LocalDate.of(2026, 10, 14));
+		Pass pass = save(PARTNER, LinkToken.generate(RANDOM), today());
 
 		renew(pass.getId()).andExpect(status().isOk());
 
@@ -110,7 +114,7 @@ class PassLinkApiTest {
 	@Test
 	@WithJeyUser(role = UserRole.PARTNER, id = ACCOUNT, partnerId = PARTNER)
 	void 기간이_지난_패스도_링크를_새로_만들_수_있다() throws Exception {
-		Pass pass = save(PARTNER, LinkToken.generate(RANDOM), LocalDate.of(2025, 1, 1));
+		Pass pass = save(PARTNER, LinkToken.generate(RANDOM), today().minusMonths(2));
 
 		renew(pass.getId()).andExpect(status().isOk());
 	}
@@ -119,7 +123,7 @@ class PassLinkApiTest {
 	@WithJeyUser(role = UserRole.PARTNER, id = ACCOUNT, partnerId = PARTNER)
 	void 취소된_패스는_409이고_링크는_그대로다() throws Exception {
 		LinkToken old = LinkToken.generate(RANDOM);
-		Pass pass = save(PARTNER, old, LocalDate.of(2026, 10, 14));
+		Pass pass = save(PARTNER, old, today());
 		jdbc.update("UPDATE dongtanpass_pass SET status = 'CANCELED' WHERE id = ?", pass.getId());
 
 		renew(pass.getId()).andExpect(status().isConflict())
@@ -132,7 +136,7 @@ class PassLinkApiTest {
 	@WithJeyUser(role = UserRole.PARTNER, id = ACCOUNT, partnerId = PARTNER)
 	void 사용된_패스는_409이고_링크는_그대로다() throws Exception {
 		LinkToken old = LinkToken.generate(RANDOM);
-		Pass pass = save(PARTNER, old, LocalDate.of(2026, 10, 14));
+		Pass pass = save(PARTNER, old, today());
 		jdbc.update("UPDATE dongtanpass_pass SET status = 'REDEEMED' WHERE id = ?", pass.getId());
 
 		renew(pass.getId()).andExpect(status().isConflict())
@@ -146,7 +150,7 @@ class PassLinkApiTest {
 	@WithJeyUser(role = UserRole.PARTNER, id = ACCOUNT, partnerId = PARTNER)
 	void 다른_학원의_패스는_404이고_그대로다() throws Exception {
 		LinkToken old = LinkToken.generate(RANDOM);
-		Pass others = save(OTHER, old, LocalDate.of(2026, 10, 14));
+		Pass others = save(OTHER, old, today());
 
 		renew(others.getId()).andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_FOUND"));
@@ -169,7 +173,7 @@ class PassLinkApiTest {
 	@Test
 	@WithJeyUser(role = UserRole.PARTNER, id = ACCOUNT, partnerId = PARTNER)
 	void 같은_멱등_키로_다시_보내면_처음의_토큰이_나가고_링크는_한_번만_바뀐다() throws Exception {
-		Pass pass = save(PARTNER, LinkToken.generate(RANDOM), LocalDate.of(2026, 10, 14));
+		Pass pass = save(PARTNER, LinkToken.generate(RANDOM), today());
 		String key = UUID.randomUUID().toString();
 
 		String first = json(renew(pass.getId(), key).andExpect(status().isOk())).get("linkToken").asString();
@@ -200,6 +204,11 @@ class PassLinkApiTest {
 	private ResultActions renew(long passId, String key) throws Exception {
 		return mockMvc.perform(post("/api/v1/dongtanpass/passes/{id}/link", passId).with(csrfToken(mockMvc))
 			.with(idempotencyKey(key)));
+	}
+
+	// 날짜를 고정하면 그날이 한 달 지난 뒤로는 "쓸 수 있는 패스"가 아니게 된다.
+	private LocalDate today() {
+		return LocalDate.now(clock);
 	}
 
 	private Pass save(long partnerId, LinkToken link, LocalDate issuedOn) {
