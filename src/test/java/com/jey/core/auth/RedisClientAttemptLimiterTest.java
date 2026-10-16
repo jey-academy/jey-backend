@@ -27,8 +27,11 @@ import com.jey.core.shared.ErrorCode;
 import com.jey.core.shared.RateLimitedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
@@ -42,6 +45,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class RedisClientAttemptLimiterTest {
 
 	private static final Duration WINDOW = Duration.ofMinutes(5);
@@ -205,6 +209,40 @@ class RedisClientAttemptLimiterTest {
 
 		blocked(subject, address);
 		assertThat(notices).hasSize(1);
+	}
+
+	// 알리던 서버가 죽으면 "알리는 중" 표시만 남는다. 알리는 일에 준 시간이 지나면 다음에 막힌 요청이 다시 알린다.
+	@Test
+	void 알리다_만_표시는_시간이_지나면_다시_알린다() {
+		passTimes(subject, address, 3);
+		// 알리는 중이고 아직 시간이 남았다. 다른 요청이 알리고 있는 것이므로 겹쳐 알리지 않는다.
+		redis.opsForHash().put(subjectKey(subject, address), "noticed", "9999999999999");
+		blocked(subject, address);
+		assertThat(notices).isEmpty();
+
+		// 시간이 지났다. 알리던 쪽이 끝내지 못한 것이다.
+		redis.opsForHash().put(subjectKey(subject, address), "noticed", "1");
+		blocked(subject, address);
+		blocked(subject, address);
+
+		assertThat(notices).hasSize(1);
+		assertThat(redis.opsForHash().get(subjectKey(subject, address), "noticed")).isEqualTo("done");
+	}
+
+	// 만료 시간이 없는 키는 그 번호나 주소를 영원히 막는다. 이 장치는 그런 키를 만들지 않지만 밖에서 생겼다면(수동 조작, 복원) 고친다.
+	@Test
+	void 만료_시간이_없는_키는_고치고_알린다(CapturedOutput output) {
+		redis.opsForHash().put(subjectKey(subject, address), "count", "3");
+		redis.opsForHash().put(clientKey(address), "count", "1");
+
+		RateLimitedException blocked = blocked(subject, address);
+
+		assertThat(blocked.getRetryAfter()).isPositive().isLessThanOrEqualTo(WINDOW);
+		assertThat(redis.getExpire(subjectKey(subject, address), TimeUnit.SECONDS)).isPositive()
+			.isLessThanOrEqualTo(WINDOW.toSeconds());
+		assertThat(redis.getExpire(clientKey(address), TimeUnit.SECONDS)).isPositive()
+			.isLessThanOrEqualTo(WINDOW.toSeconds());
+		assertThat(output.getOut()).contains("만료 시간이 없는 틀린 시도 키를 고쳤다");
 	}
 
 	// 동시에 보낸 요청이 "확인 후 증가" 사이로 빠져나가지 못한다.
