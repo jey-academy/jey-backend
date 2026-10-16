@@ -32,6 +32,9 @@ public enum DongtanpassErrorCode implements ErrorCode {
 
 	PASS_CANCELED(HttpStatus.CONFLICT, "취소된 패스입니다."),
 
+	// 쓰지 않은 채 만료일이 지났다. 학부모 QR을 주지 않는다.
+	PASS_EXPIRED(HttpStatus.CONFLICT, "기간이 지난 패스입니다."),
+
 	PASS_ALREADY_REDEEMED(HttpStatus.CONFLICT, "이미 사용된 패스입니다."),
 
 	// 장부의 기간이 틀렸다: 시작일이 종료일보다 뒤이거나, 날짜가 받는 범위(2000-01-01~2099-12-31) 밖이다.

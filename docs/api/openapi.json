@@ -582,6 +582,22 @@
         "required" : [ "campusName", "discountRate", "expiresOn", "noticeText", "noticeVersion", "partnerName", "passNo", "state", "studentName" ],
         "type" : "object"
       },
+      "HolderQrResponse" : {
+        "description" : "데스크에 보여 줄 QR",
+        "properties" : {
+          "expiresAt" : {
+            "description" : "이 시각부터 쓸 수 없다. 화면은 그 전에 다시 받는다",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "qrToken" : {
+            "description" : "QR에 그대로 넣을 글자. 서버만 만들 수 있고 데스크가 확인하면 다시 쓸 수 없다",
+            "type" : "string"
+          }
+        },
+        "required" : [ "expiresAt", "qrToken" ],
+        "type" : "object"
+      },
       "HolderTokenRequest" : {
         "description" : "학부모 링크의 토큰",
         "properties" : {
@@ -1998,6 +2014,36 @@
         },
         "summary" : "고지 문구",
         "tags" : [ "pass-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/holder/qr" : {
+      "post" : {
+        "description" : "데스크에 보여 줄 QR 토큰을 준다. 60초 동안 쓸 수 있고 부를 때마다 새 토큰이다. 화면은 expiresAt 전에 다시 받는다. 쓸 수 있는 패스만 받는다(기간이 지났거나 취소됐거나 사용됐으면 409)",
+        "operationId" : "qr",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/HolderTokenRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/HolderQrResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "학부모 QR 받기",
+        "tags" : [ "holder-controller" ]
       }
     },
     "/api/v1/dongtanpass/holder/view" : {

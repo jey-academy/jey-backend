@@ -80,7 +80,8 @@ class SecurityConfig {
 						// 다른 사이트가 피해자의 브라우저를 공격자 계정으로 로그인시키는 것을 막는다.
 						.requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
 						// 학부모는 로그인하지 않는다. 동탄고 패스 링크의 토큰이 열쇠다(본문으로 받는다). CSRF 토큰은 필요하다.
-						.requestMatchers(HttpMethod.POST, "/api/v1/dongtanpass/holder/view").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/v1/dongtanpass/holder/view", "/api/v1/dongtanpass/holder/qr")
+						.permitAll()
 						.anyRequest().authenticated())
 				.securityContext(context -> context.securityContextRepository(securityContextRepository))
 				// 로그인 정보를 읽기 전에, 최대 유지 시간이 지난 세션을 먼저 끊는다.
