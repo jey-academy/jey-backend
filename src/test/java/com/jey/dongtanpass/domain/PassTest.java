@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.stream.Stream;
 
 import com.jey.core.shared.Money;
@@ -47,6 +48,16 @@ class PassTest {
 		assertThat(pass.getIssuedAt()).isEqualTo(issuedAt);
 		assertThat(pass.issuedOn(SEOUL)).isEqualTo(issuedOn);
 		assertThat(pass.getExpiresOn()).isEqualTo(expiresOn);
+	}
+
+	// 시간대를 고정하지 않고 넘겨받은 것으로 바꾼다. 같은 시각도 UTC로는 전날이다.
+	@Test
+	void 발급일은_넘겨받은_시간대의_날짜다() {
+		Pass pass = Pass.issue(1L, "DT-ABC234", HASH, "김하윤", "idx", Instant.parse("2026-10-16T15:00:00Z"), SEOUL,
+				ISSUED_ON, Money.of(150000), PaymentMethod.CARD);
+
+		assertThat(pass.issuedOn(SEOUL)).isEqualTo(LocalDate.of(2026, 10, 17));
+		assertThat(pass.issuedOn(ZoneOffset.UTC)).isEqualTo(LocalDate.of(2026, 10, 16));
 	}
 
 	// 오늘을 포함해 쓸 수 있는 날 수다. 만료일 당일은 1, 그다음 날부터 0.
