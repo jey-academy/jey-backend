@@ -1,0 +1,142 @@
+package com.jey.dongtanpass.application;
+
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.HexFormat;
+import java.util.Map;
+import java.util.Optional;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+/**
+ * 학부모 화면의 QR에 넣는 서명 토큰을 만들고 확인한다(ADR-0010). 만드는 쪽(학부모 QR)과 확인하는 쪽(데스크)이 이것 하나를 쓴다.
+ *
+ * <p>토큰은 {@code {키 버전}.{본문}.{서명}}이다. 본문은 패스 ID, 만료 시각(초), 무작위 토큰 ID 16바이트를 이은 32바이트이고,
+ * 서명은 {@code {키 버전}.{본문}}의 HMAC-SHA256이다. 본문과 서명은 Base64url(패딩 없음)이다.
+ * 만들 때 저장하지 않는다. 같은 토큰을 두 번 쓰지 못하게 하는 것은 확인하는 쪽의 일이다(토큰 ID를 남은 수명만큼 적는다).
+ *
+ * <p>시각은 부르는 쪽이 준다(주입한 시계에서 읽은 값).
+ */
+@Component
+@EnableConfigurationProperties(QrSigningProperties.class)
+public class PassQrCodes {
+
+	/** 토큰의 수명. 만료 시각 정각부터 무효다. 화면은 그 전에 새로 받는다. */
+	public static final Duration TTL = Duration.ofSeconds(60);
+
+	private static final String HMAC = "HmacSHA256";
+
+	private static final int TOKEN_ID_BYTES = 16;
+
+	// 패스 ID(long) + 만료 시각(long) + 토큰 ID
+	private static final int BODY_BYTES = Long.BYTES + Long.BYTES + TOKEN_ID_BYTES;
+
+	private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
+
+	private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
+
+	private final SecureRandom random = new SecureRandom();
+
+	private final int activeKeyVersion;
+
+	private final Map<Integer, SecretKeySpec> keys = new HashMap<>();
+
+	PassQrCodes(QrSigningProperties properties) {
+		this.activeKeyVersion = properties.activeKeyVersion();
+		properties.keys()
+			.keySet()
+			.forEach(version -> keys.put(version, new SecretKeySpec(properties.keyBytes(version), HMAC)));
+	}
+
+	/** 그 패스의 토큰을 지금 버전의 키로 만든다. 쓸 수 있는 패스인지는 부르는 쪽이 먼저 본다. */
+	public QrCode issue(long passId, Instant now) {
+		Instant expiresAt = now.plus(TTL);
+		byte[] tokenId = new byte[TOKEN_ID_BYTES];
+		random.nextBytes(tokenId);
+		byte[] body = ByteBuffer.allocate(BODY_BYTES)
+			.putLong(passId)
+			.putLong(expiresAt.getEpochSecond())
+			.put(tokenId)
+			.array();
+		String signed = activeKeyVersion + "." + ENCODER.encodeToString(body);
+		return new QrCode(signed + "." + ENCODER.encodeToString(sign(keys.get(activeKeyVersion), signed)), expiresAt);
+	}
+
+	/**
+	 * 토큰을 확인한다. 모양, 키 버전, 서명, 만료 중 하나라도 맞지 않으면 빈 값이다(이유를 가리지 않는다. 예외를 던지지 않는다).
+	 * 같은 토큰을 이미 썼는지는 보지 않는다.
+	 */
+	public Optional<VerifiedQr> verify(String token, Instant now) {
+		if (token == null) {
+			return Optional.empty();
+		}
+		String[] parts = token.split("\\.", -1);
+		if (parts.length != 3) {
+			return Optional.empty();
+		}
+		SecretKeySpec key = keyOf(parts[0]);
+		if (key == null) {
+			return Optional.empty();
+		}
+		byte[] body;
+		byte[] signature;
+		try {
+			body = DECODER.decode(parts[1]);
+			signature = DECODER.decode(parts[2]);
+		}
+		catch (IllegalArgumentException ex) {
+			return Optional.empty();
+		}
+		// 길이가 달라도 같은 시간에 끝나는 비교. 서명을 한 글자씩 맞춰 보는 공격을 막는다.
+		if (!MessageDigest.isEqual(sign(key, parts[0] + "." + parts[1]), signature) || body.length != BODY_BYTES) {
+			return Optional.empty();
+		}
+		ByteBuffer buffer = ByteBuffer.wrap(body);
+		long passId = buffer.getLong();
+		Instant expiresAt = Instant.ofEpochSecond(buffer.getLong());
+		byte[] tokenId = new byte[TOKEN_ID_BYTES];
+		buffer.get(tokenId);
+		if (!now.isBefore(expiresAt)) {
+			return Optional.empty();
+		}
+		return Optional.of(new VerifiedQr(passId, HexFormat.of().formatHex(tokenId), expiresAt));
+	}
+
+	// 토큰에 적힌 키 버전의 키. 숫자가 아니거나 모르는 버전이면 null.
+	private SecretKeySpec keyOf(String version) {
+		if (version.isEmpty() || version.length() > 9 || !version.chars().allMatch(Character::isDigit)) {
+			return null;
+		}
+		return keys.get(Integer.parseInt(version));
+	}
+
+	private static byte[] sign(SecretKeySpec key, String signed) {
+		try {
+			Mac mac = Mac.getInstance(HMAC);
+			mac.init(key);
+			return mac.doFinal(signed.getBytes(StandardCharsets.US_ASCII));
+		}
+		catch (GeneralSecurityException ex) {
+			// 모든 JVM에 있어야 하는 알고리즘이고 키는 시작할 때 확인했다.
+			throw new IllegalStateException("QR 토큰을 서명할 수 없다", ex);
+		}
+	}
+
+	// 키가 로그에 찍히지 않게 한다.
+	@Override
+	public String toString() {
+		return "PassQrCodes[activeKeyVersion=" + activeKeyVersion + "]";
+	}
+
+}

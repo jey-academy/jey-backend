@@ -30,6 +30,12 @@ jey:
       encryption-keys:
         1: bG9jYWwtb25seS1waG9uZS1lbmMta2V5LTAwMDAwMDE=
       hmac-key: bG9jYWwtb25seS1waG9uZS1obWFjLWtleS0wMDAwMDE=
+  # 동탄고 패스 QR 토큰의 서명 키(ADR-0010). 로컬 전용 값이라 그대로 커밋한다.
+  dongtanpass:
+    qr:
+      active-key-version: 1
+      keys:
+        1: bG9jYWwtb25seS1kb25ndGFucGFzcy1xci1rZXktMDE=
 
 logging:
   level:
