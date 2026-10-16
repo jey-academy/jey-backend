@@ -131,6 +131,7 @@ class RedisClientAttemptLimiter implements ClientAttemptLimiter {
 			ErrorCode limitedCode, Consumer<RateLimitedException> onFirstBlock) {
 		Objects.requireNonNull(perSubjectAndClient, "perSubjectAndClient");
 		Objects.requireNonNull(perClient, "perClient");
+		Objects.requireNonNull(limitedCode, "limitedCode");
 		Objects.requireNonNull(onFirstBlock, "onFirstBlock");
 		// 세기 전에 본다. 막힌 뒤에야 드러나면 "알리는 중" 표시만 남고 아무것도 알리지 못한다.
 		if (limitedCode.status() != HttpStatus.TOO_MANY_REQUESTS) {
@@ -162,8 +163,9 @@ class RedisClientAttemptLimiter implements ClientAttemptLimiter {
 			throw new IllegalStateException("틀린 시도 스크립트의 결과가 예상과 다르다: " + result);
 		}
 		if (((Number) result.get(3)).intValue() > 0) {
-			// 키에는 한도 이름, 대상의 해시, 주소만 있다.
-			log.error("만료 시간이 없는 틀린 시도 키를 고쳤다. 누가 Redis를 직접 건드렸는지 확인할 것: {} / {}", subjectKey, clientKey);
+			// 키 전체는 남기지 않는다. 대상의 해시로 같은 번호를 로그끼리 이어 볼 수 있다.
+			log.error("만료 시간이 없는 틀린 시도 키를 고쳤다. 누가 Redis를 직접 건드렸는지 확인할 것: limits={}, {} address={}",
+					perSubjectAndClient.name(), perClient.name(), address);
 		}
 		int blockedBy = ((Number) result.get(0)).intValue();
 		if (blockedBy == 0) {

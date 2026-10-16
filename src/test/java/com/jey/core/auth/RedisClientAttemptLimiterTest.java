@@ -242,7 +242,9 @@ class RedisClientAttemptLimiterTest {
 			.isLessThanOrEqualTo(WINDOW.toSeconds());
 		assertThat(redis.getExpire(clientKey(address), TimeUnit.SECONDS)).isPositive()
 			.isLessThanOrEqualTo(WINDOW.toSeconds());
-		assertThat(output.getOut()).contains("만료 시간이 없는 틀린 시도 키를 고쳤다");
+		assertThat(output.getOut()).contains("만료 시간이 없는 틀린 시도 키를 고쳤다")
+			// 대상의 해시는 같은 번호를 로그끼리 이어 보게 한다. 한도 이름과 주소만 남긴다.
+			.doesNotContain(subjectKey(subject, address).split(":")[4]);
 	}
 
 	// 동시에 보낸 요청이 "확인 후 증가" 사이로 빠져나가지 못한다.

@@ -5,15 +5,16 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 
 /**
- * 한 계정이(또는 로그인 없는 경로에서 한 접속 주소가) 어떤 일을 얼마 동안 몇 번까지 할 수 있는지. 무엇을 제한할지는 쓰는 모듈이 정한다.
- * 계정별로는 {@link AccountRateLimiter}, 로그인 없는 경로에서는 {@link ClientAttemptLimiter}가 센다.
+ * 한 기준(계정, 또는 로그인 없는 경로의 "접속 주소"나 "대상 + 접속 주소")이 구간 안에 몇 번까지 셀 수 있는지.
+ * 무엇을 제한할지는 쓰는 모듈이 정한다. 계정별로는 {@link AccountRateLimiter}가 한 일을 세고,
+ * 로그인 없는 경로에서는 {@link ClientAttemptLimiter}가 되돌리지 않은 시도(틀린 시도)를 센다.
  *
  * <p>{@link #of}로 만든다. 이름은 모듈마다 enum으로 선언한 {@link RateLimitName}이다. 생성자는 직접 부르지 않는다
  * ({@code RateLimitRulesTest}가 막는다). 이름을 글자로 적어 만들면 다른 한도와 겹치는지 미리 볼 수 없다.
  *
  * @param name 무엇의 한도인지. {@code {모듈}.{대상}} 꼴의 소문자다(예: {@code member.phone-reveal}).
  * 횟수를 세는 키에 들어가므로 바꾸면 그때까지 센 횟수를 찾지 못해 처음부터 다시 센다
- * @param max 구간 안에서 할 수 있는 횟수
+ * @param max 구간 안에서 셀 수 있는 횟수
  * @param window 세는 구간. 처음 센 때부터 이 시간이 지나면 횟수가 지워진다. 1밀리초 이상 30일 이하다
  */
 public record RateLimit(String name, int max, Duration window) {
