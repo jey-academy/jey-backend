@@ -87,8 +87,9 @@ class PassController {
 	@Operation(summary = "발급 장부", description = "이 학원이 발급한 패스. 최신 발급 순이다. 학부모 번호는 없다")
 	@GetMapping("/passes")
 	LedgerPageResponse ledger(@AuthenticationPrincipal AuthenticatedUser user,
-			@Parameter(description = "이 발급일(한국 날짜)부터, 포함") @RequestParam(required = false) LocalDate from,
-			@Parameter(description = "이 발급일(한국 날짜)까지, 포함. from보다 앞이면 400") @RequestParam(
+			@Parameter(description = "이 발급일(한국 날짜)부터, 포함. 2000-01-01~2099-12-31") @RequestParam(
+					required = false) LocalDate from,
+			@Parameter(description = "이 발급일(한국 날짜)까지, 포함. from보다 앞이거나 2000-01-01~2099-12-31 밖이면 400") @RequestParam(
 					required = false) LocalDate to,
 			@Parameter(description = "오늘 기준으로 보이는 상태. 안 주면 모두") @RequestParam(required = false) PassState status,
 			@Parameter(description = PageLimits.PAGE_DESCRIPTION) @RequestParam(defaultValue = "0") @Min(0) @Max(
@@ -104,8 +105,9 @@ class PassController {
 			content = @Content(mediaType = "text/csv", schema = @Schema(type = "string", format = "binary")))
 	@GetMapping(value = "/passes/export", produces = "text/csv")
 	ResponseEntity<byte[]> export(@AuthenticationPrincipal AuthenticatedUser user,
-			@Parameter(description = "이 발급일(한국 날짜)부터, 포함") @RequestParam(required = false) LocalDate from,
-			@Parameter(description = "이 발급일(한국 날짜)까지, 포함. from보다 앞이면 400") @RequestParam(
+			@Parameter(description = "이 발급일(한국 날짜)부터, 포함. 2000-01-01~2099-12-31") @RequestParam(
+					required = false) LocalDate from,
+			@Parameter(description = "이 발급일(한국 날짜)까지, 포함. from보다 앞이거나 2000-01-01~2099-12-31 밖이면 400") @RequestParam(
 					required = false) LocalDate to) {
 		byte[] file = passLedger.csv(partnerIdOf(user), from, to);
 		// 파일 이름은 영문과 숫자만 쓴다(브라우저마다 한글 파일 이름을 다르게 다룬다).

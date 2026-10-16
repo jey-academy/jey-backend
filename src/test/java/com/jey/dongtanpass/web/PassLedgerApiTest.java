@@ -18,6 +18,8 @@ import com.jey.dongtanpass.domain.PassRepository;
 import com.jey.dongtanpass.domain.PaymentMethod;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -184,6 +186,22 @@ class PassLedgerApiTest {
 		mockMvc.perform(get(LEDGER).param("from", "2026-10-16").param("to", "2026-10-15"))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("DONGTANPASS_INVALID_PERIOD"));
+	}
+
+	// 아주 먼 날짜는 하루를 더하다 넘치거나 DB의 시각 범위를 벗어난다(500). 받는 범위는 2000-01-01~2099-12-31이다.
+	@ParameterizedTest
+	@CsvSource({ "to,+999999999-12-31", "to,9999-12-31", "to,2100-01-01", "from,1999-12-31", "from,-999999999-01-01" })
+	@WithJeyUser(role = UserRole.PARTNER, partnerId = PARTNER)
+	void 받는_범위_밖의_날짜는_400이다(String param, String date) throws Exception {
+		mockMvc.perform(get(LEDGER).param(param, date))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_INVALID_PERIOD"));
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.PARTNER, partnerId = PARTNER)
+	void 받는_범위의_양끝은_된다() throws Exception {
+		mockMvc.perform(get(LEDGER).param("from", "2000-01-01").param("to", "2099-12-31")).andExpect(status().isOk());
 	}
 
 	@Test

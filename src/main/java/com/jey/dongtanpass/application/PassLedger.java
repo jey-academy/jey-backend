@@ -24,6 +24,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class PassLedger {
 
 	// 최신 발급 순. 같은 시각이면 나중에 만든 것이 먼저다.
+	/** 기간으로 받는 날짜의 범위. 아주 먼 날짜는 하루를 더하다 넘치거나 DB의 시각 범위를 벗어난다. */
+	public static final LocalDate MIN_DATE = LocalDate.of(2000, 1, 1);
+
+	public static final LocalDate MAX_DATE = LocalDate.of(2099, 12, 31);
+
 	private static final Sort NEWEST_FIRST = Sort.by(Sort.Order.desc("issuedAt"), Sort.Order.desc("id"));
 
 	private final PassRepository passes;
@@ -39,7 +44,7 @@ public class PassLedger {
 	 * @param from 이 발급일부터(포함). 없으면 처음부터
 	 * @param to 이 발급일까지(포함). 없으면 끝까지
 	 * @param state 이 상태만. 없으면 모두
-	 * @throws BusinessException 시작일이 종료일보다 뒤일 때
+	 * @throws BusinessException 시작일이 종료일보다 뒤이거나, 날짜가 {@link #MIN_DATE}~{@link #MAX_DATE} 밖일 때
 	 */
 	@Transactional(readOnly = true)
 	public Page<LedgerRow> page(long partnerId, LocalDate from, LocalDate to, PassState state, int page, int size) {
@@ -49,7 +54,7 @@ public class PassLedger {
 	/**
 	 * 장부를 CSV 파일로 준다(UTF-8 BOM). 상태로 거르지 않고 나누지 않는다. 학원당 발급은 수백 건 규모다.
 	 *
-	 * @throws BusinessException 시작일이 종료일보다 뒤일 때
+	 * @throws BusinessException 시작일이 종료일보다 뒤이거나, 날짜가 {@link #MIN_DATE}~{@link #MAX_DATE} 밖일 때
 	 */
 	@Transactional(readOnly = true)
 	public byte[] csv(long partnerId, LocalDate from, LocalDate to) {
@@ -57,7 +62,7 @@ public class PassLedger {
 	}
 
 	private Page<LedgerRow> rows(long partnerId, LocalDate from, LocalDate to, PassState state, Pageable pageable) {
-		if (from != null && to != null && from.isAfter(to)) {
+		if (outOfRange(from) || outOfRange(to) || (from != null && to != null && from.isAfter(to))) {
 			throw new BusinessException(DongtanpassErrorCode.INVALID_PERIOD);
 		}
 		LocalDate today = LocalDate.now(clock);
@@ -66,6 +71,10 @@ public class PassLedger {
 			.ledger(partnerId, startOf(from), startOf(to == null ? null : to.plusDays(1)), filter.status(),
 					filter.expiresOnOrAfter(), filter.expiresBefore(), pageable)
 			.map(pass -> LedgerRow.of(pass, today, clock.getZone()));
+	}
+
+	private static boolean outOfRange(LocalDate date) {
+		return date != null && (date.isBefore(MIN_DATE) || date.isAfter(MAX_DATE));
 	}
 
 	// 그 날짜가 시작되는 시각(한국 0시).

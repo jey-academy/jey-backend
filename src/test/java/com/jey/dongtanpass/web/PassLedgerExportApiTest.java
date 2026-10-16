@@ -136,6 +136,14 @@ class PassLedgerExportApiTest {
 	}
 
 	@Test
+	@WithJeyUser(role = UserRole.PARTNER, partnerId = PARTNER)
+	void 받는_범위_밖의_날짜는_400이다() throws Exception {
+		mockMvc.perform(get(EXPORT).param("to", "+999999999-12-31"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_INVALID_PERIOD"));
+	}
+
+	@Test
 	@WithJeyUser(role = UserRole.PARTNER, partnerId = INACTIVE)
 	void 꺼진_학원은_내려받을_수_없다() throws Exception {
 		mockMvc.perform(get(EXPORT))

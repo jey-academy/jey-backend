@@ -2108,7 +2108,7 @@
         "description" : "이 학원이 발급한 패스. 최신 발급 순이다. 학부모 번호는 없다",
         "operationId" : "ledger",
         "parameters" : [ {
-          "description" : "이 발급일(한국 날짜)부터, 포함",
+          "description" : "이 발급일(한국 날짜)부터, 포함. 2000-01-01~2099-12-31",
           "in" : "query",
           "name" : "from",
           "required" : false,
@@ -2117,7 +2117,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "이 발급일(한국 날짜)까지, 포함. from보다 앞이면 400",
+          "description" : "이 발급일(한국 날짜)까지, 포함. from보다 앞이거나 2000-01-01~2099-12-31 밖이면 400",
           "in" : "query",
           "name" : "to",
           "required" : false,
@@ -2220,7 +2220,7 @@
         "description" : "장부와 같은 학원·기간 조건이다(상태로 거르지 않는다). UTF-8에 BOM이 붙어 있다. 수식으로 읽힐 칸(=, +, -, @로 시작)은 앞에 '를 붙인다",
         "operationId" : "export",
         "parameters" : [ {
-          "description" : "이 발급일(한국 날짜)부터, 포함",
+          "description" : "이 발급일(한국 날짜)부터, 포함. 2000-01-01~2099-12-31",
           "in" : "query",
           "name" : "from",
           "required" : false,
@@ -2229,7 +2229,7 @@
             "type" : "string"
           }
         }, {
-          "description" : "이 발급일(한국 날짜)까지, 포함. from보다 앞이면 400",
+          "description" : "이 발급일(한국 날짜)까지, 포함. from보다 앞이거나 2000-01-01~2099-12-31 밖이면 400",
           "in" : "query",
           "name" : "to",
           "required" : false,
