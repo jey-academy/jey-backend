@@ -175,6 +175,21 @@ class HolderRelinkServiceTest {
 		assertNotFound(() -> holderRelink.relink(NAME, newPhone(), address));
 	}
 
+	// 줄바꿈하지 않는 공백이나 전각 공백만 있는 이름은 요청 검증(@NotBlank)을 지나온다. 어떤 패스와도 맞지 않아야 한다
+	// (맞는다면 번호만 알아도 링크를 받는다). 틀린 시도로 센다.
+	@Test
+	void 공백뿐인_이름은_어떤_패스와도_맞지_않고_틀린_시도로_센다() {
+		save(LinkToken.generate(RANDOM), NAME, 0);
+
+		for (int i = 0; i < 10; i++) {
+			assertNotFound(() -> holderRelink.relink("\u3000\u00A0", phone, address));
+		}
+
+		assertThat(catchThrowableOfType(RateLimitedException.class,
+				() -> holderRelink.relink("\u00A0", phone, address)))
+			.isNotNull();
+	}
+
 	// 맞은 요청은 세지 않는다. 학부모가 몇 번 다시 받아도 그 뒤의 틀린 시도 한도가 줄지 않는다.
 	@Test
 	void 맞은_요청은_횟수에서_되돌린다() {

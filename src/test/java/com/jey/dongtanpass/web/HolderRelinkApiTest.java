@@ -134,6 +134,8 @@ class HolderRelinkApiTest {
 
 		assertThat(notFoundBody(NAME, newPhone())).isEqualTo(wrongName);
 		assertThat(notFoundBody("김하은", newPhone())).isEqualTo(wrongName);
+		// 요청 검증을 지나오는 공백뿐인 이름(줄바꿈하지 않는 공백, 전각 공백)도 같은 404다
+		assertThat(notFoundBody("\u00A0\u3000", phone)).isEqualTo(wrongName);
 		assertThat(wrongName).contains("DONGTANPASS_PASS_NOT_FOUND");
 	}
 
