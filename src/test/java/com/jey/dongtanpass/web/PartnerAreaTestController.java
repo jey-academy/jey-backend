@@ -2,8 +2,10 @@ package com.jey.dongtanpass.web;
 
 import com.jey.core.auth.api.AllowedRoles;
 import com.jey.core.auth.api.UserRole;
+import com.jey.core.shared.Idempotent;
 import io.swagger.v3.oas.annotations.Hidden;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -19,6 +21,14 @@ class PartnerAreaTestController {
 	@GetMapping
 	String partnerArea() {
 		return "ok";
+	}
+
+	// 멱등 키를 받는 POST. 꺼진 학원의 403이 멱등 응답으로 보관되지 않는지 본다.
+	@AllowedRoles(UserRole.PARTNER)
+	@Idempotent
+	@PostMapping
+	String partnerAction() {
+		return "done";
 	}
 
 	@AllowedRoles(UserRole.ADMIN)

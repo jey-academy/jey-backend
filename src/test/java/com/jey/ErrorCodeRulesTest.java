@@ -9,6 +9,7 @@ import com.jey.core.shared.ErrorCode;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,6 +31,24 @@ class ErrorCodeRulesTest {
 		assertThat(allCodes()).allMatch(code -> code.matches("[A-Z]+(_[A-Z0-9]+)+"));
 	}
 
+	// 잠시 막은 거부는 멱등 응답으로 보관하지 않는다(ADR-0027). 표시를 새로 붙이면 이 목록을 고치면서 이유를 확인한다.
+	@Test
+	void 잠시_막은_거부로_표시한_코드는_정해진_것뿐이다() {
+		assertThat(allConstants().stream().filter(ErrorCode::temporaryRejection).map(ErrorCode::code))
+			.containsExactly("DONGTANPASS_PARTNER_INACTIVE");
+	}
+
+	// 보관하지 않는 표시는 보관될 수 있는 응답(4xx)에만 뜻이 있다. 429와 5xx는 원래 보관하지 않는다.
+	@Test
+	void 잠시_막은_거부는_429가_아닌_4xx다() {
+		assertThat(allConstants().stream().filter(ErrorCode::temporaryRejection))
+			.isNotEmpty()
+			.allSatisfy(code -> assertThat(code.status().is4xxClientError()
+					&& code.status() != HttpStatus.TOO_MANY_REQUESTS)
+				.as(code.code())
+				.isTrue());
+	}
+
 	// 규칙이 실제로 겹침을 잡는지 확인한다.
 	@Test
 	void 겹치는_값이_있으면_찾아낸다() {
@@ -37,17 +56,21 @@ class ErrorCodeRulesTest {
 	}
 
 	private static List<String> allCodes() {
-		List<String> codes = new ArrayList<>();
+		return allConstants().stream().map(ErrorCode::code).toList();
+	}
+
+	private static List<ErrorCode> allConstants() {
+		List<ErrorCode> constants = new ArrayList<>();
 		new ClassFileImporter().withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
 				.importPackages("com.jey")
 				.stream()
 				.filter(type -> type.isEnum() && type.isAssignableTo(ErrorCode.class))
 				.forEach(type -> {
 					for (Object constant : type.reflect().getEnumConstants()) {
-						codes.add(((ErrorCode) constant).code());
+						constants.add((ErrorCode) constant);
 					}
 				});
-		return codes;
+		return constants;
 	}
 
 	private static Set<String> duplicates(List<String> codes) {
