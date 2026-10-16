@@ -220,6 +220,22 @@ class HolderViewApiTest {
 		assertThat(output.getAll()).doesNotContain(link.raw()).doesNotContain(missing.raw()).doesNotContain("로그확인이름");
 	}
 
+	// 응답은 404 하나지만, 운영에서 "링크가 안 열린다"는 문의를 볼 때 어느 경우였는지는 서버 로그로 가린다. 토큰과 해시는 남기지 않는다.
+	@Test
+	void 패스를_찾지_못한_이유를_토큰_없이_로그에_남긴다(CapturedOutput output) throws Exception {
+		LinkToken missing = LinkToken.generate(RANDOM);
+		String malformed = "B".repeat(42) + "가";
+
+		view(malformed).andExpect(status().isNotFound());
+		assertThat(output.getAll()).contains("reason=malformed");
+
+		view(missing.raw()).andExpect(status().isNotFound());
+		assertThat(output.getAll()).contains("reason=not_found")
+			.doesNotContain(missing.raw())
+			.doesNotContain(missing.hash())
+			.doesNotContain(malformed);
+	}
+
 	private String notFoundBody(String token) throws Exception {
 		return mockMvc
 			.perform(post(VIEW).with(csrfToken(mockMvc))
