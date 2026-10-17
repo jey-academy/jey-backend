@@ -19,7 +19,9 @@ const LOCKING = __ENV.LOCKING || 'unknown';
 const SCENARIO = __ENV.SCENARIO || 'contention';
 const N = Number(__ENV.N || (SCENARIO === 'spread' ? 1 : 8));
 const PAIRS = Number(__ENV.PAIRS || 300);
-const VUS = Number(__ENV.VUS || (SCENARIO === 'spread' ? 32 : 10));
+// 동시 연결 수 = 가상 사용자 × N. 서버(Tomcat 기본: 작업 스레드 200 + 대기 100)가 받는 양을 넘으면 연결이 문 앞에서 거절되어
+// 잠금 방식과 무관한 실패가 섞인다(1차 실행에서 10 × 32 = 320). 그래서 N이 크면 가상 사용자를 줄인다.
+const VUS = Number(__ENV.VUS || (SCENARIO === 'spread' ? 32 : N >= 32 ? 4 : 10));
 const PASSWORD = __ENV.PASSWORD || 'loadtest-only-password-1';
 
 if (!['contention', 'spread', 'mixed'].includes(SCENARIO)) {
@@ -37,7 +39,7 @@ export const options = {
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
   tags: { locking: LOCKING, scenario: SCENARIO },
   thresholds: {
-    // 이 둘이 깨지면 k6가 실패로 끝난다(✗). 방식이 틀렸다는 뜻이다.
+    // 이 둘이 깨지면 k6가 실패로 끝난다(✗). 방식이 틀렸다는 뜻이다. 연결 실패(redeem_conn_error)는 서버가 받지도 않은 요청이라 판정에 넣지 않는다.
     redeem_5xx: ['count==0'],
     redeem_correct: ['rate==1'],
   },
@@ -51,8 +53,10 @@ const studentNotNew = new Counter('redeem_409_student_not_new');
 const changedConcurrently = new Counter('redeem_409_changed_concurrently');
 const otherClientError = new Counter('redeem_4xx_other');
 const serverError = new Counter('redeem_5xx');
+const connectionError = new Counter('redeem_conn_error');
 const renewOk = new Counter('renew_200');
-const renewRejected = new Counter('renew_4xx');
+const renewRejected = new Counter('renew_rejected');
+const renewConnectionError = new Counter('renew_conn_error');
 
 export function setup() {
   const partner = login('loadtest-partner');
@@ -110,14 +114,20 @@ export default function (data) {
     if (res.status === 200) {
       successes++;
       ok.add(1);
-    } else if (res.status >= 500 || res.status === 0) {
+    } else if (res.status === 0) {
+      connectionError.add(1);
+    } else if (res.status >= 500) {
       failures5xx++;
       serverError.add(1);
     } else {
       countRejection(res);
     }
   });
-  responses.slice(redeemCount).forEach((res) => (res.status === 200 ? renewOk : renewRejected).add(1));
+  responses.slice(redeemCount).forEach((res) => {
+    if (res.status === 200) renewOk.add(1);
+    else if (res.status === 0) renewConnectionError.add(1);
+    else renewRejected.add(1);
+  });
 
   // contention·spread는 정확히 1개, mixed는 많아야 1개(링크 새로 만들기에 모두 지면 0개 — 다시 시도하면 된다).
   const expected = SCENARIO === 'mixed' ? successes <= 1 : successes === 1;
