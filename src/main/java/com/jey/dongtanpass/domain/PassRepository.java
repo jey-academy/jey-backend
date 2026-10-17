@@ -18,6 +18,9 @@ public interface PassRepository extends JpaRepository<Pass, Long> {
 	/** 그 학원이 발급한 패스만 찾는다. 다른 학원의 패스는 없는 것과 같다. */
 	Optional<Pass> findByIdAndPartnerId(Long id, Long partnerId);
 
+	/** 데스크가 학부모가 불러 준 번호로 찾는다. 번호는 유니크다. */
+	Optional<Pass> findByPassNo(String passNo);
+
 	/** 학부모가 링크로 연다. 해시는 유니크다. */
 	Optional<Pass> findByLinkTokenHash(String linkTokenHash);
 

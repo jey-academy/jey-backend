@@ -17,6 +17,8 @@ import java.util.Optional;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -35,6 +37,8 @@ public class PassQrCodes {
 
 	/** 토큰의 수명. 만드는 시각을 초로 내린 데서 센다(그래서 실제로는 59초 넘게 60초 이하). 만료 시각 정각부터 무효다. 화면은 그 전에 새로 받는다. */
 	public static final Duration TTL = Duration.ofSeconds(60);
+
+	private static final Logger log = LoggerFactory.getLogger(PassQrCodes.class);
 
 	private static final String HMAC = "HmacSHA256";
 
@@ -83,17 +87,21 @@ public class PassQrCodes {
 	/**
 	 * 토큰을 확인한다. 모양, 키 버전, 서명, 만료 중 하나라도 맞지 않으면 빈 값이다(이유를 가리지 않는다. 예외를 던지지 않는다).
 	 * 같은 토큰을 이미 썼는지는 보지 않는다.
+	 *
+	 * <p>무효인 이유는 로그에만 남긴다({@code reason=malformed|unknown_key_version|bad_signature|signed_bad_body|expired},
+	 * 토큰 원문 없이). 모르는 키 버전(키 회전이 어긋남)과 서명은 맞는데 본문이 틀린 것(만드는 쪽의 버그나 키 유출)은 경고로 남긴다.
 	 */
 	public Optional<VerifiedQr> verify(String token, Instant now) {
 		if (token == null) {
-			return Optional.empty();
+			return invalid("malformed");
 		}
 		String[] parts = token.split("\\.", -1);
-		if (parts.length != 3) {
-			return Optional.empty();
+		if (parts.length != 3 || !isVersion(parts[0])) {
+			return invalid("malformed");
 		}
-		SecretKeySpec key = keyOf(parts[0]);
+		SecretKeySpec key = keys.get(Integer.parseInt(parts[0]));
 		if (key == null) {
+			log.warn("QR 토큰 확인 실패: reason=unknown_key_version keyVersion={}", parts[0]);
 			return Optional.empty();
 		}
 		byte[] body;
@@ -103,14 +111,19 @@ public class PassQrCodes {
 			signature = DECODER.decode(parts[2]);
 		}
 		catch (IllegalArgumentException ex) {
-			return Optional.empty();
+			return invalid("malformed");
 		}
 		// 해독기는 패딩과 마지막 글자의 쓰이지 않는 비트를 눈감아 준다. 만든 그대로의 글자만 받아 한 토큰이 한 문자열이게 한다.
 		if (!ENCODER.encodeToString(signature).equals(parts[2])) {
-			return Optional.empty();
+			return invalid("malformed");
 		}
 		// 길이가 달라도 같은 시간에 끝나는 비교. 서명을 한 글자씩 맞춰 보는 공격을 막는다.
-		if (!MessageDigest.isEqual(sign(key, parts[0] + "." + parts[1]), signature) || body.length != BODY_BYTES) {
+		if (!MessageDigest.isEqual(sign(key, parts[0] + "." + parts[1]), signature)) {
+			return invalid("bad_signature");
+		}
+		// 우리 키로 서명했는데 본문이 틀렸다. 만드는 쪽의 버그이거나 키가 샌 것이라 알아채야 한다.
+		if (body.length != BODY_BYTES) {
+			log.warn("QR 토큰 확인 실패: reason=signed_bad_body");
 			return Optional.empty();
 		}
 		ByteBuffer buffer = ByteBuffer.wrap(body);
@@ -119,18 +132,20 @@ public class PassQrCodes {
 		byte[] tokenId = new byte[TOKEN_ID_BYTES];
 		buffer.get(tokenId);
 		if (!now.isBefore(expiresAt)) {
-			return Optional.empty();
+			return invalid("expired");
 		}
 		return Optional.of(new VerifiedQr(passId, HexFormat.of().formatHex(tokenId), expiresAt));
 	}
 
-	// 토큰에 적힌 키 버전의 키. ASCII 숫자가 아니거나 모르는 버전이면 null.
+	private static Optional<VerifiedQr> invalid(String reason) {
+		log.info("QR 토큰 확인 실패: reason={}", reason);
+		return Optional.empty();
+	}
+
+	// 키 버전은 ASCII 숫자 아홉 자까지다(int에 들어간다).
 	// Character.isDigit은 다른 문자의 숫자(١, １)도 참이고, 그런 글자를 parseInt가 받는지는 JDK에 따라 다르다.
-	private SecretKeySpec keyOf(String version) {
-		if (version.isEmpty() || version.length() > 9 || !version.chars().allMatch(c -> c >= '0' && c <= '9')) {
-			return null;
-		}
-		return keys.get(Integer.parseInt(version));
+	private static boolean isVersion(String version) {
+		return !version.isEmpty() && version.length() <= 9 && version.chars().allMatch(c -> c >= '0' && c <= '9');
 	}
 
 	private static byte[] sign(SecretKeySpec key, String signed) {

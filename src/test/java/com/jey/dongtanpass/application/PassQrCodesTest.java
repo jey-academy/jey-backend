@@ -10,20 +10,26 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import static com.jey.dongtanpass.application.QrSigningPropertiesTest.KEY_1;
 import static com.jey.dongtanpass.application.QrSigningPropertiesTest.KEY_2;
 import static org.assertj.core.api.Assertions.assertThat;
 
 // 학부모 화면의 QR에 넣는 서명 토큰(ADR-0010). 스프링 없이 본다.
+@ExtendWith(OutputCaptureExtension.class)
 class PassQrCodesTest {
 
 	private static final Instant NOW = Instant.parse("2026-10-16T01:00:00Z");
@@ -193,6 +199,52 @@ class PassQrCodesTest {
 		assertThat(codes.toString()).doesNotContain(KEY_1);
 	}
 
+	// 데스크에는 이유를 가리지 않고 하나로 답하므로, 운영에서 "QR이 안 된다"는 문의를 가리려면 로그에 이유가 있어야 한다.
+	@Test
+	void 무효인_이유를_토큰_원문_없이_로그에_남긴다(CapturedOutput output) {
+		String token = codes.issue(7L, NOW).token();
+		String[] parts = token.split("\\.");
+		String other = new PassQrCodes(new QrSigningProperties(1, Map.of(1, KEY_2))).issue(7L, NOW).token();
+
+		assertThat(reasonOf(output, null)).isEqualTo("malformed");
+		assertThat(reasonOf(output, "1.a")).isEqualTo("malformed");
+		assertThat(reasonOf(output, "a.b.c")).isEqualTo("malformed");
+		assertThat(reasonOf(output, "1.!!!.@@@")).isEqualTo("malformed");
+		assertThat(reasonOf(output, token + "=")).isEqualTo("malformed");
+		assertThat(reasonOf(output,
+				signedToken(KEY_1, "1." + ENCODER.encodeToString(body(7L, NOW.plusSeconds(60), 16)))))
+			.isEqualTo("signed_bad_body");
+		assertThat(reasonOf(output, "9" + token.substring(1))).isEqualTo("unknown_key_version");
+		assertThat(reasonOf(output, parts[0] + "." + parts[1] + "." + flip(parts[2]))).isEqualTo("bad_signature");
+		assertThat(reasonOf(output, other)).isEqualTo("bad_signature");
+		assertThat(reasonOf(output, token, NOW.plusSeconds(60))).isEqualTo("expired");
+		assertThat(output.getAll()).doesNotContain(parts[1]).doesNotContain(parts[2]).doesNotContain(other);
+	}
+
+	// 모르는 키 버전은 키 회전이 어긋났다는 신호라 알아채야 한다(키를 너무 일찍 지웠거나, 새 키를 아직 넣지 않은 서버).
+	// 우리 키로 서명했는데 본문 길이가 틀리면 만드는 쪽의 버그이거나 키가 샌 것이다. 아무 글자나 보낸 요청과 섞지 않는다.
+	@Test
+	void 키_회전이_어긋났거나_서명된_본문이_틀리면_경고로_남긴다(CapturedOutput output) {
+		String token = codes.issue(7L, NOW).token();
+
+		codes.verify("9" + token.substring(1), NOW);
+		codes.verify(signedToken(KEY_1, "1." + ENCODER.encodeToString(body(7L, NOW.plusSeconds(60), 16))), NOW);
+		codes.verify(token, NOW.plusSeconds(60));
+		codes.verify("x", NOW);
+
+		assertThat(lineOf(output, "reason=unknown_key_version")).contains("WARN").contains("keyVersion=9");
+		assertThat(lineOf(output, "reason=signed_bad_body")).contains("WARN");
+		assertThat(lineOf(output, "reason=expired")).doesNotContain("WARN");
+		assertThat(lineOf(output, "reason=malformed")).doesNotContain("WARN");
+	}
+
+	@Test
+	void 유효한_토큰은_로그를_남기지_않는다(CapturedOutput output) {
+		assertThat(codes.verify(codes.issue(7L, NOW).token(), NOW)).isPresent();
+
+		assertThat(output.getAll()).doesNotContain("QR 토큰 확인 실패");
+	}
+
 	// 패스 ID, 만료 시각(초), 나머지는 0인 토큰 ID로 채운 본문. 길이를 정할 수 있다.
 	private static byte[] body(long passId, Instant expiresAt, int length) {
 		ByteBuffer buffer = ByteBuffer.allocate(Math.max(length, 16)).putLong(passId).putLong(expiresAt.getEpochSecond());
@@ -213,6 +265,26 @@ class PassQrCodesTest {
 		catch (GeneralSecurityException ex) {
 			throw new IllegalStateException(ex);
 		}
+	}
+
+	private String reasonOf(CapturedOutput output, String token) {
+		return reasonOf(output, token, NOW);
+	}
+
+	// 확인한 뒤 새로 생긴 로그의 이유. 무효여야 하고 이유는 한 줄이어야 한다.
+	private String reasonOf(CapturedOutput output, String token, Instant now) {
+		int before = output.getAll().length();
+		assertThat(codes.verify(token, now)).isEmpty();
+		String added = output.getAll().substring(before);
+		Matcher matcher = Pattern.compile("reason=([a-z_]+)").matcher(added);
+		assertThat(matcher.find()).as("이유가 로그에 있다: %s", added).isTrue();
+		String reason = matcher.group(1);
+		assertThat(matcher.find()).as("이유는 한 줄이다: %s", added).isFalse();
+		return reason;
+	}
+
+	private static String lineOf(CapturedOutput output, String text) {
+		return output.getAll().lines().filter(line -> line.contains(text)).findFirst().orElseThrow();
 	}
 
 	// 첫 글자를 바꾼다. 마지막 글자는 낮은 비트가 쓰이지 않아(32바이트의 Base64는 43자) 바꿔도 같은 바이트일 수 있다.
