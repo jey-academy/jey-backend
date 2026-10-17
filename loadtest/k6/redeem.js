@@ -19,8 +19,8 @@ const LOCKING = __ENV.LOCKING || 'unknown';
 const SCENARIO = __ENV.SCENARIO || 'contention';
 const N = Number(__ENV.N || (SCENARIO === 'spread' ? 1 : 8));
 const PAIRS = Number(__ENV.PAIRS || 300);
-// 동시 연결 수 = 가상 사용자 × N. 서버(Tomcat 기본: 작업 스레드 200 + 대기 100)가 받는 양을 넘으면 연결이 문 앞에서 거절되어
-// 잠금 방식과 무관한 실패가 섞인다(1차 실행에서 10 × 32 = 320). 그래서 N이 크면 가상 사용자를 줄인다.
+// 동시 연결 수 = 가상 사용자 × N. 연결이 한꺼번에 아주 많이 몰리면 서버의 접속 대기열(Tomcat accept-count 100으로 추정)이
+// 넘쳐 일부 연결이 거절되고, 잠금 방식과 무관한 실패가 섞인다. 그래서 N이 크면 가상 사용자를 줄인다.
 const VUS = Number(__ENV.VUS || (SCENARIO === 'spread' ? 32 : N >= 32 ? 4 : 10));
 const PASSWORD = __ENV.PASSWORD || 'loadtest-only-password-1';
 
@@ -38,9 +38,17 @@ export const options = {
   batchPerHost: 64,
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
   tags: { locking: LOCKING, scenario: SCENARIO },
+  // 하나라도 깨지면 k6가 실패로 끝난다(✗).
+  // - 5xx, 예상하지 못한 4xx: 방식이 틀렸거나(데드락 등) 시험이 엉뚱한 경로를 돌았다(권한·한도·입력 오류)
+  // - 연결 실패: 서버가 받지도 못한 요청이다. 결과에 섞이면 안 되므로 0이어야 한다(시험 환경을 고친다)
+  // - redeem_correct: 반복마다 성공 수가 정해진 대로이고 위의 실패가 하나도 없다
   thresholds: {
-    // 이 둘이 깨지면 k6가 실패로 끝난다(✗). 방식이 틀렸다는 뜻이다. 연결 실패(redeem_conn_error)는 서버가 받지도 않은 요청이라 판정에 넣지 않는다.
     redeem_5xx: ['count==0'],
+    redeem_4xx_other: ['count==0'],
+    redeem_conn_error: ['count==0'],
+    renew_5xx: ['count==0'],
+    renew_4xx_other: ['count==0'],
+    renew_conn_error: ['count==0'],
     redeem_correct: ['rate==1'],
   },
 };
@@ -55,8 +63,18 @@ const otherClientError = new Counter('redeem_4xx_other');
 const serverError = new Counter('redeem_5xx');
 const connectionError = new Counter('redeem_conn_error');
 const renewOk = new Counter('renew_200');
-const renewRejected = new Counter('renew_rejected');
+// 이미 사용된 패스의 링크는 새로 만들 수 없다(409). 섞임에서 사용 처리가 먼저 끝나면 정상으로 나온다.
+const renewAlreadyRedeemed = new Counter('renew_409_already_redeemed');
+const renewOtherClientError = new Counter('renew_4xx_other');
+const renewServerError = new Counter('renew_5xx');
 const renewConnectionError = new Counter('renew_conn_error');
+
+// 사용 처리가 질 때 받아야 하는 답. 그 밖의 4xx는 시험이 엉뚱한 경로를 돈 것이다.
+const EXPECTED_REDEEM_REJECTIONS = {
+  DONGTANPASS_PASS_ALREADY_REDEEMED: alreadyRedeemed,
+  DONGTANPASS_STUDENT_NOT_NEW: studentNotNew,
+  DONGTANPASS_PASS_CHANGED_CONCURRENTLY: changedConcurrently,
+};
 
 export function setup() {
   const partner = login('loadtest-partner');
@@ -108,42 +126,55 @@ export default function (data) {
   const responses = http.batch(requests);
 
   let successes = 0;
-  let failures5xx = 0;
+  let unexpected = 0; // 5xx, 연결 실패, 예상하지 못한 4xx(사용 처리·링크 새로 만들기 모두)
   responses.slice(0, redeemCount).forEach((res) => {
+    if (res.status === 0) {
+      // 서버가 받지 못한 요청은 응답 시간에 넣지 않는다(거의 0ms라 분포를 끌어내린다).
+      connectionError.add(1);
+      unexpected++;
+      return;
+    }
     redeemMs.add(res.timings.duration);
     if (res.status === 200) {
       successes++;
       ok.add(1);
-    } else if (res.status === 0) {
-      connectionError.add(1);
     } else if (res.status >= 500) {
-      failures5xx++;
       serverError.add(1);
+      unexpected++;
     } else {
-      countRejection(res);
+      const counter = EXPECTED_REDEEM_REJECTIONS[codeOf(res)];
+      if (res.status === 409 && counter) {
+        counter.add(1);
+      } else {
+        otherClientError.add(1);
+        unexpected++;
+      }
     }
   });
   responses.slice(redeemCount).forEach((res) => {
-    if (res.status === 200) renewOk.add(1);
-    else if (res.status === 0) renewConnectionError.add(1);
-    else renewRejected.add(1);
+    if (res.status === 200) {
+      renewOk.add(1);
+    } else if (res.status === 0) {
+      renewConnectionError.add(1);
+      unexpected++;
+    } else if (res.status >= 500) {
+      renewServerError.add(1);
+      unexpected++;
+    } else if (res.status === 409 && codeOf(res) === 'DONGTANPASS_PASS_ALREADY_REDEEMED') {
+      renewAlreadyRedeemed.add(1);
+    } else {
+      renewOtherClientError.add(1);
+      unexpected++;
+    }
   });
 
   // contention·spread는 정확히 1개, mixed는 많아야 1개(링크 새로 만들기에 모두 지면 0개 — 다시 시도하면 된다).
-  const expected = SCENARIO === 'mixed' ? successes <= 1 : successes === 1;
-  correct.add(expected && failures5xx === 0);
+  const expectedSuccesses = SCENARIO === 'mixed' ? successes <= 1 : successes === 1;
+  correct.add(expectedSuccesses && unexpected === 0);
   check(null, {
-    '성공이 정해진 수(중복 사용 없음)': () => expected,
-    '5xx 없음': () => failures5xx === 0,
+    '성공이 정해진 수(중복 사용 없음)': () => expectedSuccesses,
+    '5xx·예상 밖 4xx·연결 실패 없음': () => unexpected === 0,
   });
-}
-
-function countRejection(res) {
-  const code = codeOf(res);
-  if (code === 'DONGTANPASS_PASS_ALREADY_REDEEMED') alreadyRedeemed.add(1);
-  else if (code === 'DONGTANPASS_STUDENT_NOT_NEW') studentNotNew.add(1);
-  else if (code === 'DONGTANPASS_PASS_CHANGED_CONCURRENTLY') changedConcurrently.add(1);
-  else otherClientError.add(1);
 }
 
 function codeOf(res) {
