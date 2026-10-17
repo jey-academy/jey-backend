@@ -35,6 +35,7 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -95,6 +96,9 @@ class PassRedeemApiTest {
 
 	@Autowired
 	Clock clock;
+
+	@Autowired
+	StringRedisTemplate redis;
 
 	private long staff;
 
@@ -360,6 +364,54 @@ class PassRedeemApiTest {
 		send(pass.getId(), json, UserRole.STAFF, PROVIDER, UUID.randomUUID().toString())
 			.andExpect(status().isBadRequest());
 		assertThat(statusOf(pass)).isEqualTo("ISSUED");
+	}
+
+	// 오류 코드(이름 다름 / 번호 다름)만으로 패스 주인을 알 수 있다. 패스 ID를 바꿔 가며 훑지 못하게 계정마다 센다.
+	// 맞든 틀리든, 없는 패스도 센다(패스를 찾기 전에 센다). 처음 막힌 것만 감사 로그에 남는다. 미리 확인의 한도와는 따로다.
+	@Test
+	void 사용_처리는_계정마다_정한_횟수까지이고_넘으면_429다() throws Exception {
+		long student = register(NAME, PROVIDER, phone);
+		for (int i = 0; i < 30; i++) {
+			redeem(Long.MAX_VALUE, student).andExpect(status().isNotFound());
+		}
+
+		String retryAfter = redeem(pass.getId(), student).andExpect(status().isTooManyRequests())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_REDEEM_LIMITED"))
+			.andReturn()
+			.getResponse()
+			.getHeader("Retry-After");
+		redeem(pass.getId(), student).andExpect(status().isTooManyRequests());
+
+		assertThat(Long.parseLong(retryAfter)).isPositive();
+		assertThat(statusOf(pass)).isEqualTo("ISSUED");
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM core_audit_log WHERE action = 'dongtanpass.redeem-limited' AND actor_id = ?",
+				Integer.class, staff))
+			.isEqualTo(1);
+		assertThat(redis.hasKey("jey:auth:account-limit:dongtanpass.holder-check:" + staff)).isFalse();
+		staff = newAccount();
+		redeem(pass.getId(), student).andExpect(status().isOk());
+	}
+
+	// 성공도 센다(맞는 학생을 찾은 뒤에도 계속 훑을 수 있다). 관리자도 센다.
+	@Test
+	void 성공한_사용_처리와_관리자도_센다() throws Exception {
+		long student = register(NAME, PROVIDER, phone);
+
+		redeemAs(pass.getId(), student, UserRole.ADMIN, null).andExpect(status().isOk());
+
+		assertThat(redis.opsForHash().get("jey:auth:account-limit:dongtanpass.redeem:" + staff, "count"))
+			.isEqualTo("1");
+	}
+
+	// 지점을 먼저 본다. 패스를 받지 않는 지점의 직원은 훑는 것 자체를 할 수 없다.
+	@Test
+	void 패스를_받지_않는_지점의_직원은_세지_않는다() throws Exception {
+		long student = register(NAME, PROVIDER, phone);
+
+		redeemAs(pass.getId(), student, UserRole.STAFF, OTHER_CAMPUS).andExpect(status().isForbidden());
+
+		assertThat(redis.hasKey("jey:auth:account-limit:dongtanpass.redeem:" + staff)).isFalse();
 	}
 
 	@Test

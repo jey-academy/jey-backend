@@ -4,10 +4,16 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 
+import com.jey.core.audit.api.AuditEntry;
+import com.jey.core.audit.api.AuditLog;
+import com.jey.core.audit.api.DeniedAttempts;
+import com.jey.core.auth.api.AccountRateLimiter;
 import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.CurrentActor;
+import com.jey.core.auth.api.RateLimit;
 import com.jey.core.member.api.MemberDirectory;
 import com.jey.core.member.api.StudentInfo;
+import com.jey.core.shared.Actor;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.EventMetadata;
 import com.jey.core.shared.UniqueKeys;
@@ -33,11 +39,14 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>확인 순서가 오류를 정한다: 받는 지점(403) → 패스(404, 409) → 할인 켜짐(409) → 학생(404) → 학생의 지점(409)
  * → 신규(409) → 이름 → 학부모 번호(409). 미리 확인(holder-check)을 거쳤어도 이름과 번호를 다시 본다.
  *
+ * <p>이름·번호가 패스와 맞는지를 오류 코드로 알려 주므로, 패스 ID를 바꿔 가며 패스 주인을 훑지 못하게 계정마다 센다
+ * (맞든 틀리든, 패스를 찾기 전에. 미리 확인의 한도와는 따로). 처음 막힌 것은 감사 로그에 남긴다.
+ *
  * <p>같은 패스나 같은 학생을 동시에 쓰면 사용 기록의 유니크 키가, 취소·링크 새로 만들기와 겹치면 패스의 버전이 막는다.
  * 진 쪽의 예외는 트랜잭션 밖에서 상태에 맞는 409로 바꾼다. 패스는 잠그지 않고 읽는다(방식 비교는 따로 한다).
  */
 @Service
-@EnableConfigurationProperties(RedeemProperties.class)
+@EnableConfigurationProperties({ RedeemProperties.class, RedeemLimitProperties.class })
 public class PassRedeemService {
 
 	// 마이그레이션에 적은 제약 이름. 저장이 어느 제약에 걸렸는지 이것으로 가린다.
@@ -63,11 +72,18 @@ public class PassRedeemService {
 
 	private final RedeemProperties properties;
 
+	private final AccountRateLimiter limiter;
+
+	private final RateLimit redeemLimit;
+
+	private final AuditLog auditLog;
+
 	private final Clock clock;
 
 	PassRedeemService(PassRepository passes, RedemptionRepository redemptions, PassBenefits passBenefits,
 			MemberDirectory members, TransactionTemplate transaction, ApplicationEventPublisher events,
-			CurrentActor currentActor, RedeemProperties properties, Clock clock) {
+			CurrentActor currentActor, RedeemProperties properties, AccountRateLimiter limiter,
+			RedeemLimitProperties redeemLimit, AuditLog auditLog, Clock clock) {
 		this.passes = passes;
 		this.redemptions = redemptions;
 		this.passBenefits = passBenefits;
@@ -76,16 +92,24 @@ public class PassRedeemService {
 		this.events = events;
 		this.currentActor = currentActor;
 		this.properties = properties;
+		this.limiter = limiter;
+		this.redeemLimit = redeemLimit.limit();
+		this.auditLog = auditLog;
 		this.clock = clock;
 	}
 
 	/**
 	 * @throws BusinessException 패스를 받지 않는 지점의 직원(403), 없는 패스·학생(404), 쓸 수 없는 패스, 꺼진 할인,
 	 * 받는 지점의 학생이 아님, 신규가 아님, 이름이나 학부모 번호가 패스와 다름, 동시에 바뀐 패스(409)
+	 * @throws com.jey.core.shared.RateLimitedException 그 계정의 사용 처리가 한도를 넘었을 때(429)
 	 */
 	public RedeemedPass redeem(long passId, long studentId, AuthenticatedUser user) {
 		PassBenefit benefit = passBenefits.current();
 		DeskChecks.requireProvidingCampus(benefit, user);
+		// 맞든 틀리든, 패스를 찾기 전에 센다. 트랜잭션 밖이다(막힌 기록은 트랜잭션이 끝난 뒤에 적는다).
+		limiter.acquire(redeemLimit, new Actor.User(user.id()), DongtanpassErrorCode.REDEEM_LIMITED,
+				denial -> DeniedAttempts.record(auditLog, () -> AuditEntry.of(DongtanpassAuditAction.REDEEM_LIMITED),
+						denial));
 		try {
 			return transaction.execute(status -> redeemInTransaction(passId, studentId, benefit));
 		}

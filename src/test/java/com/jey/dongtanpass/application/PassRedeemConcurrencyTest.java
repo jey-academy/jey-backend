@@ -8,6 +8,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import com.jey.TestcontainersConfiguration;
@@ -66,7 +67,9 @@ class PassRedeemConcurrencyTest {
 	@BeforeEach
 	void setUp() {
 		upsertPartner(jdbc, PARTNER, true);
-		staff = (AuthenticatedUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+		// 사용 처리는 계정마다 센다. 테스트마다 다른 계정으로 부른다(Redis의 횟수는 테스트 사이에 남는다).
+		staff = new AuthenticatedUser(9_018_000_000L + ThreadLocalRandom.current().nextInt(1_000_000_000), "desk-staff",
+				"데스크", UserRole.STAFF, 1L, null);
 	}
 
 	// 모두 패스와 맞는 신규 학생이다. 같은 이름·같은 학부모로는 두 번 등록되지 않으므로, 다른 번호로 등록한 뒤

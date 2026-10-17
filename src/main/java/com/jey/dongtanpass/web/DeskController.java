@@ -92,6 +92,8 @@ class DeskController {
 					+ "신규 학생이 아니면(이미 패스를 씀, 학생 자료를 만든 지 7일이 지남, 재원 중이 아님) 409(DONGTANPASS_STUDENT_NOT_NEW), "
 					+ "학생 이름이 패스와 다르면 409(DONGTANPASS_HOLDER_NAME_MISMATCH), "
 					+ "학생의 학부모 번호 중에 패스를 받을 때 적은 번호가 없으면 409(DONGTANPASS_HOLDER_PHONE_MISMATCH). "
+					+ "계정마다 정해진 횟수(맞든 틀리든, 404·409도 센다. 본인 미리 확인과는 따로)를 넘으면 잠시 429(DONGTANPASS_REDEEM_LIMITED)이고, "
+					+ "다시 할 수 있을 때까지 남은 시간은 Retry-After 헤더(초)에 싣는다. 다른 지점 직원의 요청은 세지 않는다. "
 					+ "같은 패스를 고친 다른 요청과 겹쳐 진 경우 패스가 아직 쓸 수 있으면 409(DONGTANPASS_PASS_CHANGED_CONCURRENTLY)이고 다시 보내면 된다. "
 					+ "DONGTANPASS_DISCOUNT_INACTIVE와 DONGTANPASS_PASS_CHANGED_CONCURRENTLY는 같은 Idempotency-Key로 다시 보내도 다시 처리한다")
 	@Idempotent
