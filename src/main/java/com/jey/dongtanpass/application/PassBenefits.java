@@ -45,7 +45,7 @@ public class PassBenefits {
 					"패스를 받는 지점이 없다: campusId=" + benefit.getProviderCampusId()));
 		DiscountTypeInfo discount = catalog.findDiscountType(benefit.getDiscountTypeCode())
 			.orElseThrow(() -> new IllegalStateException("패스 할인 유형이 없다: " + benefit.getDiscountTypeCode()));
-		return new PassBenefit(campus.id(), campus.name(), discount.code(), discount.rate());
+		return new PassBenefit(campus.id(), campus.name(), discount.code(), discount.rate(), discount.active());
 	}
 
 }
