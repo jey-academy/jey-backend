@@ -1,5 +1,6 @@
 package com.jey.loadtest;
 
+import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -24,6 +25,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 /**
  * 부하 시험용 앱의 설정({@code loadtest} 프로필에서만). 평소 테스트 컨텍스트에는 끼지 않는다.
@@ -56,6 +58,15 @@ class LoadtestConfiguration {
 	@ConditionalOnProperty(name = LOCKING, havingValue = "unique-first")
 	RedeemLocking uniqueFirstRedeemLocking(PassRepository passes, RedemptionRepository redemptions) {
 		return new UniqueFirstRedeemLocking(passes, redemptions);
+	}
+
+	// 락의 만료 시간은 사용 처리 한 번(수십 ms)보다 훨씬 길게 둔다. 앱이 죽어도 이 시간이 지나면 풀린다.
+	@Bean
+	@Primary
+	@ConditionalOnProperty(name = LOCKING, havingValue = "redis")
+	RedeemLocking redisRedeemLocking(PassRepository passes, RedemptionRepository redemptions,
+			StringRedisTemplate redis) {
+		return new RedisRedeemLocking(passes, redemptions, redis, Duration.ofSeconds(5));
 	}
 
 	// 어떤 방식으로 떴는지 앱 터미널 첫 화면에 남긴다(캡처용). 모르는 값이면 뜨지 않는다.
