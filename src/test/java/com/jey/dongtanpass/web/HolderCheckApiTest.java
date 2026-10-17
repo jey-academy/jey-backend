@@ -117,7 +117,7 @@ class HolderCheckApiTest {
 
 	// 등록 폼에는 띄어 쓰거나 다른 입력기로 적을 수 있다. 공백(전각 포함)을 모두 빼고 NFC로 모아 비교한다.
 	@ParameterizedTest
-	@ValueSource(strings = { "김 하윤", " 김하윤 ", "김　하윤" })
+	@ValueSource(strings = { "김 하윤", " 김하윤 ", "김\u3000하윤" })
 	void 띄어쓰기와_전각_공백이_달라도_같은_이름이다(String name) throws Exception {
 		check(pass.getId(), body(name, phone)).andExpect(status().isOk())
 			.andExpect(jsonPath("$.nameMatches").value(true));
@@ -198,11 +198,13 @@ class HolderCheckApiTest {
 			.andExpect(jsonPath("$.errors[0].field").value("studentName"));
 	}
 
-	// @NotBlank는 NBSP·전각 공백을 공백으로 보지 않는다. 이름 비교의 기준(StudentNameKey)으로 한 번 더 거른다.
+	// 빈 이름·공백(NBSP·전각 포함)뿐인 이름은 그 칸의 오류다(등록 폼의 이름 칸 밑에 보여 준다). 공백의 기준은 이름 비교(StudentNameKey)와 같다.
 	@ParameterizedTest
-	@ValueSource(strings = { " ", "　　" })
-	void 보이지_않는_공백뿐인_이름은_400이다(String name) throws Exception {
-		check(pass.getId(), body(name, phone)).andExpect(status().isBadRequest());
+	@ValueSource(strings = { "", " ", "\u00A0", "\u3000\u3000" })
+	void 비었거나_공백뿐인_이름은_그_칸의_400이다(String name) throws Exception {
+		check(pass.getId(), body(name, phone)).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+			.andExpect(jsonPath("$.errors[0].field").value("studentName"));
 	}
 
 	@Test
