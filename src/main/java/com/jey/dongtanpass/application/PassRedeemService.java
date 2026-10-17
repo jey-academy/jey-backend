@@ -44,6 +44,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p>같은 패스나 같은 학생을 동시에 쓰면 사용 기록의 유니크 키가, 취소·링크 새로 만들기와 겹치면 패스의 버전이 막는다.
  * 진 쪽의 예외는 트랜잭션 밖에서 상태에 맞는 409로 바꾼다. 패스는 잠그지 않고 읽는다(방식 비교는 따로 한다).
+ * 같은 학생으로 셋 이상이 동시에 오고 먼저 넣은 요청이 롤백되면, 기다리던 요청끼리 드물게 잠금 실패(데드락)가 나 500으로 끝날 수 있다.
+ * 5xx는 멱등 응답으로 보관하지 않으므로 다시 보내면 맞는 답(성공 또는 신규 아님)이 나온다.
  */
 @Service
 @EnableConfigurationProperties({ RedeemProperties.class, RedeemLimitProperties.class })
