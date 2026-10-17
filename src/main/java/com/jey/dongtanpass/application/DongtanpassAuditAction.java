@@ -41,6 +41,9 @@ enum DongtanpassAuditAction implements AuditAction {
 	/** 데스크의 패스 번호 확인이 계정별 한도에 처음 막혔다(구간마다 한 번). 대상은 없다. 행위자가 그 계정이다. */
 	PASS_NO_VERIFY_LIMITED("dongtanpass.pass-no-verify-limited", AuditOutcome.DENIED),
 
+	/** 데스크의 본인 미리 확인이 계정별 한도에 처음 막혔다(구간마다 한 번). 대상은 없다. 행위자가 그 계정이다. */
+	HOLDER_CHECK_LIMITED("dongtanpass.holder-check-limited", AuditOutcome.DENIED),
+
 	/** 쓰지 않은 패스를 취소했다. 대상은 그 패스다. 결제 환불은 연계 학원이 따로 한다. */
 	PASS_CANCELED("dongtanpass.pass-canceled", AuditOutcome.DONE);
 
