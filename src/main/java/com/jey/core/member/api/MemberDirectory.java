@@ -1,5 +1,6 @@
 package com.jey.core.member.api;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -12,6 +13,21 @@ public interface MemberDirectory {
 
 	/** 퇴원한 학생도 돌려준다. 이미 만든 청구가 그 학생을 참조한다. 새로 고르는 자리에서는 {@code enrolled}를 확인한다. */
 	Optional<StudentInfo> findStudent(long studentId);
+
+	/**
+	 * 여러 학생을 한 번에 찾는다(목록 화면에서 학생마다 조회하지 않게). 퇴원한 학생도 돌려준다.
+	 *
+	 * @return 찾은 학생만. 없는 ID는 빠지고 순서는 정하지 않는다
+	 */
+	List<StudentInfo> findStudents(Collection<Long> studentIds);
+
+	/**
+	 * 이 학생에게 연결된 학부모 중 이 번호의 학부모가 있는지. 학생 본인 번호는 보지 않는다.
+	 * 번호는 원문이 아니라 전체 번호 색인({@code PhoneProtector#fullIndex})으로 주고받는다.
+	 *
+	 * @return 없는 학생이면 {@code false}
+	 */
+	boolean hasGuardianWithPhoneIndex(long studentId, String phoneFullIndex);
 
 	/**
 	 * 형제의 학생 ID. 같은 학부모에 연결된 다른 학생이다. 퇴원한 학생도 포함한다.

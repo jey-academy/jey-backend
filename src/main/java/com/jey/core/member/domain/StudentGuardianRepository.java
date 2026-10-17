@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface StudentGuardianRepository extends JpaRepository<StudentGuardian, Long> {
 
@@ -18,5 +20,11 @@ public interface StudentGuardianRepository extends JpaRepository<StudentGuardian
 	boolean existsByStudentIdAndGuardianId(Long studentId, Long guardianId);
 
 	long countByStudentId(Long studentId);
+
+	@Query("""
+			select count(sg) > 0 from StudentGuardian sg, Guardian g
+			where sg.studentId = :studentId and g.id = sg.guardianId and g.phone.fullIndex = :fullIndex
+			""")
+	boolean existsGuardianWithPhoneIndex(@Param("studentId") Long studentId, @Param("fullIndex") String fullIndex);
 
 }
