@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -113,6 +114,47 @@ class HolderViewApiTest {
 			.andExpect(content().string(not(containsString(link.raw()))))
 			// 로그인 없는 요청은 세션을 만들지 않는다
 			.andExpect(header().doesNotExist("Set-Cookie"));
+	}
+
+	// 쓰지 않은 패스는 사용일이 null이다(칸은 늘 있다). 취소한 패스도 null이다(취소일은 싣지 않는다).
+	@ParameterizedTest(name = "{0}")
+	@ValueSource(strings = { "ISSUED", "CANCELED" })
+	void 쓰지_않은_패스의_사용일은_null이다(String stored) throws Exception {
+		LinkToken link = LinkToken.generate(RANDOM);
+		Pass pass = save(PARTNER, link, "김하윤");
+		jdbc.update("UPDATE dongtanpass_pass SET status = ? WHERE id = ?", stored, pass.getId());
+
+		view(link.raw()).andExpect(status().isOk())
+			.andExpect(content().string(containsString("\"redeemedOn\":null")));
+	}
+
+	// 있어서는 안 되는 자료다. 화면은 그대로 열리고(사용일 없음) 경고가 남는다.
+	@Test
+	void 사용됨인데_사용_기록이_없으면_사용일은_null이고_경고를_남긴다(CapturedOutput output) throws Exception {
+		LinkToken link = LinkToken.generate(RANDOM);
+		Pass pass = save(PARTNER, link, "김하윤");
+		jdbc.update("UPDATE dongtanpass_pass SET status = 'REDEEMED' WHERE id = ?", pass.getId());
+
+		view(link.raw()).andExpect(status().isOk())
+			.andExpect(content().string(containsString("\"redeemedOn\":null")));
+
+		assertThat(output.getAll()).contains("사용됨인 패스의 사용 기록이 없다: passId=" + pass.getId());
+	}
+
+	// 사용 기록의 시각을 한국 날짜로 바꾼다. 한국 0시 30분은 UTC로는 전날이다.
+	@Test
+	void 사용한_패스는_사용일을_한국_날짜로_준다() throws Exception {
+		LinkToken link = LinkToken.generate(RANDOM);
+		Pass pass = save(PARTNER, link, "김하윤");
+		jdbc.update("UPDATE dongtanpass_pass SET status = 'REDEEMED' WHERE id = ?", pass.getId());
+		jdbc.update("""
+				INSERT INTO dongtanpass_redemption (pass_id, student_id, campus_id, redeemed_at, created_at, updated_at)
+				VALUES (?, ?, 1, '2026-10-20 00:30:00', NOW(6), NOW(6))
+				""", pass.getId(), 9_010_000_000L + RANDOM.nextInt(1_000_000_000));
+
+		view(link.raw()).andExpect(status().isOk())
+			.andExpect(jsonPath("$.state").value("REDEEMED"))
+			.andExpect(jsonPath("$.redeemedOn").value("2026-10-20"));
 	}
 
 	// 만료는 저장하지 않고 오늘로 계산한다. 화면은 넷을 따로 그린다. 남은 일수는 쓸 수 있을 때만 센다.

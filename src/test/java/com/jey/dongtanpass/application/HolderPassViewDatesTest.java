@@ -15,6 +15,7 @@ import com.jey.dongtanpass.domain.PartnerRepository;
 import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PassNumber;
 import com.jey.dongtanpass.domain.PassRepository;
+import com.jey.dongtanpass.domain.RedemptionRepository;
 import com.jey.dongtanpass.domain.PassState;
 import com.jey.dongtanpass.domain.PaymentMethod;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -52,9 +53,9 @@ class HolderPassViewDatesTest {
 		when(partner.getName()).thenReturn("테스트학원");
 		when(passes.findByLinkTokenHash(link.hash())).thenReturn(Optional.of(pass));
 		when(partners.findById(7L)).thenReturn(Optional.of(partner));
-		when(passBenefits.current()).thenReturn(new PassBenefit(1L, "테스트지점", "DONGTAN_PASS", new BigDecimal("0.05")));
+		when(passBenefits.current()).thenReturn(new PassBenefit(1L, "테스트지점", "DONGTAN_PASS", new BigDecimal("0.05"), true));
 		HolderPassService service = new HolderPassService(passes, partners, passBenefits, mock(PassQrCodes.class),
-				Clock.fixed(now, SEOUL));
+				mock(RedemptionRepository.class), Clock.fixed(now, SEOUL));
 
 		HolderPassView view = service.view(link.raw());
 

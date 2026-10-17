@@ -179,6 +179,25 @@ public class Pass extends BaseEntity {
 		this.status = PassStatus.CANCELED;
 	}
 
+	/**
+	 * 패스를 쓴 것으로 표시하고 그 사용 기록을 만든다. 사용 기록은 이 메서드로만 만든다(사용됨인 패스에는 기록이 하나 있다).
+	 * 기간은 보지 않는다(오늘을 아는 사용 처리가 먼저 본다). 저장은 부르는 쪽이 한다(패스를 먼저, 기록을 나중에).
+	 *
+	 * @param campusId 쓴 지점(패스를 받는 지점)
+	 * @throws PassStatusException 발급 상태가 아닐 때(이미 사용됨, 취소됨)
+	 * @throws IllegalStateException 저장하지 않은 패스일 때(기록이 가리킬 ID가 없다)
+	 * @throws IllegalArgumentException 사용 시각이 없을 때
+	 */
+	public Redemption redeem(long studentId, long campusId, Instant redeemedAt) {
+		if (id == null) {
+			throw new IllegalStateException("저장한 패스만 사용 처리할 수 있다");
+		}
+		requireIssued();
+		Redemption redemption = Redemption.of(id, studentId, campusId, redeemedAt);
+		this.status = PassStatus.REDEEMED;
+		return redemption;
+	}
+
 	private void requireIssued() {
 		if (status != PassStatus.ISSUED) {
 			throw new PassStatusException(status);

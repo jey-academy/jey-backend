@@ -17,6 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * <li>901_0xx {@code HolderViewApiTest}, 901_1xx {@code HolderQrApiTest}</li>
  * <li>901_2xx {@code HolderRelinkApiTest}, 901_3xx {@code HolderRelinkServiceTest}</li>
  * <li>901_4xx {@code DeskVerifyApiTest}, 901_5xx {@code DeskVerifyConcurrencyTest}, 901_6xx {@code HolderCheckApiTest}</li>
+ * <li>901_7xx {@code PassRedeemApiTest}, 901_8xx {@code PassRedeemConcurrencyTest}, 901_9xx {@code RedemptionLedgerApiTest}</li>
  * </ul>
  */
 public final class DongtanpassFixtures {

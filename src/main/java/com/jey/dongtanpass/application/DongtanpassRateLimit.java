@@ -18,7 +18,10 @@ enum DongtanpassRateLimit implements RateLimitName {
 	PASS_NO_VERIFY("dongtanpass.pass-no-verify"),
 
 	/** 데스크가 학생 이름과 학부모 번호를 패스와 미리 맞춰 본 횟수(계정마다, 맞든 틀리든) */
-	HOLDER_CHECK("dongtanpass.holder-check");
+	HOLDER_CHECK("dongtanpass.holder-check"),
+
+	/** 데스크가 패스를 사용 처리한 횟수(계정마다, 맞든 틀리든). 이름·번호 대조 결과로 패스 주인을 훑지 못하게 */
+	REDEEM("dongtanpass.redeem");
 
 	private final String code;
 

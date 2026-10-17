@@ -138,7 +138,7 @@ public class DeskPassService {
 						() -> AuditEntry.of(DongtanpassAuditAction.HOLDER_CHECK_LIMITED), denial));
 		Pass pass = passes.findById(passId)
 			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
-		requireUsable(pass, todayAt(clock.instant()));
+		DeskChecks.requireUsable(pass, todayAt(clock.instant()));
 		boolean phoneMatches = guardianPhones.stream()
 			.map(phoneProtector::fullIndex)
 			.anyMatch(pass.getGuardianPhoneIndex()::equals);
@@ -147,9 +147,7 @@ public class DeskPassService {
 
 	private PassBenefit requireProvidingCampus(AuthenticatedUser user) {
 		PassBenefit benefit = passBenefits.current();
-		if (!user.campusScope().includes(benefit.campusId())) {
-			throw new BusinessException(DongtanpassErrorCode.CAMPUS_NOT_PROVIDING);
-		}
+		DeskChecks.requireProvidingCampus(benefit, user);
 		return benefit;
 	}
 
@@ -163,21 +161,8 @@ public class DeskPassService {
 			.orElseThrow(() -> new IllegalStateException("패스의 연계 학원이 없다: passId=" + pass.getId()));
 	}
 
-	// 쓸 수 있는 패스(발급됨, 기간 안)가 아니면 그 사정의 409. 확인·미리 확인·사용 처리가 같은 코드를 쓴다.
-	private static void requireUsable(Pass pass, LocalDate today) {
-		DongtanpassErrorCode unusable = switch (pass.stateOn(today)) {
-			case ISSUED -> null;
-			case EXPIRED -> DongtanpassErrorCode.PASS_EXPIRED;
-			case CANCELED -> DongtanpassErrorCode.PASS_CANCELED;
-			case REDEEMED -> DongtanpassErrorCode.PASS_ALREADY_REDEEMED;
-		};
-		if (unusable != null) {
-			throw new BusinessException(unusable);
-		}
-	}
-
 	private VerifiedPassView usableView(Pass pass, Partner partner, PassBenefit benefit, LocalDate today) {
-		requireUsable(pass, today);
+		DeskChecks.requireUsable(pass, today);
 		return new VerifiedPassView(pass.getId(), pass.getPassNo(), partner.getName(),
 				MaskedName.of(pass.getStudentName()), pass.issuedOn(clock.getZone()), pass.getExpiresOn(),
 				benefit.discountRate());

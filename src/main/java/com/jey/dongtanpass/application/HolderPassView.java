@@ -15,9 +15,10 @@ import com.jey.dongtanpass.domain.PassState;
  * @param daysLeft 오늘을 포함해 쓸 수 있는 날 수. 만료일 당일이면 1, 쓸 수 없는 상태면 0
  * @param discountRate 할인율. 5%는 0.05
  * @param campusName 패스를 받는 지점
+ * @param redeemedOn 사용일(한국 날짜). 쓰지 않은 패스는 {@code null}. 취소일은 싣지 않는다
  */
 public record HolderPassView(String passNo, String partnerName, String maskedStudentName, LocalDate issuedOn,
 		LocalDate expiresOn, PassState state, int daysLeft, BigDecimal discountRate, String campusName,
-		String noticeVersion, String noticeText) {
+		String noticeVersion, String noticeText, LocalDate redeemedOn) {
 
 }
