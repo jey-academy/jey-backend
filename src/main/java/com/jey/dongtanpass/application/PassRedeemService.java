@@ -166,7 +166,17 @@ public class PassRedeemService {
 	// 패스를 같이 고친 요청(취소, 링크 새로 만들기, 다른 사용 처리)에 졌다. 지금 상태를 다시 읽어 그 사정으로 답한다.
 	// 아직 쓸 수 있으면(링크 새로 만들기에 진 경우) 다시 시도하면 된다.
 	private BusinessException lostRace(long passId, OptimisticLockingFailureException ex) {
-		Pass current = passes.findById(passId).orElseThrow(() -> ex);
+		Pass current;
+		try {
+			current = passes.findById(passId).orElseThrow(() -> ex);
+		}
+		catch (RuntimeException readFailure) {
+			// 다시 읽지 못했다(DB 오류 등). 그 오류로 끝내되 원래의 충돌도 함께 남긴다.
+			if (readFailure != ex) {
+				readFailure.addSuppressed(ex);
+			}
+			throw readFailure;
+		}
 		try {
 			DeskChecks.requireUsable(current, todayAt(clock.instant()));
 		}

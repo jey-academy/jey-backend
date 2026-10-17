@@ -2,6 +2,7 @@ package com.jey.dongtanpass.application;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Optional;
 
 import com.jey.core.shared.BusinessException;
 import com.jey.dongtanpass.domain.LinkToken;
@@ -10,6 +11,8 @@ import com.jey.dongtanpass.domain.Partner;
 import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PartnerRepository;
 import com.jey.dongtanpass.domain.PassRepository;
+import com.jey.dongtanpass.domain.PassStatus;
+import com.jey.dongtanpass.domain.Redemption;
 import com.jey.dongtanpass.domain.RedemptionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,10 +70,13 @@ public class HolderPassService {
 	}
 
 	// 사용 기록의 시각을 한국 날짜로 바꾼다. 쓰지 않은 패스에는 기록이 없다.
+	// 사용됨인데 기록이 없으면 있어서는 안 되는 자료다. 화면은 사용일 없이 그대로 보여 주고 경고만 남긴다.
 	private LocalDate redeemedOn(Pass pass) {
-		return redemptions.findByPassId(pass.getId())
-			.map(redemption -> LocalDate.ofInstant(redemption.getRedeemedAt(), clock.getZone()))
-			.orElse(null);
+		Optional<Redemption> redemption = redemptions.findByPassId(pass.getId());
+		if (redemption.isEmpty() && pass.getStatus() == PassStatus.REDEEMED) {
+			log.warn("사용됨인 패스의 사용 기록이 없다: passId={}", pass.getId());
+		}
+		return redemption.map(found -> LocalDate.ofInstant(found.getRedeemedAt(), clock.getZone())).orElse(null);
 	}
 
 	/**

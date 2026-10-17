@@ -128,6 +128,19 @@ class HolderViewApiTest {
 			.andExpect(content().string(containsString("\"redeemedOn\":null")));
 	}
 
+	// 있어서는 안 되는 자료다. 화면은 그대로 열리고(사용일 없음) 경고가 남는다.
+	@Test
+	void 사용됨인데_사용_기록이_없으면_사용일은_null이고_경고를_남긴다(CapturedOutput output) throws Exception {
+		LinkToken link = LinkToken.generate(RANDOM);
+		Pass pass = save(PARTNER, link, "김하윤");
+		jdbc.update("UPDATE dongtanpass_pass SET status = 'REDEEMED' WHERE id = ?", pass.getId());
+
+		view(link.raw()).andExpect(status().isOk())
+			.andExpect(content().string(containsString("\"redeemedOn\":null")));
+
+		assertThat(output.getAll()).contains("사용됨인 패스의 사용 기록이 없다: passId=" + pass.getId());
+	}
+
 	// 사용 기록의 시각을 한국 날짜로 바꾼다. 한국 0시 30분은 UTC로는 전날이다.
 	@Test
 	void 사용한_패스는_사용일을_한국_날짜로_준다() throws Exception {
