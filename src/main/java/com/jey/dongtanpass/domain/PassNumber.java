@@ -16,7 +16,10 @@ public final class PassNumber {
 
 	private static final int LENGTH = 6;
 
-	private static final Pattern FORMAT = Pattern.compile(PREFIX + "[" + ALPHABET + "]{" + LENGTH + "}");
+	/** 형식의 정규식. 요청 칸의 검증에도 쓴다(대문자만). */
+	public static final String REGEX = PREFIX + "[" + ALPHABET + "]{" + LENGTH + "}";
+
+	private static final Pattern FORMAT = Pattern.compile(REGEX);
 
 	private PassNumber() {
 	}

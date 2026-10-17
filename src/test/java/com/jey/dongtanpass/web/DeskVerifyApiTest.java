@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -199,11 +200,58 @@ class DeskVerifyApiTest {
 	// 정상 토큰은 약 90자다. 아주 긴 글자는 서명을 계산하기 전에 칸 오류로 거른다.
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = PROVIDER, id = 901_417L)
-	void 토큰이_200자를_넘거나_없으면_400이다() throws Exception {
+	void 토큰이_200자를_넘으면_그_칸의_400이고_아무것도_없으면_본문_오류다() throws Exception {
 		verify("a".repeat(201)).andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"));
-		send("{}").andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"));
+			.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+			.andExpect(jsonPath("$.errors[0].field").value("qrToken"));
+		send("{}").andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+	}
+
+	@Test
+	void 패스_번호로_확인하면_QR과_같은_본문을_준다() throws Exception {
+		Pass pass = save("김하윤");
+
+		sendAs(passNoBody(pass.getPassNo()), UserRole.STAFF, PROVIDER, newAccount()).andExpect(status().isOk())
+			.andExpect(jsonPath("$.passId").value(pass.getId()))
+			.andExpect(jsonPath("$.passNo").value(pass.getPassNo()))
+			.andExpect(jsonPath("$.partnerName").value("테스트학원-" + PARTNER))
+			.andExpect(jsonPath("$.studentName").value("김*윤"))
+			.andExpect(jsonPath("$.issuedOn").value(today().toString()))
+			.andExpect(jsonPath("$.expiresOn").value(today().plusMonths(1).toString()))
+			.andExpect(jsonPath("$.discountRate").value(0.05));
+	}
+
+	@Test
+	void 없는_패스_번호는_404이고_쓸_수_없는_패스는_409다() throws Exception {
+		long account = newAccount();
+		Pass canceled = save("김하윤");
+		jdbc.update("UPDATE dongtanpass_pass SET status = 'CANCELED' WHERE id = ?", canceled.getId());
+
+		sendAs(passNoBody(PassNumber.generate(RANDOM)), UserRole.STAFF, PROVIDER, account)
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_FOUND"));
+		sendAs(passNoBody(canceled.getPassNo()), UserRole.STAFF, PROVIDER, account).andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_CANCELED"));
+	}
+
+	// 서버는 형식 그대로만 받는다(화면이 입력 칸에서 대문자로 바꿔 보낸다). 틀린 형식은 오타이므로 그 칸의 400으로 알린다.
+	@ParameterizedTest
+	@ValueSource(strings = { "DT-ABC23O", "dt-abc234", " DT-ABC234", "DT-ABC2345", "ABC234" })
+	void 형식이_틀린_패스_번호는_그_칸의_400이다(String passNo) throws Exception {
+		sendAs(passNoBody(passNo), UserRole.STAFF, PROVIDER, newAccount()).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+			.andExpect(jsonPath("$.errors[0].field").value("passNo"));
+	}
+
+	// 둘 중 하나만 받는다. 어느 칸이 틀린 것이 아니라 본문의 모양이 틀렸다.
+	@Test
+	void QR과_번호를_함께_보내면_본문_오류다() throws Exception {
+		Pass pass = save("김하윤");
+
+		sendAs("{\"qrToken\":\"" + qrOf(pass) + "\",\"passNo\":\"" + pass.getPassNo() + "\"}", UserRole.STAFF,
+				PROVIDER, newAccount())
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
 	}
 
 	private String invalidBody(String token) throws Exception {
@@ -223,16 +271,29 @@ class DeskVerifyApiTest {
 		return send("{\"qrToken\":\"" + token + "\"}");
 	}
 
-	// 한 테스트 안에서 계정을 바꿔 부른다.
 	private ResultActions verifyAs(String token, UserRole role, long campusId) throws Exception {
-		AuthenticatedUser user = new AuthenticatedUser(901_418L, "desk-staff", "데스크", role, campusId, null);
+		return sendAs("{\"qrToken\":\"" + token + "\"}", role, campusId, 901_418L);
+	}
+
+	// 한 테스트 안에서 계정을 바꿔 부른다.
+	private ResultActions sendAs(String body, UserRole role, long campusId, long accountId) throws Exception {
+		AuthenticatedUser user = new AuthenticatedUser(accountId, "desk-staff", "데스크", role, campusId, null);
 		SecurityContext login = SecurityContextHolder.createEmptyContext();
 		login.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(user, null,
 				List.of(new SimpleGrantedAuthority(role.authority()))));
 		return mockMvc.perform(post(VERIFY).with(securityContext(login))
 			.with(csrfToken(mockMvc))
 			.contentType(MediaType.APPLICATION_JSON)
-			.content("{\"qrToken\":\"" + token + "\"}"));
+			.content(body));
+	}
+
+	private static String passNoBody(String passNo) {
+		return "{\"passNo\":\"" + passNo + "\"}";
+	}
+
+	// 번호 확인을 하는 계정. 다른 테스트와 겹치지 않는 큰 수를 쓴다.
+	private static long newAccount() {
+		return 9_014_000_000L + RANDOM.nextInt(1_000_000_000);
 	}
 
 	private ResultActions send(String body) throws Exception {

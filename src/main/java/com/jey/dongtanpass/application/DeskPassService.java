@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * 데스크 직원이 학부모의 QR 토큰으로 패스를 확인한다. 사용 처리의 첫 단계다.
+ * 데스크 직원이 학부모의 QR 토큰이나 패스 번호로 패스를 확인한다. 사용 처리의 첫 단계다.
  *
  * <p>패스를 받는 지점의 직원과 관리자만 확인한다. 지점을 먼저 보므로 다른 지점 직원의 요청은 토큰을 쓰지 않는다.
  * QR 토큰은 한 번만 통과한다(토큰 ID를 남은 수명만큼 적는다, ADR-0010). 적지 못하면 예외 그대로 통과시키지 않는다.
@@ -70,6 +70,16 @@ public class DeskPassService {
 			return new BusinessException(DongtanpassErrorCode.QR_INVALID);
 		});
 		return usableView(pass, benefit, LocalDate.ofInstant(now, clock.getZone()));
+	}
+
+	/**
+	 * @throws BusinessException 패스를 받지 않는 지점의 직원(403), 없는 번호(404), 기간이 지났거나 취소됐거나 사용된 패스(409)
+	 */
+	public VerifiedPassView verifyPassNo(String passNo, AuthenticatedUser user) {
+		PassBenefit benefit = requireProvidingCampus(user);
+		Pass pass = passes.findByPassNo(passNo)
+			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
+		return usableView(pass, benefit, LocalDate.now(clock));
 	}
 
 	private PassBenefit requireProvidingCampus(AuthenticatedUser user) {
