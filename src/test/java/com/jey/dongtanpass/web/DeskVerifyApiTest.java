@@ -161,6 +161,9 @@ class DeskVerifyApiTest {
 				today().plusDays(expiresInDays), pass.getId());
 
 		verify(token).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(code));
+		// 쓸 수 없는 패스여도 확인을 거친 토큰은 쓴 것이다. 다시 읽으면 409가 아니라 400이다.
+		verify(token).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_QR_INVALID"));
 	}
 
 	@Test

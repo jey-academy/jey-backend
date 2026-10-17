@@ -14,6 +14,7 @@ import com.jey.core.audit.api.AuditLog;
 import com.jey.core.auth.api.AccountRateLimiter;
 import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.UserRole;
+import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.Money;
 import com.jey.dongtanpass.domain.LinkToken;
 import com.jey.dongtanpass.domain.Partner;
@@ -24,17 +25,25 @@ import com.jey.dongtanpass.domain.PassRepository;
 import com.jey.dongtanpass.domain.PaymentMethod;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static com.jey.dongtanpass.application.QrSigningPropertiesTest.KEY_1;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.InstanceOfAssertFactories.STRING;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 // 쓴 토큰을 적지 못하면(저장소 장애) 통과시키지 않는다. 통과시키면 같은 QR이 장애 동안 몇 번이고 통과한다.
+// 패스를 읽지 못하면(DB 장애, 패스 없음) 토큰을 쓰지 않는다. 쓰면 같은 QR로 다시 할 수 없고 로그에는 재사용으로 남는다.
 // 저장소를 일부러 실패시켜야 해서 Spring 없이 만든다(컨텍스트를 늘리지 않는다).
+@ExtendWith(OutputCaptureExtension.class)
 class DeskVerifyStoreFailureTest {
 
 	private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
@@ -81,6 +90,40 @@ class DeskVerifyStoreFailureTest {
 
 		assertThatThrownBy(() -> service.verifyQr(token, STAFF)).isInstanceOf(IllegalStateException.class)
 			.hasMessage("저장소에 닿지 못했다");
+	}
+
+	@Test
+	void 패스를_읽지_못하면_토큰을_쓰지_않는다() {
+		when(passes.findById(11L)).thenThrow(new IllegalStateException("DB에 닿지 못했다"));
+		when(usedQrTokens.markUsed(any(), any())).thenReturn(true);
+
+		assertThatThrownBy(() -> service.verifyQr(token, STAFF)).isInstanceOf(IllegalStateException.class)
+			.hasMessage("DB에 닿지 못했다");
+		verify(usedQrTokens, never()).markUsed(any(), any());
+	}
+
+	@Test
+	void 연계_학원을_읽지_못하면_토큰을_쓰지_않는다() {
+		when(partners.findById(7L)).thenThrow(new IllegalStateException("DB에 닿지 못했다"));
+		when(usedQrTokens.markUsed(any(), any())).thenReturn(true);
+
+		assertThatThrownBy(() -> service.verifyQr(token, STAFF)).isInstanceOf(IllegalStateException.class);
+		verify(usedQrTokens, never()).markUsed(any(), any());
+	}
+
+	// 서명은 맞는데 패스가 없다(지금은 패스를 지우지 않아 생기지 않아야 한다). 데스크에는 같은 400, 운영자에게는 경고.
+	@Test
+	void 서명은_맞는데_패스가_없으면_400이고_경고를_남기고_토큰을_쓰지_않는다(CapturedOutput output) {
+		when(passes.findById(11L)).thenReturn(Optional.empty());
+		when(usedQrTokens.markUsed(any(), any())).thenReturn(true);
+
+		assertThatThrownBy(() -> service.verifyQr(token, STAFF)).isInstanceOfSatisfying(BusinessException.class,
+				ex -> assertThat(ex.getErrorCode()).isEqualTo(DongtanpassErrorCode.QR_INVALID));
+		assertThat(output.getAll().lines().filter(line -> line.contains("reason=pass_missing")))
+			.singleElement(STRING)
+			.contains("WARN")
+			.contains("passId=11");
+		verify(usedQrTokens, never()).markUsed(any(), any());
 	}
 
 	// 대조군: 같은 준비에서 적기가 되면 통과한다.

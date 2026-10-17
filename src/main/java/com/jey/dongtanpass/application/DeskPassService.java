@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
  *
  * <p>패스를 받는 지점의 직원과 관리자만 확인한다. 지점을 먼저 보므로 다른 지점 직원의 요청은 토큰을 쓰지 않는다.
  * QR 토큰은 한 번만 통과한다(토큰 ID를 남은 수명만큼 적는다, ADR-0010). 적지 못하면 예외 그대로 통과시키지 않는다.
+ * 패스와 연계 학원을 먼저 읽고 토큰을 적는다. 읽다 실패하면(DB 장애, 패스 없음) 토큰을 쓰지 않아 같은 QR로 다시 할 수 있다.
  * 서명·만료·재사용 실패는 이유를 가리지 않고 400 하나다(이유는 로그에만). 확인에 성공한 토큰은 패스를 쓸 수 없어도 쓴 것이다.
  *
  * <p>패스 번호는 짧아 넣어 보며 찾을 수 있으므로 계정마다 횟수를 센다(맞든 틀리든, 찾기 전에). 처음 막힌 것은 감사 로그에 남긴다.
@@ -80,16 +81,18 @@ public class DeskPassService {
 		Instant now = clock.instant();
 		VerifiedQr qr = passQrCodes.verify(qrToken, now)
 			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.QR_INVALID));
-		if (!usedQrTokens.markUsed(qr, now)) {
-			log.info("QR 토큰 확인 실패: reason=reused passId={}", qr.passId());
-			throw new BusinessException(DongtanpassErrorCode.QR_INVALID);
-		}
 		// 서명이 맞는데 패스가 없다. 지금은 패스를 지우지 않으므로 생기지 않아야 한다. 데스크에는 같은 400으로 답한다.
 		Pass pass = passes.findById(qr.passId()).orElseThrow(() -> {
 			log.warn("QR 토큰 확인 실패: reason=pass_missing passId={}", qr.passId());
 			return new BusinessException(DongtanpassErrorCode.QR_INVALID);
 		});
-		return usableView(pass, benefit, LocalDate.ofInstant(now, clock.getZone()));
+		Partner partner = partnerOf(pass);
+		// 두 번 통과하지 않게 막는 것은 이 한 곳이다(동시에 와도 하나만 참). 쓸 수 없는 패스여도 여기까지 왔으면 쓴 것이다.
+		if (!usedQrTokens.markUsed(qr, now)) {
+			log.info("QR 토큰 확인 실패: reason=reused passId={}", qr.passId());
+			throw new BusinessException(DongtanpassErrorCode.QR_INVALID);
+		}
+		return usableView(pass, partner, benefit, LocalDate.ofInstant(now, clock.getZone()));
 	}
 
 	/**
@@ -103,7 +106,7 @@ public class DeskPassService {
 						() -> AuditEntry.of(DongtanpassAuditAction.PASS_NO_VERIFY_LIMITED), denial));
 		Pass pass = passes.findByPassNo(passNo)
 			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
-		return usableView(pass, benefit, LocalDate.now(clock));
+		return usableView(pass, partnerOf(pass), benefit, LocalDate.now(clock));
 	}
 
 	private PassBenefit requireProvidingCampus(AuthenticatedUser user) {
@@ -114,7 +117,12 @@ public class DeskPassService {
 		return benefit;
 	}
 
-	private VerifiedPassView usableView(Pass pass, PassBenefit benefit, LocalDate today) {
+	private Partner partnerOf(Pass pass) {
+		return partners.findById(pass.getPartnerId())
+			.orElseThrow(() -> new IllegalStateException("패스의 연계 학원이 없다: passId=" + pass.getId()));
+	}
+
+	private VerifiedPassView usableView(Pass pass, Partner partner, PassBenefit benefit, LocalDate today) {
 		DongtanpassErrorCode unusable = switch (pass.stateOn(today)) {
 			case ISSUED -> null;
 			case EXPIRED -> DongtanpassErrorCode.PASS_EXPIRED;
@@ -124,8 +132,6 @@ public class DeskPassService {
 		if (unusable != null) {
 			throw new BusinessException(unusable);
 		}
-		Partner partner = partners.findById(pass.getPartnerId())
-			.orElseThrow(() -> new IllegalStateException("패스의 연계 학원이 없다: passId=" + pass.getId()));
 		return new VerifiedPassView(pass.getId(), pass.getPassNo(), partner.getName(),
 				MaskedName.of(pass.getStudentName()), pass.issuedOn(clock.getZone()), pass.getExpiresOn(),
 				benefit.discountRate());
