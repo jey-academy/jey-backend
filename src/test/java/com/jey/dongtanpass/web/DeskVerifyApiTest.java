@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
@@ -121,6 +122,18 @@ class DeskVerifyApiTest {
 		assertThat(output.getAll()).doesNotContain(token);
 	}
 
+	// 토큰이 무효가 될 때까지 기억해야 한다. 짧게 기억하면 캡처한 QR이 그 뒤 다른 데스크에서 한 번 더 통과한다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = PROVIDER, id = 901_419L)
+	void 확인한_토큰은_남은_수명만큼_기억한다() throws Exception {
+		String token = qrOf(save("김하윤"));
+		String tokenId = passQrCodes.verify(token, clock.instant()).orElseThrow().tokenId();
+
+		verify(token).andExpect(status().isOk());
+
+		assertThat(redis.getExpire("jey:dongtanpass:qr-used:" + tokenId, TimeUnit.SECONDS)).isGreaterThan(50L);
+	}
+
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = PROVIDER, id = 901_411L)
 	void 같은_토큰은_한_번만_통과한다(CapturedOutput output) throws Exception {
@@ -226,6 +239,14 @@ class DeskVerifyApiTest {
 			.andExpect(jsonPath("$.issuedOn").value(today().toString()))
 			.andExpect(jsonPath("$.expiresOn").value(today().plusMonths(1).toString()))
 			.andExpect(jsonPath("$.discountRate").value(0.05));
+	}
+
+	@Test
+	void 패스_번호로도_만료일_당일은_통과한다() throws Exception {
+		Pass pass = save("김하윤");
+		jdbc.update("UPDATE dongtanpass_pass SET expires_on = ? WHERE id = ?", today(), pass.getId());
+
+		sendAs(passNoBody(pass.getPassNo()), UserRole.STAFF, PROVIDER, newAccount()).andExpect(status().isOk());
 	}
 
 	@Test

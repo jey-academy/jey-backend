@@ -31,6 +31,13 @@ class PassNoVerifyPropertiesTest {
 			.isEqualTo(new RateLimit("dongtanpass.pass-no-verify", 60, Duration.ofHours(1)));
 	}
 
+	// 경계값은 받는다(대조군).
+	@Test
+	void 구간_1분과_횟수_1은_받는다() {
+		assertThat(new PassNoVerifyProperties(1, Duration.ofMinutes(1)).limit())
+			.isEqualTo(new RateLimit("dongtanpass.pass-no-verify", 1, Duration.ofMinutes(1)));
+	}
+
 	@Test
 	void 구간은_1분_이상이고_횟수는_1_이상이다() {
 		// 단위를 빼먹은 "1"은 1밀리초로 읽힌다.
