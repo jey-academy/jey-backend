@@ -346,7 +346,7 @@ class DeskVerifyApiTest {
 		return sendAs("{\"qrToken\":\"" + token + "\"}", role, campusId, 901_418L);
 	}
 
-	// 한 테스트 안에서 계정을 바꿔 부른다. 횟수 한도는 Redis에 남으므로 한도를 세는 요청은 실행마다 새 계정으로 보낸다.
+	// 한 테스트 안에서 계정을 바꿔 부른다. Redis는 한 번 실행하는 동안 테스트끼리 함께 쓰므로 한도를 세는 요청은 테스트마다 새 계정으로 보낸다.
 	private ResultActions sendAs(String body, UserRole role, long campusId, long accountId) throws Exception {
 		AuthenticatedUser user = new AuthenticatedUser(accountId, "desk-staff", "데스크", role, campusId, null);
 		SecurityContext login = SecurityContextHolder.createEmptyContext();
@@ -362,7 +362,7 @@ class DeskVerifyApiTest {
 		return "{\"passNo\":\"" + passNo + "\"}";
 	}
 
-	// 901_4xx 대역 안의 고정 ID는 실행마다 같아 Redis의 횟수가 쌓인다. 다른 테스트와 겹치지 않는 큰 수를 쓴다.
+	// 고정 ID를 여러 테스트가 쓰면 한 번 실행 안에서 횟수가 쌓인다. 다른 테스트와 겹치지 않는 큰 수를 무작위로 쓴다.
 	private static long newAccount() {
 		return 9_014_000_000L + RANDOM.nextInt(1_000_000_000);
 	}

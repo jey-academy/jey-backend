@@ -92,7 +92,7 @@ public class DeskPassService {
 			log.info("QR 토큰 확인 실패: reason=reused passId={}", qr.passId());
 			throw new BusinessException(DongtanpassErrorCode.QR_INVALID);
 		}
-		return usableView(pass, partner, benefit, LocalDate.ofInstant(now, clock.getZone()));
+		return usableView(pass, partner, benefit, todayAt(now));
 	}
 
 	/**
@@ -106,7 +106,7 @@ public class DeskPassService {
 						() -> AuditEntry.of(DongtanpassAuditAction.PASS_NO_VERIFY_LIMITED), denial));
 		Pass pass = passes.findByPassNo(passNo)
 			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
-		return usableView(pass, partnerOf(pass), benefit, LocalDate.now(clock));
+		return usableView(pass, partnerOf(pass), benefit, todayAt(clock.instant()));
 	}
 
 	private PassBenefit requireProvidingCampus(AuthenticatedUser user) {
@@ -115,6 +115,11 @@ public class DeskPassService {
 			throw new BusinessException(DongtanpassErrorCode.CAMPUS_NOT_PROVIDING);
 		}
 		return benefit;
+	}
+
+	// 오늘은 그 요청이 읽은 시각 하나에서 구한다(QR은 서명 확인·토큰 기록과 같은 시각).
+	private LocalDate todayAt(Instant now) {
+		return LocalDate.ofInstant(now, clock.getZone());
 	}
 
 	private Partner partnerOf(Pass pass) {

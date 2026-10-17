@@ -9,7 +9,10 @@ import java.util.regex.Pattern;
  */
 public final class PassNumber {
 
-	/** 쓰는 글자. 눈으로 헷갈리는 0/O, 1/I는 뺐다. 32글자라 여섯 자리면 약 10억 가지다. */
+	/**
+	 * 쓰는 글자. 눈으로 헷갈리는 0/O, 1/I는 뺐다. 32글자라 여섯 자리면 약 10억 가지다.
+	 * 정규식의 문자 클래스에 그대로 들어간다({@link #REGEX}). {@code -}, {@code ]}, {@code \}, {@code ^}를 넣지 않는다.
+	 */
 	public static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 	private static final String PREFIX = "DT-";
