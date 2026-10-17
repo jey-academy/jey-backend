@@ -88,8 +88,8 @@ public class PassQrCodes {
 	 * 토큰을 확인한다. 모양, 키 버전, 서명, 만료 중 하나라도 맞지 않으면 빈 값이다(이유를 가리지 않는다. 예외를 던지지 않는다).
 	 * 같은 토큰을 이미 썼는지는 보지 않는다.
 	 *
-	 * <p>무효인 이유는 로그에만 남긴다({@code reason=malformed|unknown_key_version|bad_signature|expired}, 토큰 원문 없이).
-	 * 모르는 키 버전은 키 회전이 어긋났다는 신호라 경고로 남긴다.
+	 * <p>무효인 이유는 로그에만 남긴다({@code reason=malformed|unknown_key_version|bad_signature|signed_bad_body|expired},
+	 * 토큰 원문 없이). 모르는 키 버전(키 회전이 어긋남)과 서명은 맞는데 본문이 틀린 것(만드는 쪽의 버그나 키 유출)은 경고로 남긴다.
 	 */
 	public Optional<VerifiedQr> verify(String token, Instant now) {
 		if (token == null) {
@@ -121,8 +121,10 @@ public class PassQrCodes {
 		if (!MessageDigest.isEqual(sign(key, parts[0] + "." + parts[1]), signature)) {
 			return invalid("bad_signature");
 		}
+		// 우리 키로 서명했는데 본문이 틀렸다. 만드는 쪽의 버그이거나 키가 샌 것이라 알아채야 한다.
 		if (body.length != BODY_BYTES) {
-			return invalid("malformed");
+			log.warn("QR 토큰 확인 실패: reason=signed_bad_body");
+			return Optional.empty();
 		}
 		ByteBuffer buffer = ByteBuffer.wrap(body);
 		long passId = buffer.getLong();

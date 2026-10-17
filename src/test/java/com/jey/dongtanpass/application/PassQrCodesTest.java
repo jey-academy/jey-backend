@@ -213,7 +213,7 @@ class PassQrCodesTest {
 		assertThat(reasonOf(output, token + "=")).isEqualTo("malformed");
 		assertThat(reasonOf(output,
 				signedToken(KEY_1, "1." + ENCODER.encodeToString(body(7L, NOW.plusSeconds(60), 16)))))
-			.isEqualTo("malformed");
+			.isEqualTo("signed_bad_body");
 		assertThat(reasonOf(output, "9" + token.substring(1))).isEqualTo("unknown_key_version");
 		assertThat(reasonOf(output, parts[0] + "." + parts[1] + "." + flip(parts[2]))).isEqualTo("bad_signature");
 		assertThat(reasonOf(output, other)).isEqualTo("bad_signature");
@@ -222,15 +222,20 @@ class PassQrCodesTest {
 	}
 
 	// 모르는 키 버전은 키 회전이 어긋났다는 신호라 알아채야 한다(키를 너무 일찍 지웠거나, 새 키를 아직 넣지 않은 서버).
+	// 우리 키로 서명했는데 본문 길이가 틀리면 만드는 쪽의 버그이거나 키가 샌 것이다. 아무 글자나 보낸 요청과 섞지 않는다.
 	@Test
-	void 모르는_키_버전만_경고로_남기고_버전_번호를_적는다(CapturedOutput output) {
+	void 키_회전이_어긋났거나_서명된_본문이_틀리면_경고로_남긴다(CapturedOutput output) {
 		String token = codes.issue(7L, NOW).token();
 
 		codes.verify("9" + token.substring(1), NOW);
+		codes.verify(signedToken(KEY_1, "1." + ENCODER.encodeToString(body(7L, NOW.plusSeconds(60), 16))), NOW);
 		codes.verify(token, NOW.plusSeconds(60));
+		codes.verify("x", NOW);
 
 		assertThat(lineOf(output, "reason=unknown_key_version")).contains("WARN").contains("keyVersion=9");
+		assertThat(lineOf(output, "reason=signed_bad_body")).contains("WARN");
 		assertThat(lineOf(output, "reason=expired")).doesNotContain("WARN");
+		assertThat(lineOf(output, "reason=malformed")).doesNotContain("WARN");
 	}
 
 	@Test
