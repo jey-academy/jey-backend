@@ -35,7 +35,8 @@ class ErrorCodeRulesTest {
 	@Test
 	void 잠시_막은_거부로_표시한_코드는_정해진_것뿐이다() {
 		assertThat(allConstants().stream().filter(ErrorCode::temporaryRejection).map(ErrorCode::code))
-			.containsExactly("DONGTANPASS_PARTNER_INACTIVE");
+			.containsExactlyInAnyOrder("DONGTANPASS_PARTNER_INACTIVE", "DONGTANPASS_PASS_CHANGED_CONCURRENTLY",
+					"DONGTANPASS_DISCOUNT_INACTIVE");
 	}
 
 	// 보관하지 않는 표시는 보관될 수 있는 응답(4xx)에만 뜻이 있다. 429와 5xx는 원래 보관하지 않는다.

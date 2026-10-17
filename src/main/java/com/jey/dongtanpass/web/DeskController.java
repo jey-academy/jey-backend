@@ -5,8 +5,10 @@ import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.CommonErrorCode;
+import com.jey.core.shared.Idempotent;
 import com.jey.core.shared.NotIdempotent;
 import com.jey.dongtanpass.application.DeskPassService;
+import com.jey.dongtanpass.application.PassRedeemService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -29,8 +31,11 @@ class DeskController {
 
 	private final DeskPassService deskPassService;
 
-	DeskController(DeskPassService deskPassService) {
+	private final PassRedeemService passRedeemService;
+
+	DeskController(DeskPassService deskPassService, PassRedeemService passRedeemService) {
 		this.deskPassService = deskPassService;
+		this.passRedeemService = passRedeemService;
 	}
 
 	@Operation(summary = "데스크 패스 확인",
@@ -74,6 +79,26 @@ class DeskController {
 		}
 		return HolderCheckResponse
 			.from(deskPassService.holderCheck(id, body.studentNameKey(), body.guardianPhones(), user));
+	}
+
+	@Operation(summary = "패스 사용 처리",
+			description = "데스크가 방금 등록한 학생에게 패스를 쓴다(확인 → 본인 미리 확인 → 학생 등록 → 이 요청). 금액과 청구는 다루지 않는다. "
+					+ "실패하면 학생을 다시 등록하지 않고 같은 학생 ID로 이 요청만 다시 보낸다. "
+					+ "아래 순서로 확인하고 처음 걸린 것으로 답한다. "
+					+ "패스를 받지 않는 지점의 직원은 403(DONGTANPASS_CAMPUS_NOT_PROVIDING), 없는 패스는 404(DONGTANPASS_PASS_NOT_FOUND), "
+					+ "쓸 수 없는 패스는 409(DONGTANPASS_PASS_EXPIRED, DONGTANPASS_PASS_CANCELED, DONGTANPASS_PASS_ALREADY_REDEEMED), "
+					+ "패스 할인이 꺼져 있으면 409(DONGTANPASS_DISCOUNT_INACTIVE), 없는 학생은 404(DONGTANPASS_STUDENT_NOT_FOUND), "
+					+ "패스를 받는 지점의 학생이 아니면 409(DONGTANPASS_STUDENT_NOT_AT_PROVIDING_CAMPUS), "
+					+ "신규 학생이 아니면(이미 패스를 씀, 학생 자료를 만든 지 7일이 지남, 재원 중이 아님) 409(DONGTANPASS_STUDENT_NOT_NEW), "
+					+ "학생 이름이 패스와 다르면 409(DONGTANPASS_HOLDER_NAME_MISMATCH), "
+					+ "학생의 학부모 번호 중에 패스를 받을 때 적은 번호가 없으면 409(DONGTANPASS_HOLDER_PHONE_MISMATCH). "
+					+ "같은 패스를 고친 다른 요청과 겹쳐 진 경우 패스가 아직 쓸 수 있으면 409(DONGTANPASS_PASS_CHANGED_CONCURRENTLY)이고 다시 보내면 된다. "
+					+ "DONGTANPASS_DISCOUNT_INACTIVE와 DONGTANPASS_PASS_CHANGED_CONCURRENTLY는 같은 Idempotency-Key로 다시 보내도 다시 처리한다")
+	@Idempotent
+	@PostMapping("/{id}/redeem")
+	PassRedeemResponse redeem(@PathVariable long id, @Valid @RequestBody PassRedeemRequest body,
+			@AuthenticationPrincipal AuthenticatedUser user) {
+		return PassRedeemResponse.from(passRedeemService.redeem(id, body.studentId(), user));
 	}
 
 }
