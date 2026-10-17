@@ -31,6 +31,7 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -41,6 +42,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -86,7 +88,8 @@ class PassRedeemServiceTest {
 		when(members.findStudent(STUDENT_ID)).thenReturn(Optional.of(
 				new StudentInfo(STUDENT_ID, 1L, null, "김하윤", true, CLOCK.instant().minus(Duration.ofHours(1)))));
 		when(members.hasGuardianWithPhoneIndex(STUDENT_ID, "phone-index")).thenReturn(true);
-		service = new PassRedeemService(passes, redemptions, passBenefits, members, transaction, events, currentActor,
+		service = new PassRedeemService(passes, redemptions, new OptimisticRedeemLocking(passes, redemptions),
+				passBenefits, members, transaction, events, currentActor,
 				new RedeemProperties(Duration.ofDays(7)), mock(AccountRateLimiter.class),
 				new RedeemLimitProperties(30, Duration.ofHours(1)), mock(AuditLog.class), CLOCK);
 	}
@@ -109,6 +112,22 @@ class PassRedeemServiceTest {
 		assertThat(event.getValue().partnerId()).isEqualTo(PARTNER_ID);
 		assertThat(event.getValue().metadata().campusId()).isEqualTo(1L);
 		assertThat(event.getValue().metadata().actorId()).isEqualTo(STAFF.id());
+	}
+
+	// 패스를 먼저 고치고 기록을 나중에 넣는다. 거꾸로면 외래 키의 공유 잠금 때문에 같은 패스를 동시에 쓰는 요청끼리 데드락이 난다.
+	@Test
+	void 운영_방식은_패스를_먼저_저장하고_기록을_나중에_저장한다() {
+		when(redemptions.saveAndFlush(any())).thenAnswer(call -> {
+			Object saved = call.getArgument(0);
+			ReflectionTestUtils.setField(saved, "id", 41L);
+			return saved;
+		});
+
+		service.redeem(PASS_ID, STUDENT_ID, STAFF);
+
+		InOrder order = inOrder(passes, redemptions);
+		order.verify(passes).saveAndFlush(any());
+		order.verify(redemptions).saveAndFlush(any());
 	}
 
 	// 링크 새로 만들기에 졌다. 패스는 아직 쓸 수 있으므로 다시 시도하라고 답한다(멱등 응답으로 보관하지 않는 코드).
