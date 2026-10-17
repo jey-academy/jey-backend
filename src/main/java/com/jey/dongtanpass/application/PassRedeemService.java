@@ -42,8 +42,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>이름·번호가 패스와 맞는지를 오류 코드로 알려 주므로, 패스 ID를 바꿔 가며 패스 주인을 훑지 못하게 계정마다 센다
  * (맞든 틀리든, 패스를 찾기 전에. 미리 확인의 한도와는 따로). 처음 막힌 것은 감사 로그에 남긴다.
  *
- * <p>같은 패스나 같은 학생을 동시에 쓰면 사용 기록의 유니크 키가, 취소·링크 새로 만들기와 겹치면 패스의 버전이 막는다.
- * 진 쪽의 예외는 트랜잭션 밖에서 상태에 맞는 409로 바꾼다. 패스는 잠그지 않고 읽는다(방식 비교는 따로 한다).
+ * <p>같은 패스를 동시에 쓰거나 취소·링크 새로 만들기와 겹치면 패스의 버전이, 같은 학생을 동시에 쓰면 사용 기록의 유니크 키가 막는다
+ * (유니크 키는 어느 경우든 마지막 방어선이다).
+ * 진 쪽의 예외는 트랜잭션 밖에서 상태에 맞는 409로 바꾼다. 패스를 읽는 법과 저장 순서는 {@link RedeemLocking}이 정한다
+ * (운영은 {@link OptimisticRedeemLocking}).
  * 같은 학생으로 셋 이상이 동시에 오고 먼저 넣은 요청이 롤백되면, 기다리던 요청끼리 드물게 잠금 실패(데드락)가 나 500으로 끝날 수 있다.
  * 5xx는 멱등 응답으로 보관하지 않으므로 다시 보내면 맞는 답(성공 또는 신규 아님)이 나온다.
  */
@@ -61,6 +63,8 @@ public class PassRedeemService {
 	private final PassRepository passes;
 
 	private final RedemptionRepository redemptions;
+
+	private final RedeemLocking locking;
 
 	private final PassBenefits passBenefits;
 
@@ -82,12 +86,14 @@ public class PassRedeemService {
 
 	private final Clock clock;
 
-	PassRedeemService(PassRepository passes, RedemptionRepository redemptions, PassBenefits passBenefits,
+	PassRedeemService(PassRepository passes, RedemptionRepository redemptions, RedeemLocking locking,
+			PassBenefits passBenefits,
 			MemberDirectory members, TransactionTemplate transaction, ApplicationEventPublisher events,
 			CurrentActor currentActor, RedeemProperties properties, AccountRateLimiter limiter,
 			RedeemLimitProperties redeemLimit, AuditLog auditLog, Clock clock) {
 		this.passes = passes;
 		this.redemptions = redemptions;
+		this.locking = locking;
 		this.passBenefits = passBenefits;
 		this.members = members;
 		this.transaction = transaction;
@@ -113,7 +119,8 @@ public class PassRedeemService {
 				denial -> DeniedAttempts.record(auditLog, () -> AuditEntry.of(DongtanpassAuditAction.REDEEM_LIMITED),
 						denial));
 		try {
-			return transaction.execute(status -> redeemInTransaction(passId, studentId, benefit));
+			return locking.guard(passId,
+					() -> transaction.execute(status -> redeemInTransaction(passId, studentId, benefit)));
 		}
 		catch (DataIntegrityViolationException ex) {
 			// 같은 패스(또는 같은 학생)를 먼저 쓴 요청이 있다. 다른 제약에 걸린 것은 그대로 던진다(서버 오류로 드러나야 한다).
@@ -132,7 +139,7 @@ public class PassRedeemService {
 
 	private RedeemedPass redeemInTransaction(long passId, long studentId, PassBenefit benefit) {
 		Instant now = clock.instant();
-		Pass pass = passes.findById(passId)
+		Pass pass = locking.load(passId)
 			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
 		DeskChecks.requireUsable(pass, todayAt(now));
 		if (!benefit.discountActive()) {
@@ -154,12 +161,8 @@ public class PassRedeemService {
 		if (!members.hasGuardianWithPhoneIndex(studentId, pass.getGuardianPhoneIndex())) {
 			throw new BusinessException(DongtanpassErrorCode.HOLDER_PHONE_MISMATCH);
 		}
-		Redemption redemption = pass.redeem(studentId, benefit.campusId(), now);
-		// 패스를 먼저 고친다(버전을 보고 행을 배타 잠금). 사용 기록을 먼저 넣으면 외래 키 확인이 패스 행에 공유 잠금을 걸어,
-		// 같은 패스를 동시에 쓰는 두 요청이 서로의 공유 잠금을 기다리는 데드락이 난다. 진 요청은 버전 충돌로 끝난다.
-		passes.saveAndFlush(pass);
-		// 같은 학생을 먼저 쓴 요청이 있으면 여기서 유니크 키에 걸린다(커밋 때까지 미루지 않는다).
-		Redemption saved = redemptions.saveAndFlush(redemption);
+		// 저장 순서(잠금 순서)는 방식이 정한다. 같은 패스·학생을 먼저 쓴 요청이 있으면 여기서 버전 충돌이나 유니크 키에 걸린다.
+		Redemption saved = locking.store(pass, pass.redeem(studentId, benefit.campusId(), now));
 		events.publishEvent(new PassRedeemed(EventMetadata.create(PassRedeemed.TYPE, PassRedeemed.VERSION,
 				benefit.campusId(), currentActor.get(), clock), passId, studentId, pass.getPartnerId()));
 		return new RedeemedPass(saved.getId(), passId, studentId, now);

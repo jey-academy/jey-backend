@@ -26,11 +26,13 @@ import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PassNumber;
 import com.jey.dongtanpass.domain.PassRepository;
 import com.jey.dongtanpass.domain.PaymentMethod;
+import com.jey.dongtanpass.domain.Redemption;
 import com.jey.dongtanpass.domain.RedemptionRepository;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -41,7 +43,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -71,24 +76,114 @@ class PassRedeemServiceTest {
 
 	private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
 
+	private final PassBenefits passBenefits = mock(PassBenefits.class);
+
+	private final TransactionTemplate transaction = mock(TransactionTemplate.class);
+
+	private final CurrentActor currentActor = mock(CurrentActor.class);
+
 	private PassRedeemService service;
 
 	@BeforeEach
 	void setUp() {
-		PassBenefits passBenefits = mock(PassBenefits.class);
 		when(passBenefits.current())
 			.thenReturn(new PassBenefit(1L, "동탄관", "DONGTAN_PASS", new BigDecimal("0.05"), true));
-		TransactionTemplate transaction = mock(TransactionTemplate.class);
 		when(transaction.execute(any())).thenAnswer(call -> call.<TransactionCallback<?>>getArgument(0).doInTransaction(null));
-		CurrentActor currentActor = mock(CurrentActor.class);
 		when(currentActor.get()).thenReturn(new Actor.User(STAFF.id()));
 		when(passes.findById(PASS_ID)).thenReturn(Optional.of(issuedPass()));
 		when(members.findStudent(STUDENT_ID)).thenReturn(Optional.of(
 				new StudentInfo(STUDENT_ID, 1L, null, "김하윤", true, CLOCK.instant().minus(Duration.ofHours(1)))));
 		when(members.hasGuardianWithPhoneIndex(STUDENT_ID, "phone-index")).thenReturn(true);
-		service = new PassRedeemService(passes, redemptions, passBenefits, members, transaction, events, currentActor,
-				new RedeemProperties(Duration.ofDays(7)), mock(AccountRateLimiter.class),
+		service = serviceWith(new OptimisticRedeemLocking(passes, redemptions));
+	}
+
+	private PassRedeemService serviceWith(RedeemLocking locking) {
+		return new PassRedeemService(passes, redemptions, locking, passBenefits, members, transaction, events,
+				currentActor, new RedeemProperties(Duration.ofDays(7)), mock(AccountRateLimiter.class),
 				new RedeemLimitProperties(30, Duration.ofHours(1)), mock(AuditLog.class), CLOCK);
+	}
+
+	// 서비스가 저장소를 직접 부르면 비교 실험의 방식(행 잠금, 기록 먼저, 분산 락)이 조용히 운영 방식과 같아진다.
+	// 패스를 읽고 저장하는 일은 RedeemLocking에만 맡기고, 트랜잭션은 guard 안에서 돌아야 한다(분산 락이 커밋까지 감싼다).
+	@Test
+	void 패스를_읽고_저장하는_일은_RedeemLocking에_맡기고_트랜잭션은_guard_안에서_돈다() {
+		RecordingLocking locking = new RecordingLocking(issuedPass());
+		doAnswer(call -> {
+			assertThat(locking.inGuard).as("트랜잭션이 guard 안에서 돈다").isTrue();
+			return call.<TransactionCallback<?>>getArgument(0).doInTransaction(null);
+		}).when(transaction).execute(any());
+
+		RedeemedPass result = serviceWith(locking).redeem(PASS_ID, STUDENT_ID, STAFF);
+
+		assertThat(locking.guardedPassId).isEqualTo(PASS_ID);
+		assertThat(locking.loadedPassId).isEqualTo(PASS_ID);
+		assertThat(locking.stored).isNotNull();
+		assertThat(locking.stored.getStudentId()).isEqualTo(STUDENT_ID);
+		assertThat(result.redemptionId()).isEqualTo(41L);
+		assertThat(locking.inGuard).isFalse();
+		verify(passes, never()).findById(any());
+		verify(passes, never()).saveAndFlush(any());
+		verify(redemptions, never()).saveAndFlush(any());
+	}
+
+	// 분산 락에 걸러진 요청은 다시 시도(409) 그대로 나간다(트랜잭션을 열지 않는다).
+	@Test
+	void guard가_거른_요청은_그_거부가_그대로_나간다() {
+		RedeemLocking rejecting = new RecordingLocking(issuedPass()) {
+			@Override
+			public <T> T guard(long passId, java.util.function.Supplier<T> work) {
+				throw new BusinessException(DongtanpassErrorCode.PASS_CHANGED_CONCURRENTLY);
+			}
+		};
+
+		assertThatThrownBy(() -> serviceWith(rejecting).redeem(PASS_ID, STUDENT_ID, STAFF)).isInstanceOfSatisfying(
+				BusinessException.class,
+				ex -> assertThat(ex.getErrorCode()).isEqualTo(DongtanpassErrorCode.PASS_CHANGED_CONCURRENTLY));
+		verify(transaction, never()).execute(any());
+	}
+
+	// 서비스가 무엇을 맡겼는지 기록한다. 저장한 기록에는 ID를 붙여 돌려준다.
+	private static class RecordingLocking implements RedeemLocking {
+
+		private final Pass pass;
+
+		boolean inGuard;
+
+		Long guardedPassId;
+
+		Long loadedPassId;
+
+		Redemption stored;
+
+		RecordingLocking(Pass pass) {
+			this.pass = pass;
+		}
+
+		@Override
+		public <T> T guard(long passId, java.util.function.Supplier<T> work) {
+			guardedPassId = passId;
+			inGuard = true;
+			try {
+				return work.get();
+			}
+			finally {
+				inGuard = false;
+			}
+		}
+
+		@Override
+		public Optional<Pass> load(long passId) {
+			loadedPassId = passId;
+			return Optional.of(pass);
+		}
+
+		@Override
+		public Redemption store(Pass pass, Redemption redemption) {
+			stored = redemption;
+			ReflectionTestUtils.setField(redemption, "id", 41L);
+			return redemption;
+		}
+
 	}
 
 	// 성공하면 이벤트에 패스·학생·연계 학원 ID가 실린다(수납과 이을 때 읽는 값이다). 봉투의 지점은 받는 지점이다.
@@ -109,6 +204,22 @@ class PassRedeemServiceTest {
 		assertThat(event.getValue().partnerId()).isEqualTo(PARTNER_ID);
 		assertThat(event.getValue().metadata().campusId()).isEqualTo(1L);
 		assertThat(event.getValue().metadata().actorId()).isEqualTo(STAFF.id());
+	}
+
+	// 패스를 먼저 고치고 기록을 나중에 넣는다. 거꾸로면 외래 키의 공유 잠금 때문에 같은 패스를 동시에 쓰는 요청끼리 데드락이 난다.
+	@Test
+	void 운영_방식은_패스를_먼저_저장하고_기록을_나중에_저장한다() {
+		when(redemptions.saveAndFlush(any())).thenAnswer(call -> {
+			Object saved = call.getArgument(0);
+			ReflectionTestUtils.setField(saved, "id", 41L);
+			return saved;
+		});
+
+		service.redeem(PASS_ID, STUDENT_ID, STAFF);
+
+		InOrder order = inOrder(passes, redemptions);
+		order.verify(passes).saveAndFlush(any());
+		order.verify(redemptions).saveAndFlush(any());
 	}
 
 	// 링크 새로 만들기에 졌다. 패스는 아직 쓸 수 있으므로 다시 시도하라고 답한다(멱등 응답으로 보관하지 않는 코드).
