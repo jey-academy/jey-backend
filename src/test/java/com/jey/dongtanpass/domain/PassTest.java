@@ -14,6 +14,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
@@ -136,11 +137,15 @@ class PassTest {
 	}
 
 	@Test
-	void 사용하면_사용됨이고_남은_일수는_0이다() {
-		Pass pass = issue("김하윤", ISSUED_ON);
+	void 사용하면_사용됨이고_그_사용_기록을_돌려준다() {
+		Pass pass = saved(issue("김하윤", ISSUED_ON));
 
-		pass.redeem();
+		Redemption redemption = pass.redeem(5, 1, ISSUED_AT);
 
+		assertThat(redemption.getPassId()).isEqualTo(77);
+		assertThat(redemption.getStudentId()).isEqualTo(5);
+		assertThat(redemption.getCampusId()).isEqualTo(1);
+		assertThat(redemption.getRedeemedAt()).isEqualTo(ISSUED_AT);
 		assertThat(pass.getStatus()).isEqualTo(PassStatus.REDEEMED);
 		assertThat(pass.stateOn(ISSUED_ON)).isEqualTo(PassState.REDEEMED);
 		assertThat(pass.daysLeftOn(ISSUED_ON)).isZero();
@@ -149,19 +154,19 @@ class PassTest {
 	// 사용된 패스는 다시 쓰거나 취소하거나 링크를 바꿀 수 없다. 취소된 패스는 쓸 수 없다.
 	@Test
 	void 발급_상태가_아니면_사용할_수_없고_사용한_패스는_고칠_수_없다() {
-		Pass redeemed = issue("김하윤", ISSUED_ON);
-		redeemed.redeem();
-		Pass canceled = issue("김하윤", ISSUED_ON);
+		Pass redeemed = saved(issue("김하윤", ISSUED_ON));
+		redeemed.redeem(5, 1, ISSUED_AT);
+		Pass canceled = saved(issue("김하윤", ISSUED_ON));
 		canceled.cancel();
 
-		assertThatThrownBy(redeemed::redeem).isInstanceOfSatisfying(PassStatusException.class,
+		assertThatThrownBy(() -> redeemed.redeem(6, 1, ISSUED_AT)).isInstanceOfSatisfying(PassStatusException.class,
 				ex -> assertThat(ex.status()).isEqualTo(PassStatus.REDEEMED));
 		assertThatThrownBy(redeemed::cancel).isInstanceOfSatisfying(PassStatusException.class,
 				ex -> assertThat(ex.status()).isEqualTo(PassStatus.REDEEMED));
 		assertThatThrownBy(() -> redeemed.renewLink("b".repeat(64)))
 			.isInstanceOfSatisfying(PassStatusException.class,
 					ex -> assertThat(ex.status()).isEqualTo(PassStatus.REDEEMED));
-		assertThatThrownBy(canceled::redeem).isInstanceOfSatisfying(PassStatusException.class,
+		assertThatThrownBy(() -> canceled.redeem(5, 1, ISSUED_AT)).isInstanceOfSatisfying(PassStatusException.class,
 				ex -> assertThat(ex.status()).isEqualTo(PassStatus.CANCELED));
 		assertThat(canceled.getStatus()).isEqualTo(PassStatus.CANCELED);
 	}
@@ -169,11 +174,34 @@ class PassTest {
 	// 기간은 사용 처리가 먼저 본다(오늘을 아는 쪽). 패스는 상태만 본다.
 	@Test
 	void 사용은_상태만_보고_기간은_보지_않는다() {
-		Pass pass = issue("김하윤", LocalDate.of(2026, 1, 1));
+		Pass pass = saved(issue("김하윤", LocalDate.of(2026, 1, 1)));
 
-		pass.redeem();
+		pass.redeem(5, 1, ISSUED_AT);
 
 		assertThat(pass.getStatus()).isEqualTo(PassStatus.REDEEMED);
+	}
+
+	// 기록이 가리킬 패스 ID가 없다. 상태도 바뀌지 않는다.
+	@Test
+	void 저장하지_않은_패스는_사용할_수_없다() {
+		Pass pass = issue("김하윤", ISSUED_ON);
+
+		assertThatThrownBy(() -> pass.redeem(5, 1, ISSUED_AT)).isInstanceOf(IllegalStateException.class);
+		assertThat(pass.getStatus()).isEqualTo(PassStatus.ISSUED);
+	}
+
+	// 사용 시각이 없으면 기록을 만들지 않고 상태도 바꾸지 않는다.
+	@Test
+	void 사용_시각이_없으면_상태를_바꾸지_않는다() {
+		Pass pass = saved(issue("김하윤", ISSUED_ON));
+
+		assertThatIllegalArgumentException().isThrownBy(() -> pass.redeem(5, 1, null));
+		assertThat(pass.getStatus()).isEqualTo(PassStatus.ISSUED);
+	}
+
+	private static Pass saved(Pass pass) {
+		ReflectionTestUtils.setField(pass, "id", 77L);
+		return pass;
 	}
 
 	@Test

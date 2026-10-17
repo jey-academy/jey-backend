@@ -152,16 +152,15 @@ public class PassRedeemService {
 		if (!members.hasGuardianWithPhoneIndex(studentId, pass.getGuardianPhoneIndex())) {
 			throw new BusinessException(DongtanpassErrorCode.HOLDER_PHONE_MISMATCH);
 		}
-		pass.redeem();
+		Redemption redemption = pass.redeem(studentId, benefit.campusId(), now);
 		// 패스를 먼저 고친다(버전을 보고 행을 배타 잠금). 사용 기록을 먼저 넣으면 외래 키 확인이 패스 행에 공유 잠금을 걸어,
 		// 같은 패스를 동시에 쓰는 두 요청이 서로의 공유 잠금을 기다리는 데드락이 난다. 진 요청은 버전 충돌로 끝난다.
 		passes.saveAndFlush(pass);
 		// 같은 학생을 먼저 쓴 요청이 있으면 여기서 유니크 키에 걸린다(커밋 때까지 미루지 않는다).
-		Redemption redemption = redemptions
-			.saveAndFlush(Redemption.of(passId, studentId, benefit.campusId(), now));
+		Redemption saved = redemptions.saveAndFlush(redemption);
 		events.publishEvent(new PassRedeemed(EventMetadata.create(PassRedeemed.TYPE, PassRedeemed.VERSION,
 				benefit.campusId(), currentActor.get(), clock), passId, studentId, pass.getPartnerId()));
-		return new RedeemedPass(redemption.getId(), passId, studentId, now);
+		return new RedeemedPass(saved.getId(), passId, studentId, now);
 	}
 
 	// 패스를 같이 고친 요청(취소, 링크 새로 만들기, 다른 사용 처리)에 졌다. 지금 상태를 다시 읽어 그 사정으로 답한다.

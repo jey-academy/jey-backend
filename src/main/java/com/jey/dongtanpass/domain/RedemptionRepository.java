@@ -5,11 +5,19 @@ import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
 
-public interface RedemptionRepository extends JpaRepository<Redemption, Long> {
+/**
+ * 사용 기록은 고치거나 지우지 않는다. 지우면 유니크 키가 풀려 같은 학생·패스를 다시 쓸 수 있으므로 지우는 메서드를 열지 않는다.
+ */
+public interface RedemptionRepository extends Repository<Redemption, Long> {
+
+	/** 넣을 때 유니크 키에 걸리는지 바로 알도록 곧바로 DB에 보낸다. */
+	Redemption saveAndFlush(Redemption redemption);
+
+	Optional<Redemption> findById(Long id);
 
 	/** 패스 하나에 기록은 하나다(유니크). 학부모 화면의 사용일에 쓴다. */
 	Optional<Redemption> findByPassId(Long passId);

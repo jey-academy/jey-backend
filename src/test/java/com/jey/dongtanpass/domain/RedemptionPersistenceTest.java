@@ -1,9 +1,11 @@
 package com.jey.dongtanpass.domain;
 
+import java.lang.reflect.Method;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -92,6 +94,13 @@ class RedemptionPersistenceTest {
 				assertThat(UniqueKeys.isViolationOf(ex, "uk_dongtanpass_redemption_student")).isTrue();
 				assertThat(UniqueKeys.isViolationOf(ex, "uk_dongtanpass_redemption_pass")).isFalse();
 			});
+	}
+
+	// 사용 기록을 지우면 유니크 키가 풀려 같은 학생·패스를 다시 쓸 수 있다. 저장소에 지우는 메서드를 열지 않는다.
+	@Test
+	void 사용_기록_저장소에는_지우는_메서드가_없다() {
+		assertThat(Arrays.stream(RedemptionRepository.class.getMethods()).map(Method::getName))
+			.noneMatch(name -> name.startsWith("delete") || name.startsWith("remove"));
 	}
 
 	@Test

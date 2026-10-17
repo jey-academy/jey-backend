@@ -11,7 +11,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * 패스 사용 기록. 데스크가 등록된 학생에게 패스를 쓴 사실이다(ADR-0033). 고치거나 지우지 않는다.
+ * 패스 사용 기록. 데스크가 등록된 학생에게 패스를 쓴 사실이다(ADR-0033). 고치거나 지우지 않는다(저장소에 지우는 메서드가 없다).
+ * {@link Pass#redeem}으로만 만든다(패스의 상태와 기록이 짝을 이룬다).
  * 패스 하나와 학생 한 명은 한 번만 쓰인다(DB의 유니크 키가 막는다). 처리한 직원은 {@code createdBy}다.
  * 금액과 청구는 다루지 않는다(수납 모듈과 이을 때 정한다).
  */
@@ -49,7 +50,7 @@ public class Redemption extends BaseEntity {
 	 * @param campusId 쓴 지점(패스를 받는 지점)
 	 * @throws IllegalArgumentException 사용 시각이 없을 때
 	 */
-	public static Redemption of(long passId, long studentId, long campusId, Instant redeemedAt) {
+	static Redemption of(long passId, long studentId, long campusId, Instant redeemedAt) {
 		if (redeemedAt == null) {
 			throw new IllegalArgumentException("redeemedAt은 비울 수 없다");
 		}
