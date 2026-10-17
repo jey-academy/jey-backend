@@ -140,6 +140,23 @@ class HolderCheckApiTest {
 			.andExpect(jsonPath("$.phoneMatches").value(false));
 	}
 
+	// 이 패스를 받을 때 적은 번호와만 비교한다. 다른 패스(같은 이름의 다른 학생 등)에 있는 번호는 맞지 않는다.
+	@Test
+	void 다른_패스에만_있는_번호는_맞지_않는다() throws Exception {
+		String otherPhone = newPhone();
+		save(NAME, otherPhone);
+
+		check(pass.getId(), body(NAME, otherPhone)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.phoneMatches").value(false));
+	}
+
+	@Test
+	void 만료일_당일은_맞춰_볼_수_있다() throws Exception {
+		jdbc.update("UPDATE dongtanpass_pass SET expires_on = ? WHERE id = ?", today(), pass.getId());
+
+		check(pass.getId(), body(NAME, phone)).andExpect(status().isOk());
+	}
+
 	@ParameterizedTest(name = "{0}, 만료일 오늘{1}일 → {2}")
 	@CsvSource({ "ISSUED,-1,DONGTANPASS_PASS_EXPIRED", "CANCELED,10,DONGTANPASS_PASS_CANCELED",
 			"REDEEMED,10,DONGTANPASS_PASS_ALREADY_REDEEMED" })
@@ -166,7 +183,11 @@ class HolderCheckApiTest {
 
 	@Test
 	void 관리자는_맞춰_볼_수_있고_연계_학원_계정은_403이다() throws Exception {
-		sendAs(pass.getId(), body(NAME, phone), UserRole.ADMIN, null, newAccount()).andExpect(status().isOk());
+		long admin = newAccount();
+
+		sendAs(pass.getId(), body(NAME, phone), UserRole.ADMIN, null, admin).andExpect(status().isOk());
+		// 관리자도 센다(관리자 계정이 넘어가도 번호를 마음대로 넣어 보지 못하게).
+		assertThat(redis.hasKey("jey:auth:account-limit:dongtanpass.holder-check:" + admin)).isTrue();
 		sendAs(pass.getId(), body(NAME, phone), UserRole.PARTNER, null, newAccount())
 			.andExpect(status().isForbidden());
 	}
@@ -216,9 +237,13 @@ class HolderCheckApiTest {
 	// 이름과 번호를 주소에 실어 보내면 앞단의 접근 로그에 남는다. 조용히 무시하지 않고 거부해서 드러나게 한다(ADR-0032).
 	@Test
 	void 쿼리_문자열이_실려_오면_400이다() throws Exception {
-		sendAs(path(pass.getId()) + "?studentName=" + NAME, body(NAME, phone), UserRole.STAFF, PROVIDER, newAccount())
+		long account = newAccount();
+
+		sendAs(path(pass.getId()) + "?studentName=" + NAME, body(NAME, phone), UserRole.STAFF, PROVIDER, account)
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+		// 읽지 않고 거부한다. 맞춰 보지도 세지도 않는다.
+		assertThat(redis.hasKey("jey:auth:account-limit:dongtanpass.holder-check:" + account)).isFalse();
 	}
 
 	// 맞든 틀리든 센다. 없는 패스·쓸 수 없는 패스로 넣어 보는 것도 센다(조회 전에 센다).
@@ -283,6 +308,30 @@ class HolderCheckApiTest {
 
 		assertThat(response).doesNotContain(NAME).doesNotContain(phone);
 		assertThat(output.getAll()).doesNotContain(NAME).doesNotContain(phone).doesNotContain(phone.substring(3));
+	}
+
+	// 거부 응답(형식이 틀린 번호, 없는 패스, 쓸 수 없는 패스)과 그 로그에도 이름과 번호가 없다.
+	@Test
+	void 거부할_때도_응답과_로그에_이름과_번호가_없다(CapturedOutput output) throws Exception {
+		Pass canceled = save(NAME, phone);
+		jdbc.update("UPDATE dongtanpass_pass SET status = 'CANCELED' WHERE id = ?", canceled.getId());
+		String badPhone = phone.substring(0, 10) + "x";
+
+		String responses = check(pass.getId(), body(NAME, badPhone)).andExpect(status().isBadRequest())
+			.andReturn()
+			.getResponse()
+			.getContentAsString()
+				+ check(Long.MAX_VALUE, body(NAME, phone)).andExpect(status().isNotFound())
+					.andReturn()
+					.getResponse()
+					.getContentAsString()
+				+ check(canceled.getId(), body(NAME, phone)).andExpect(status().isConflict())
+					.andReturn()
+					.getResponse()
+					.getContentAsString();
+
+		assertThat(responses).doesNotContain(NAME).doesNotContain(phone.substring(3, 10));
+		assertThat(output.getAll()).doesNotContain(NAME).doesNotContain(phone.substring(3, 10));
 	}
 
 	private ResultActions check(long passId, String body) throws Exception {
