@@ -3,12 +3,15 @@ package com.jey.dongtanpass.application;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Map;
 import java.util.Optional;
 
+import com.jey.core.audit.api.AuditLog;
+import com.jey.core.auth.api.AccountRateLimiter;
 import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.shared.Money;
@@ -66,7 +69,9 @@ class DeskVerifyStoreFailureTest {
 		when(passes.findById(11L)).thenReturn(Optional.of(pass));
 		when(partners.findById(7L)).thenReturn(Optional.of(partner));
 		when(passBenefits.current()).thenReturn(new PassBenefit(1L, "테스트지점", "DONGTAN_PASS", new BigDecimal("0.05")));
-		service = new DeskPassService(passes, partners, passBenefits, passQrCodes, usedQrTokens, CLOCK);
+		service = new DeskPassService(passes, partners, passBenefits, passQrCodes, usedQrTokens,
+				mock(AccountRateLimiter.class), new PassNoVerifyProperties(60, Duration.ofHours(1)), mock(AuditLog.class),
+				CLOCK);
 		token = passQrCodes.issue(11L, CLOCK.instant()).token();
 	}
 

@@ -46,6 +46,9 @@ public enum DongtanpassErrorCode implements ErrorCode {
 	// 패스를 받지 않는 지점의 직원이 패스를 확인하거나 사용 처리하려 했다.
 	CAMPUS_NOT_PROVIDING(HttpStatus.FORBIDDEN, "이 지점에서는 패스를 받지 않습니다."),
 
+	// 데스크 계정이 패스 번호로 확인한 횟수가 한도를 넘었다(맞든 틀리든 센다). QR 확인은 세지 않는다.
+	PASS_NO_VERIFY_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "패스 번호 확인이 너무 많습니다. 잠시 뒤 다시 시도하거나 QR로 확인해 주세요."),
+
 	// 장부의 기간이 틀렸다: 시작일이 종료일보다 뒤이거나, 날짜가 받는 범위(2000-01-01~2099-12-31) 밖이다.
 	// 빈 장부로 답하지 않는다(화면의 실수가 "발급 없음"으로 보이지 않게).
 	INVALID_PERIOD(HttpStatus.BAD_REQUEST, "기간이 올바르지 않습니다. 시작일은 종료일보다 뒤일 수 없고, 2000-01-01부터 2099-12-31 사이여야 합니다.");

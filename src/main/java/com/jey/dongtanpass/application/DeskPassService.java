@@ -4,7 +4,13 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 
+import com.jey.core.audit.api.AuditEntry;
+import com.jey.core.audit.api.AuditLog;
+import com.jey.core.audit.api.DeniedAttempts;
+import com.jey.core.auth.api.AccountRateLimiter;
 import com.jey.core.auth.api.AuthenticatedUser;
+import com.jey.core.auth.api.RateLimit;
+import com.jey.core.shared.Actor;
 import com.jey.core.shared.BusinessException;
 import com.jey.dongtanpass.domain.MaskedName;
 import com.jey.dongtanpass.domain.Partner;
@@ -13,6 +19,7 @@ import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PassRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 
 /**
@@ -22,9 +29,12 @@ import org.springframework.stereotype.Service;
  * QR 토큰은 한 번만 통과한다(토큰 ID를 남은 수명만큼 적는다, ADR-0010). 적지 못하면 예외 그대로 통과시키지 않는다.
  * 서명·만료·재사용 실패는 이유를 가리지 않고 400 하나다(이유는 로그에만). 확인에 성공한 토큰은 패스를 쓸 수 없어도 쓴 것이다.
  *
- * <p>트랜잭션을 열지 않는다. 바꾸는 자료가 없고, 토큰 기록은 DB와 무관하다.
+ * <p>패스 번호는 짧아 넣어 보며 찾을 수 있으므로 계정마다 횟수를 센다(맞든 틀리든, 찾기 전에). 처음 막힌 것은 감사 로그에 남긴다.
+ *
+ * <p>트랜잭션을 열지 않는다. 바꾸는 자료가 없고, 토큰 기록은 DB와 무관하고, 한도에 막힌 기록은 트랜잭션 밖에서 남긴다.
  */
 @Service
+@EnableConfigurationProperties(PassNoVerifyProperties.class)
 public class DeskPassService {
 
 	private static final Logger log = LoggerFactory.getLogger(DeskPassService.class);
@@ -39,15 +49,25 @@ public class DeskPassService {
 
 	private final UsedQrTokens usedQrTokens;
 
+	private final AccountRateLimiter limiter;
+
+	private final RateLimit passNoLimit;
+
+	private final AuditLog auditLog;
+
 	private final Clock clock;
 
 	DeskPassService(PassRepository passes, PartnerRepository partners, PassBenefits passBenefits,
-			PassQrCodes passQrCodes, UsedQrTokens usedQrTokens, Clock clock) {
+			PassQrCodes passQrCodes, UsedQrTokens usedQrTokens, AccountRateLimiter limiter,
+			PassNoVerifyProperties passNoVerify, AuditLog auditLog, Clock clock) {
 		this.passes = passes;
 		this.partners = partners;
 		this.passBenefits = passBenefits;
 		this.passQrCodes = passQrCodes;
 		this.usedQrTokens = usedQrTokens;
+		this.limiter = limiter;
+		this.passNoLimit = passNoVerify.limit();
+		this.auditLog = auditLog;
 		this.clock = clock;
 	}
 
@@ -74,9 +94,13 @@ public class DeskPassService {
 
 	/**
 	 * @throws BusinessException 패스를 받지 않는 지점의 직원(403), 없는 번호(404), 기간이 지났거나 취소됐거나 사용된 패스(409)
+	 * @throws com.jey.core.shared.RateLimitedException 그 계정의 번호 확인이 한도를 넘었을 때(429)
 	 */
 	public VerifiedPassView verifyPassNo(String passNo, AuthenticatedUser user) {
 		PassBenefit benefit = requireProvidingCampus(user);
+		limiter.acquire(passNoLimit, new Actor.User(user.id()), DongtanpassErrorCode.PASS_NO_VERIFY_LIMITED,
+				denial -> DeniedAttempts.record(auditLog,
+						() -> AuditEntry.of(DongtanpassAuditAction.PASS_NO_VERIFY_LIMITED), denial));
 		Pass pass = passes.findByPassNo(passNo)
 			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
 		return usableView(pass, benefit, LocalDate.now(clock));

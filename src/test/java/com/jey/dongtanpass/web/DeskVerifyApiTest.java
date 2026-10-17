@@ -30,6 +30,7 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -91,6 +92,9 @@ class DeskVerifyApiTest {
 
 	@Autowired
 	Clock clock;
+
+	@Autowired
+	StringRedisTemplate redis;
 
 	@BeforeEach
 	void setUp() {
@@ -254,6 +258,49 @@ class DeskVerifyApiTest {
 			.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
 	}
 
+	// 맞든 틀리든 센다. 막힌 뒤에는 맞는 번호도 확인하지 않고, 처음 막힌 것만 감사 로그에 남는다.
+	@Test
+	void 패스_번호_확인은_계정마다_정한_횟수까지이고_넘으면_429다() throws Exception {
+		long account = newAccount();
+		Pass pass = save("김하윤");
+		for (int i = 0; i < 60; i++) {
+			String passNo = (i % 2 == 0) ? pass.getPassNo() : PassNumber.generate(RANDOM);
+			sendAs(passNoBody(passNo), UserRole.STAFF, PROVIDER, account)
+				.andExpect(status().is(i % 2 == 0 ? 200 : 404));
+		}
+
+		String retryAfter = sendAs(passNoBody(pass.getPassNo()), UserRole.STAFF, PROVIDER, account)
+			.andExpect(status().isTooManyRequests())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NO_VERIFY_LIMITED"))
+			.andReturn()
+			.getResponse()
+			.getHeader("Retry-After");
+		sendAs(passNoBody(pass.getPassNo()), UserRole.STAFF, PROVIDER, account)
+			.andExpect(status().isTooManyRequests());
+
+		assertThat(Long.parseLong(retryAfter)).isPositive();
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM core_audit_log WHERE action = 'dongtanpass.pass-no-verify-limited' AND actor_id = ?",
+				Integer.class, account))
+			.isEqualTo(1);
+		// 다른 계정은 막히지 않는다. QR 확인은 세지 않는다.
+		sendAs(passNoBody(pass.getPassNo()), UserRole.STAFF, PROVIDER, newAccount()).andExpect(status().isOk());
+		sendAs("{\"qrToken\":\"" + qrOf(pass) + "\"}", UserRole.STAFF, PROVIDER, account)
+			.andExpect(status().isOk());
+	}
+
+	// 지점을 먼저 본다. 패스를 받지 않는 지점의 직원은 번호를 넣어 보는 것 자체를 할 수 없다.
+	@Test
+	void 패스를_받지_않는_지점의_직원의_번호_확인은_세지_않는다() throws Exception {
+		long account = newAccount();
+
+		sendAs(passNoBody(save("김하윤").getPassNo()), UserRole.STAFF, OTHER_CAMPUS, account)
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_CAMPUS_NOT_PROVIDING"));
+
+		assertThat(redis.hasKey("jey:auth:account-limit:dongtanpass.pass-no-verify:" + account)).isFalse();
+	}
+
 	private String invalidBody(String token) throws Exception {
 		return mockMvc
 			.perform(post(VERIFY).with(csrfToken(mockMvc))
@@ -275,7 +322,7 @@ class DeskVerifyApiTest {
 		return sendAs("{\"qrToken\":\"" + token + "\"}", role, campusId, 901_418L);
 	}
 
-	// 한 테스트 안에서 계정을 바꿔 부른다.
+	// 한 테스트 안에서 계정을 바꿔 부른다. 횟수 한도는 Redis에 남으므로 한도를 세는 요청은 실행마다 새 계정으로 보낸다.
 	private ResultActions sendAs(String body, UserRole role, long campusId, long accountId) throws Exception {
 		AuthenticatedUser user = new AuthenticatedUser(accountId, "desk-staff", "데스크", role, campusId, null);
 		SecurityContext login = SecurityContextHolder.createEmptyContext();
@@ -291,7 +338,7 @@ class DeskVerifyApiTest {
 		return "{\"passNo\":\"" + passNo + "\"}";
 	}
 
-	// 번호 확인을 하는 계정. 다른 테스트와 겹치지 않는 큰 수를 쓴다.
+	// 901_4xx 대역 안의 고정 ID는 실행마다 같아 Redis의 횟수가 쌓인다. 다른 테스트와 겹치지 않는 큰 수를 쓴다.
 	private static long newAccount() {
 		return 9_014_000_000L + RANDOM.nextInt(1_000_000_000);
 	}
