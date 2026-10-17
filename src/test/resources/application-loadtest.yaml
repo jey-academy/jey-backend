@@ -1,0 +1,15 @@
+# 부하 시험(k6)용 실험 앱 전용. test 프로필과 함께 켠다(test,loadtest). 운영과 무관하다.
+# 부하가 한도에 걸리면 재려는 것(잠금 방식의 차이) 대신 429를 재게 된다. 그래서 한도를 아주 크게 잡는다.
+jey:
+  loadtest:
+    # 실험 앱이 뜰 때 만드는 계정. 띄울 때마다 DB가 새것이라 겹치지 않는다. 비밀번호는 실험 전용이다.
+    staff-login-id: loadtest-staff
+    partner-login-id: loadtest-partner
+    password: loadtest-only-password-1
+  dongtanpass:
+    redeem-limit:
+      max: 1000000
+    holder-check:
+      max: 1000000
+    pass-no-verify:
+      max: 1000000

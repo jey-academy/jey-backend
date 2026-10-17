@@ -80,3 +80,16 @@ tasks.withType<Test> {
 		outputs.upToDateWhen { false }
 	}
 }
+
+// 부하 시험(k6)용 실험 앱을 띄운다: ./gradlew loadtestRun -Plocking=pessimistic
+// 사용 처리의 중복 사용 방지 방식을 고른다(optimistic, pessimistic, unique-first, redis. 기본은 optimistic = 운영 방식).
+// 테스트 소스의 실행기라 운영 jar에 들어가지 않는다. MySQL·Redis는 Testcontainers로 새로 뜬다(Docker 필요). 포트 8080.
+tasks.register<JavaExec>("loadtestRun") {
+	group = "application"
+	description = "부하 시험용 실험 앱을 띄운다(-Plocking=…)"
+	dependsOn("testClasses")
+	classpath = sourceSets["test"].runtimeClasspath
+	mainClass.set("com.jey.loadtest.LoadtestApplication")
+	val locking = providers.gradleProperty("locking").getOrElse("optimistic")
+	args("--spring.profiles.active=test,loadtest", "--jey.loadtest.redeem-locking=$locking")
+}
