@@ -31,6 +31,7 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -87,6 +88,9 @@ class HolderCheckApiTest {
 
 	@Autowired
 	Clock clock;
+
+	@Autowired
+	StringRedisTemplate redis;
 
 	private String phone;
 
@@ -215,6 +219,59 @@ class HolderCheckApiTest {
 			.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
 	}
 
+	// 맞든 틀리든 센다. 없는 패스·쓸 수 없는 패스로 넣어 보는 것도 센다(조회 전에 센다).
+	// 막힌 뒤에는 맞는 요청도 확인하지 않고, 처음 막힌 것만 감사 로그에 남는다. 패스 번호 확인의 한도와는 따로 센다.
+	@Test
+	void 본인_미리_확인은_계정마다_정한_횟수까지이고_넘으면_429다() throws Exception {
+		long account = newAccount();
+		Pass canceled = save(NAME, phone);
+		jdbc.update("UPDATE dongtanpass_pass SET status = 'CANCELED' WHERE id = ?", canceled.getId());
+		for (int i = 0; i < 30; i++) {
+			switch (i % 4) {
+				case 0 -> sendAs(pass.getId(), body(NAME, phone), UserRole.STAFF, PROVIDER, account)
+					.andExpect(status().isOk());
+				case 1 -> sendAs(pass.getId(), body("김하은", newPhone()), UserRole.STAFF, PROVIDER, account)
+					.andExpect(status().isOk());
+				case 2 -> sendAs(Long.MAX_VALUE, body(NAME, phone), UserRole.STAFF, PROVIDER, account)
+					.andExpect(status().isNotFound());
+				default -> sendAs(canceled.getId(), body(NAME, phone), UserRole.STAFF, PROVIDER, account)
+					.andExpect(status().isConflict());
+			}
+		}
+
+		String retryAfter = sendAs(pass.getId(), body(NAME, phone), UserRole.STAFF, PROVIDER, account)
+			.andExpect(status().isTooManyRequests())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_HOLDER_CHECK_LIMITED"))
+			.andReturn()
+			.getResponse()
+			.getHeader("Retry-After");
+		sendAs(pass.getId(), body(NAME, phone), UserRole.STAFF, PROVIDER, account)
+			.andExpect(status().isTooManyRequests());
+
+		assertThat(Long.parseLong(retryAfter)).isPositive();
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM core_audit_log WHERE action = 'dongtanpass.holder-check-limited' AND actor_id = ?",
+				Integer.class, account))
+			.isEqualTo(1);
+		sendAs(pass.getId(), body(NAME, phone), UserRole.STAFF, PROVIDER, newAccount()).andExpect(status().isOk());
+		mockMvc
+			.perform(post("/api/v1/dongtanpass/passes/verify").with(securityContext(login(UserRole.STAFF, PROVIDER, account)))
+				.with(csrfToken(mockMvc))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"passNo\":\"" + pass.getPassNo() + "\"}"))
+			.andExpect(status().isOk());
+	}
+
+	// 지점을 먼저 본다. 패스를 받지 않는 지점의 직원은 넣어 보는 것 자체를 할 수 없다.
+	@Test
+	void 패스를_받지_않는_지점의_직원은_세지_않는다() throws Exception {
+		long account = newAccount();
+
+		sendAs(pass.getId(), body(NAME, phone), UserRole.STAFF, OTHER_CAMPUS, account).andExpect(status().isForbidden());
+
+		assertThat(redis.hasKey("jey:auth:account-limit:dongtanpass.holder-check:" + account)).isFalse();
+	}
+
 	@Test
 	void 응답과_로그에_이름과_번호가_없다(CapturedOutput output) throws Exception {
 		String response = check(pass.getId(), body(NAME, phone)).andExpect(status().isOk())
@@ -238,15 +295,19 @@ class HolderCheckApiTest {
 	// 한 테스트 안에서 계정을 바꿔 부른다. Redis는 한 번 실행하는 동안 테스트끼리 함께 쓰므로 한도를 세는 요청은 테스트마다 새 계정으로 보낸다.
 	private ResultActions sendAs(String uri, String body, UserRole role, Long campusId, long accountId)
 			throws Exception {
+		return mockMvc.perform(post(uri).with(securityContext(login(role, campusId, accountId)))
+			.with(csrfToken(mockMvc))
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(body));
+	}
+
+	private static SecurityContext login(UserRole role, Long campusId, long accountId) {
 		AuthenticatedUser user = new AuthenticatedUser(accountId, "desk-staff", "데스크", role, campusId,
 				role == UserRole.PARTNER ? PARTNER : null);
 		SecurityContext login = SecurityContextHolder.createEmptyContext();
 		login.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(user, null,
 				List.of(new SimpleGrantedAuthority(role.authority()))));
-		return mockMvc.perform(post(uri).with(securityContext(login))
-			.with(csrfToken(mockMvc))
-			.contentType(MediaType.APPLICATION_JSON)
-			.content(body));
+		return login;
 	}
 
 	private static String path(long passId) {

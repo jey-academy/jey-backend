@@ -80,7 +80,8 @@ class DeskVerifyStoreFailureTest {
 		when(partners.findById(7L)).thenReturn(Optional.of(partner));
 		when(passBenefits.current()).thenReturn(new PassBenefit(1L, "테스트지점", "DONGTAN_PASS", new BigDecimal("0.05")));
 		service = new DeskPassService(passes, partners, passBenefits, passQrCodes, usedQrTokens,
-				mock(AccountRateLimiter.class), new PassNoVerifyProperties(60, Duration.ofHours(1)), mock(AuditLog.class),
+				mock(AccountRateLimiter.class), new PassNoVerifyProperties(60, Duration.ofHours(1)),
+				new HolderCheckProperties(30, Duration.ofHours(1)), mock(AuditLog.class),
 				mock(PhoneProtector.class), CLOCK);
 		token = passQrCodes.issue(11L, CLOCK.instant()).token();
 	}

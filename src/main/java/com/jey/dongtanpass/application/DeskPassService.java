@@ -35,12 +35,13 @@ import org.springframework.stereotype.Service;
  * 패스와 연계 학원을 먼저 읽고 토큰을 적는다. 읽다 실패하면(DB 장애, 패스 없음) 토큰을 쓰지 않아 같은 QR로 다시 할 수 있다.
  * 서명·만료·재사용 실패는 이유를 가리지 않고 400 하나다(이유는 로그에만). 확인에 성공한 토큰은 패스를 쓸 수 없어도 쓴 것이다.
  *
- * <p>패스 번호는 짧아 넣어 보며 찾을 수 있으므로 계정마다 횟수를 센다(맞든 틀리든, 찾기 전에). 처음 막힌 것은 감사 로그에 남긴다.
+ * <p>패스 번호는 짧아 넣어 보며 찾을 수 있으므로 계정마다 횟수를 센다(맞든 틀리든, 찾기 전에). 미리 확인도 번호를 넣어 보며
+ * 패스 주인을 알아낼 수 있으므로 따로 센다. 처음 막힌 것은 감사 로그에 남긴다.
  *
  * <p>트랜잭션을 열지 않는다. 바꾸는 자료가 없고, 토큰 기록은 DB와 무관하고, 한도에 막힌 기록은 트랜잭션 밖에서 남긴다.
  */
 @Service
-@EnableConfigurationProperties(PassNoVerifyProperties.class)
+@EnableConfigurationProperties({ PassNoVerifyProperties.class, HolderCheckProperties.class })
 public class DeskPassService {
 
 	private static final Logger log = LoggerFactory.getLogger(DeskPassService.class);
@@ -59,6 +60,8 @@ public class DeskPassService {
 
 	private final RateLimit passNoLimit;
 
+	private final RateLimit holderCheckLimit;
+
 	private final AuditLog auditLog;
 
 	private final PhoneProtector phoneProtector;
@@ -67,7 +70,8 @@ public class DeskPassService {
 
 	DeskPassService(PassRepository passes, PartnerRepository partners, PassBenefits passBenefits,
 			PassQrCodes passQrCodes, UsedQrTokens usedQrTokens, AccountRateLimiter limiter,
-			PassNoVerifyProperties passNoVerify, AuditLog auditLog, PhoneProtector phoneProtector, Clock clock) {
+			PassNoVerifyProperties passNoVerify, HolderCheckProperties holderCheck, AuditLog auditLog,
+			PhoneProtector phoneProtector, Clock clock) {
 		this.passes = passes;
 		this.partners = partners;
 		this.passBenefits = passBenefits;
@@ -75,6 +79,7 @@ public class DeskPassService {
 		this.usedQrTokens = usedQrTokens;
 		this.limiter = limiter;
 		this.passNoLimit = passNoVerify.limit();
+		this.holderCheckLimit = holderCheck.limit();
 		this.auditLog = auditLog;
 		this.phoneProtector = phoneProtector;
 		this.clock = clock;
@@ -122,10 +127,15 @@ public class DeskPassService {
 	 * 번호는 여럿 중 하나라도 패스를 받을 때 적은 번호와 같으면 맞다. 바꾸는 자료가 없고 결과는 감사 로그에 남기지 않는다.
 	 *
 	 * @throws BusinessException 패스를 받지 않는 지점의 직원(403), 없는 패스(404), 기간이 지났거나 취소됐거나 사용된 패스(409)
+	 * @throws com.jey.core.shared.RateLimitedException 그 계정의 미리 확인이 한도를 넘었을 때(429)
 	 */
 	public HolderCheckResult holderCheck(long passId, StudentNameKey studentName, List<PhoneNumber> guardianPhones,
 			AuthenticatedUser user) {
 		requireProvidingCampus(user);
+		// 맞든 틀리든, 패스를 찾기 전에 센다. 없는 패스나 쓸 수 없는 패스로 넣어 보는 것도 한도에 든다.
+		limiter.acquire(holderCheckLimit, new Actor.User(user.id()), DongtanpassErrorCode.HOLDER_CHECK_LIMITED,
+				denial -> DeniedAttempts.record(auditLog,
+						() -> AuditEntry.of(DongtanpassAuditAction.HOLDER_CHECK_LIMITED), denial));
 		Pass pass = passes.findById(passId)
 			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
 		requireUsable(pass, todayAt(clock.instant()));

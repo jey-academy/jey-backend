@@ -58,6 +58,8 @@ class DeskController {
 					+ "이름은 띄어쓰기와 무관하고, 번호는 하나라도 패스를 받을 때 적은 번호와 같으면 맞다. 최종 판단은 사용 처리가 다시 한다. "
 					+ "패스를 받지 않는 지점의 직원은 403(DONGTANPASS_CAMPUS_NOT_PROVIDING), 없는 패스는 404(DONGTANPASS_PASS_NOT_FOUND), "
 					+ "쓸 수 없는 패스는 409(DONGTANPASS_PASS_EXPIRED, DONGTANPASS_PASS_CANCELED, DONGTANPASS_PASS_ALREADY_REDEEMED). "
+					+ "계정마다 정해진 횟수(맞든 틀리든, 404·409도 센다. 패스 번호 확인과는 따로)를 넘으면 잠시 429(DONGTANPASS_HOLDER_CHECK_LIMITED)이고, "
+					+ "다시 할 수 있을 때까지 남은 시간은 Retry-After 헤더(초)에 싣는다. 다른 지점 직원의 요청은 세지 않는다. "
 					+ "이름과 번호는 주소가 아니라 본문으로만 보낸다(쿼리 문자열이 있으면 400)")
 	@NotIdempotent("바꾸는 자료가 없다. 같은 요청을 다시 보내도 결과가 같다")
 	@PostMapping("/{id}/holder-check")
