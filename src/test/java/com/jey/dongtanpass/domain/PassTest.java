@@ -136,6 +136,47 @@ class PassTest {
 	}
 
 	@Test
+	void 사용하면_사용됨이고_남은_일수는_0이다() {
+		Pass pass = issue("김하윤", ISSUED_ON);
+
+		pass.redeem();
+
+		assertThat(pass.getStatus()).isEqualTo(PassStatus.REDEEMED);
+		assertThat(pass.stateOn(ISSUED_ON)).isEqualTo(PassState.REDEEMED);
+		assertThat(pass.daysLeftOn(ISSUED_ON)).isZero();
+	}
+
+	// 사용된 패스는 다시 쓰거나 취소하거나 링크를 바꿀 수 없다. 취소된 패스는 쓸 수 없다.
+	@Test
+	void 발급_상태가_아니면_사용할_수_없고_사용한_패스는_고칠_수_없다() {
+		Pass redeemed = issue("김하윤", ISSUED_ON);
+		redeemed.redeem();
+		Pass canceled = issue("김하윤", ISSUED_ON);
+		canceled.cancel();
+
+		assertThatThrownBy(redeemed::redeem).isInstanceOfSatisfying(PassStatusException.class,
+				ex -> assertThat(ex.status()).isEqualTo(PassStatus.REDEEMED));
+		assertThatThrownBy(redeemed::cancel).isInstanceOfSatisfying(PassStatusException.class,
+				ex -> assertThat(ex.status()).isEqualTo(PassStatus.REDEEMED));
+		assertThatThrownBy(() -> redeemed.renewLink("b".repeat(64)))
+			.isInstanceOfSatisfying(PassStatusException.class,
+					ex -> assertThat(ex.status()).isEqualTo(PassStatus.REDEEMED));
+		assertThatThrownBy(canceled::redeem).isInstanceOfSatisfying(PassStatusException.class,
+				ex -> assertThat(ex.status()).isEqualTo(PassStatus.CANCELED));
+		assertThat(canceled.getStatus()).isEqualTo(PassStatus.CANCELED);
+	}
+
+	// 기간은 사용 처리가 먼저 본다(오늘을 아는 쪽). 패스는 상태만 본다.
+	@Test
+	void 사용은_상태만_보고_기간은_보지_않는다() {
+		Pass pass = issue("김하윤", LocalDate.of(2026, 1, 1));
+
+		pass.redeem();
+
+		assertThat(pass.getStatus()).isEqualTo(PassStatus.REDEEMED);
+	}
+
+	@Test
 	void 링크를_새로_만들면_해시가_바뀐다() {
 		Pass pass = issue("김하윤", ISSUED_ON);
 

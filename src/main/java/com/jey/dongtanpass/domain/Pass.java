@@ -179,6 +179,16 @@ public class Pass extends BaseEntity {
 		this.status = PassStatus.CANCELED;
 	}
 
+	/**
+	 * 패스를 쓴 것으로 표시한다. 기간은 보지 않는다(오늘을 아는 사용 처리가 먼저 본다). 사용 기록은 사용 처리가 따로 저장한다.
+	 *
+	 * @throws PassStatusException 발급 상태가 아닐 때(이미 사용됨, 취소됨)
+	 */
+	public void redeem() {
+		requireIssued();
+		this.status = PassStatus.REDEEMED;
+	}
+
 	private void requireIssued() {
 		if (status != PassStatus.ISSUED) {
 			throw new PassStatusException(status);
