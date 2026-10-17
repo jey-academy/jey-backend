@@ -22,12 +22,14 @@ record HolderPassResponse(
 		@Schema(description = "할인율. 5%는 0.05", requiredMode = RequiredMode.REQUIRED) BigDecimal discountRate,
 		@Schema(description = "패스를 받는 지점", requiredMode = RequiredMode.REQUIRED) String campusName,
 		@Schema(description = "고지 문구의 버전", requiredMode = RequiredMode.REQUIRED) String noticeVersion,
-		@Schema(description = "고지 문구. 여러 줄이다(줄바꿈 문자로 나뉜다)", requiredMode = RequiredMode.REQUIRED) String noticeText) {
+		@Schema(description = "고지 문구. 여러 줄이다(줄바꿈 문자로 나뉜다)", requiredMode = RequiredMode.REQUIRED) String noticeText,
+		@Schema(description = "사용일(한국 날짜). 쓰지 않은 패스는 null. 취소한 패스도 null이다(취소일은 싣지 않는다)",
+				requiredMode = RequiredMode.REQUIRED, nullable = true) LocalDate redeemedOn) {
 
 	static HolderPassResponse from(HolderPassView view) {
 		return new HolderPassResponse(view.passNo(), view.partnerName(), view.maskedStudentName(), view.issuedOn(),
 				view.expiresOn(), view.state(), view.daysLeft(), view.discountRate(), view.campusName(),
-				view.noticeVersion(), view.noticeText());
+				view.noticeVersion(), view.noticeText(), view.redeemedOn());
 	}
 
 }

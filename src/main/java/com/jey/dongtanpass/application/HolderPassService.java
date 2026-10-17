@@ -10,6 +10,7 @@ import com.jey.dongtanpass.domain.Partner;
 import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PartnerRepository;
 import com.jey.dongtanpass.domain.PassRepository;
+import com.jey.dongtanpass.domain.RedemptionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -35,11 +36,14 @@ public class HolderPassService {
 
 	private final PassQrCodes passQrCodes;
 
+	private final RedemptionRepository redemptions;
+
 	private final Clock clock;
 
 	HolderPassService(PassRepository passes, PartnerRepository partners, PassBenefits passBenefits,
-			PassQrCodes passQrCodes, Clock clock) {
+			PassQrCodes passQrCodes, RedemptionRepository redemptions, Clock clock) {
 		this.passes = passes;
+		this.redemptions = redemptions;
 		this.partners = partners;
 		this.passBenefits = passBenefits;
 		this.passQrCodes = passQrCodes;
@@ -59,7 +63,14 @@ public class HolderPassService {
 		return new HolderPassView(pass.getPassNo(), partner.getName(), MaskedName.of(pass.getStudentName()),
 				pass.issuedOn(clock.getZone()), pass.getExpiresOn(), pass.stateOn(today), pass.daysLeftOn(today),
 				benefit.discountRate(), benefit.campusName(), ConsentNotice.CURRENT.version(),
-				ConsentNotice.CURRENT.text());
+				ConsentNotice.CURRENT.text(), redeemedOn(pass));
+	}
+
+	// 사용 기록의 시각을 한국 날짜로 바꾼다. 쓰지 않은 패스에는 기록이 없다.
+	private LocalDate redeemedOn(Pass pass) {
+		return redemptions.findByPassId(pass.getId())
+			.map(redemption -> LocalDate.ofInstant(redemption.getRedeemedAt(), clock.getZone()))
+			.orElse(null);
 	}
 
 	/**

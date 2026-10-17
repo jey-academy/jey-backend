@@ -615,6 +615,11 @@
             "description" : "패스 번호. QR이 안 될 때 데스크에 불러 준다",
             "type" : "string"
           },
+          "redeemedOn" : {
+            "description" : "사용일(한국 날짜). 쓰지 않은 패스는 null. 취소한 패스도 null이다(취소일은 싣지 않는다)",
+            "format" : "date",
+            "type" : [ "string", "null" ]
+          },
           "state" : {
             "description" : "오늘 기준으로 보이는 상태. ISSUED 쓸 수 있음, EXPIRED 쓰지 않은 채 기간이 지남, REDEEMED 사용됨, CANCELED 발급 취소",
             "enum" : [ "ISSUED", "EXPIRED", "REDEEMED", "CANCELED" ],
@@ -625,7 +630,7 @@
             "type" : "string"
           }
         },
-        "required" : [ "campusName", "daysLeft", "discountRate", "expiresOn", "issuedOn", "noticeText", "noticeVersion", "partnerName", "passNo", "state", "studentName" ],
+        "required" : [ "campusName", "daysLeft", "discountRate", "expiresOn", "issuedOn", "noticeText", "noticeVersion", "partnerName", "passNo", "redeemedOn", "state", "studentName" ],
         "type" : "object"
       },
       "HolderQrResponse" : {
