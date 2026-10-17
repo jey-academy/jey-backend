@@ -26,7 +26,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-// 비교 실험의 방식 B·C가 정한 대로 읽고 저장하는지 본다. 실제 동작(잠금·데드락·응답 시간)은 부하 시험(k6)이 잰다. Docker가 필요 없다.
+// 비교 실험의 pessimistic·unique-first 방식이 정한 대로 읽고 저장하는지 본다. 실제 동작(잠금·데드락·응답 시간)은 부하 시험(k6)이 잰다. Docker가 필요 없다.
 class ExperimentLockingsTest {
 
 	private static final SecureRandom RANDOM = new SecureRandom();
@@ -51,7 +51,7 @@ class ExperimentLockingsTest {
 		order.verify(redemptions).saveAndFlush(redemption);
 	}
 
-	// PR #72 이전의 순서다. 같은 패스를 동시에 쓰면 유니크 키가 먼저 막지만, 외래 키의 공유 잠금 때문에 데드락이 날 수 있다.
+	// 운영 방식이 패스를 먼저 저장하도록 바꾸기 전의 순서다. 같은 패스를 동시에 쓰면 유니크 키가 먼저 막지만, 외래 키의 공유 잠금 때문에 데드락이 날 수 있다.
 	@Test
 	void 기록_먼저는_잠그지_않고_읽고_기록을_먼저_저장한다() {
 		Pass pass = pass();
