@@ -3,6 +3,7 @@ package com.jey.dongtanpass.application;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 import com.jey.core.audit.api.AuditEntry;
 import com.jey.core.audit.api.AuditLog;
@@ -12,18 +13,22 @@ import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.RateLimit;
 import com.jey.core.shared.Actor;
 import com.jey.core.shared.BusinessException;
+import com.jey.core.shared.PhoneNumber;
+import com.jey.core.shared.PhoneProtector;
 import com.jey.dongtanpass.domain.MaskedName;
 import com.jey.dongtanpass.domain.Partner;
 import com.jey.dongtanpass.domain.PartnerRepository;
 import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PassRepository;
+import com.jey.dongtanpass.domain.StudentNameKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 
 /**
- * 데스크 직원이 학부모의 QR 토큰이나 패스 번호로 패스를 확인한다. 사용 처리의 첫 단계다.
+ * 데스크 직원이 학부모의 QR 토큰이나 패스 번호로 패스를 확인하고, 학생을 등록하기 전에 이름과 학부모 번호를 패스와 미리 맞춰 본다.
+ * 사용 처리의 앞 단계들이다(ADR-0033).
  *
  * <p>패스를 받는 지점의 직원과 관리자만 확인한다. 지점을 먼저 보므로 다른 지점 직원의 요청은 토큰을 쓰지 않는다.
  * QR 토큰은 한 번만 통과한다(토큰 ID를 남은 수명만큼 적는다, ADR-0010). 적지 못하면 예외 그대로 통과시키지 않는다.
@@ -56,11 +61,13 @@ public class DeskPassService {
 
 	private final AuditLog auditLog;
 
+	private final PhoneProtector phoneProtector;
+
 	private final Clock clock;
 
 	DeskPassService(PassRepository passes, PartnerRepository partners, PassBenefits passBenefits,
 			PassQrCodes passQrCodes, UsedQrTokens usedQrTokens, AccountRateLimiter limiter,
-			PassNoVerifyProperties passNoVerify, AuditLog auditLog, Clock clock) {
+			PassNoVerifyProperties passNoVerify, AuditLog auditLog, PhoneProtector phoneProtector, Clock clock) {
 		this.passes = passes;
 		this.partners = partners;
 		this.passBenefits = passBenefits;
@@ -69,6 +76,7 @@ public class DeskPassService {
 		this.limiter = limiter;
 		this.passNoLimit = passNoVerify.limit();
 		this.auditLog = auditLog;
+		this.phoneProtector = phoneProtector;
 		this.clock = clock;
 	}
 
@@ -109,6 +117,24 @@ public class DeskPassService {
 		return usableView(pass, partnerOf(pass), benefit, todayAt(clock.instant()));
 	}
 
+	/**
+	 * 등록 폼에 적은 학생 이름과 학부모 번호가 패스와 맞는지 따로 답한다(ADR-0033). 이름은 공백(전각 포함)을 모두 빼고 NFC로 모아 비교하고,
+	 * 번호는 여럿 중 하나라도 패스를 받을 때 적은 번호와 같으면 맞다. 바꾸는 자료가 없고 결과는 감사 로그에 남기지 않는다.
+	 *
+	 * @throws BusinessException 패스를 받지 않는 지점의 직원(403), 없는 패스(404), 기간이 지났거나 취소됐거나 사용된 패스(409)
+	 */
+	public HolderCheckResult holderCheck(long passId, StudentNameKey studentName, List<PhoneNumber> guardianPhones,
+			AuthenticatedUser user) {
+		requireProvidingCampus(user);
+		Pass pass = passes.findById(passId)
+			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
+		requireUsable(pass, todayAt(clock.instant()));
+		boolean phoneMatches = guardianPhones.stream()
+			.map(phoneProtector::fullIndex)
+			.anyMatch(pass.getGuardianPhoneIndex()::equals);
+		return new HolderCheckResult(studentName.matches(pass.getStudentName()), phoneMatches);
+	}
+
 	private PassBenefit requireProvidingCampus(AuthenticatedUser user) {
 		PassBenefit benefit = passBenefits.current();
 		if (!user.campusScope().includes(benefit.campusId())) {
@@ -127,7 +153,8 @@ public class DeskPassService {
 			.orElseThrow(() -> new IllegalStateException("패스의 연계 학원이 없다: passId=" + pass.getId()));
 	}
 
-	private VerifiedPassView usableView(Pass pass, Partner partner, PassBenefit benefit, LocalDate today) {
+	// 쓸 수 있는 패스(발급됨, 기간 안)가 아니면 그 사정의 409. 확인·미리 확인·사용 처리가 같은 코드를 쓴다.
+	private static void requireUsable(Pass pass, LocalDate today) {
 		DongtanpassErrorCode unusable = switch (pass.stateOn(today)) {
 			case ISSUED -> null;
 			case EXPIRED -> DongtanpassErrorCode.PASS_EXPIRED;
@@ -137,6 +164,10 @@ public class DeskPassService {
 		if (unusable != null) {
 			throw new BusinessException(unusable);
 		}
+	}
+
+	private VerifiedPassView usableView(Pass pass, Partner partner, PassBenefit benefit, LocalDate today) {
+		requireUsable(pass, today);
 		return new VerifiedPassView(pass.getId(), pass.getPassNo(), partner.getName(),
 				MaskedName.of(pass.getStudentName()), pass.issuedOn(clock.getZone()), pass.getExpiresOn(),
 				benefit.discountRate());

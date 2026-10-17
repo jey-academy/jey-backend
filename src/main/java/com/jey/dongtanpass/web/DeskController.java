@@ -3,11 +3,17 @@ package com.jey.dongtanpass.web;
 import com.jey.core.auth.api.AllowedRoles;
 import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.UserRole;
+import com.jey.core.shared.BusinessException;
+import com.jey.core.shared.CommonErrorCode;
 import com.jey.core.shared.NotIdempotent;
 import com.jey.dongtanpass.application.DeskPassService;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,6 +24,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/dongtanpass/passes")
 @AllowedRoles({ UserRole.STAFF, UserRole.ADMIN })
 class DeskController {
+
+	private static final Logger log = LoggerFactory.getLogger(DeskController.class);
 
 	private final DeskPassService deskPassService;
 
@@ -43,6 +51,27 @@ class DeskController {
 			return VerifiedPassResponse.from(deskPassService.verifyQr(body.qrToken(), user));
 		}
 		return VerifiedPassResponse.from(deskPassService.verifyPassNo(body.passNo(), user));
+	}
+
+	@Operation(summary = "본인 미리 확인",
+			description = "학생을 등록하기 전에 등록 폼에 적은 학생 이름과 학부모 번호(1~4개)가 패스와 맞는지 따로 답한다. 바꾸는 자료가 없다. "
+					+ "이름은 띄어쓰기와 무관하고, 번호는 하나라도 패스를 받을 때 적은 번호와 같으면 맞다. 최종 판단은 사용 처리가 다시 한다. "
+					+ "패스를 받지 않는 지점의 직원은 403(DONGTANPASS_CAMPUS_NOT_PROVIDING), 없는 패스는 404(DONGTANPASS_PASS_NOT_FOUND), "
+					+ "쓸 수 없는 패스는 409(DONGTANPASS_PASS_EXPIRED, DONGTANPASS_PASS_CANCELED, DONGTANPASS_PASS_ALREADY_REDEEMED). "
+					+ "이름과 번호는 주소가 아니라 본문으로만 보낸다(쿼리 문자열이 있으면 400)")
+	@NotIdempotent("바꾸는 자료가 없다. 같은 요청을 다시 보내도 결과가 같다")
+	@PostMapping("/{id}/holder-check")
+	HolderCheckResponse checkHolder(@PathVariable long id, @Valid @RequestBody HolderCheckRequest body,
+			@AuthenticationPrincipal AuthenticatedUser user, HttpServletRequest request) {
+		// 이름과 번호를 주소에 실어 보낸 요청이다. 읽지 않고 넘기면 주소에 실린 값이 앞단의 접근 로그에 남은 것을 아무도 모른다.
+		// 거부해서 드러나게 한다. 이름이나 값은 로그에 남기지 않는다.
+		if (!request.getParameterMap().isEmpty()) {
+			log.warn("본인 미리 확인에 쿼리 문자열이 실려 왔다. 이름과 번호는 본문으로만 받는다: 파라미터 {}개",
+					request.getParameterMap().size());
+			throw new BusinessException(CommonErrorCode.BAD_REQUEST, "이름과 번호는 주소가 아니라 본문으로 보내야 합니다.");
+		}
+		return HolderCheckResponse
+			.from(deskPassService.holderCheck(id, body.studentNameKey(), body.guardianPhones(), user));
 	}
 
 }

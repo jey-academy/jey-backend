@@ -16,6 +16,7 @@ import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.Money;
+import com.jey.core.shared.PhoneProtector;
 import com.jey.dongtanpass.domain.LinkToken;
 import com.jey.dongtanpass.domain.Partner;
 import com.jey.dongtanpass.domain.PartnerRepository;
@@ -80,7 +81,7 @@ class DeskVerifyStoreFailureTest {
 		when(passBenefits.current()).thenReturn(new PassBenefit(1L, "테스트지점", "DONGTAN_PASS", new BigDecimal("0.05")));
 		service = new DeskPassService(passes, partners, passBenefits, passQrCodes, usedQrTokens,
 				mock(AccountRateLimiter.class), new PassNoVerifyProperties(60, Duration.ofHours(1)), mock(AuditLog.class),
-				CLOCK);
+				mock(PhoneProtector.class), CLOCK);
 		token = passQrCodes.issue(11L, CLOCK.instant()).token();
 	}
 
