@@ -29,6 +29,7 @@ class LoadtestIsolationTest {
 		assertThat(context.getBeansOfType(RedeemLocking.class)).hasSize(1);
 		assertThat(redeemLocking.getClass().getSimpleName()).isEqualTo("OptimisticRedeemLocking");
 		assertThat(context.getBeansOfType(LoadtestConfiguration.class)).isEmpty();
+		assertThat(context.getBeansOfType(PoolSampler.class)).isEmpty();
 	}
 
 }
