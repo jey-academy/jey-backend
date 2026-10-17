@@ -129,7 +129,10 @@ public class PassRedeemService {
 			throw new BusinessException(DongtanpassErrorCode.HOLDER_PHONE_MISMATCH);
 		}
 		pass.redeem();
-		// 같은 패스·학생을 먼저 쓴 요청이 있으면 여기서 유니크 키에 걸린다(커밋 때까지 미루지 않는다). 패스의 버전도 이때 본다.
+		// 패스를 먼저 고친다(버전을 보고 행을 배타 잠금). 사용 기록을 먼저 넣으면 외래 키 확인이 패스 행에 공유 잠금을 걸어,
+		// 같은 패스를 동시에 쓰는 두 요청이 서로의 공유 잠금을 기다리는 데드락이 난다. 진 요청은 버전 충돌로 끝난다.
+		passes.saveAndFlush(pass);
+		// 같은 학생을 먼저 쓴 요청이 있으면 여기서 유니크 키에 걸린다(커밋 때까지 미루지 않는다).
 		Redemption redemption = redemptions
 			.saveAndFlush(Redemption.of(passId, studentId, benefit.campusId(), now));
 		events.publishEvent(new PassRedeemed(EventMetadata.create(PassRedeemed.TYPE, PassRedeemed.VERSION,
