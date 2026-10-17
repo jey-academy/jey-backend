@@ -345,6 +345,8 @@ class PassRedeemApiTest {
 
 		assertThat(again.getResponse().getContentAsString()).isEqualTo(first);
 		assertThat(redemptionsOf(pass)).isOne();
+		await().atMost(Duration.ofSeconds(10)).until(() -> auditOf(pass), rows -> !rows.isEmpty());
+		assertThat(auditOf(pass)).hasSize(1);
 	}
 
 	@Test

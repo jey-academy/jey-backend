@@ -141,8 +141,11 @@ class RedemptionLedgerApiTest {
 		long mine = insert(DONGTAN, "2031-07-01 10:00:00");
 		insert(NEUNGDONG, "2031-07-01 11:00:00");
 
-		list(UserRole.STAFF, DONGTAN, "from=2031-07-01&to=2031-07-01").andExpect(status().isOk())
-			.andExpect(jsonPath("$.items[*].redemptionId", contains((int) mine)));
+		// 건수도 자기 지점만 센다(다른 지점 건수가 새거나 빈 페이지가 생기지 않게). 첫 페이지가 차 있어야 건수 쿼리가 돈다(size=1).
+		list(UserRole.STAFF, DONGTAN, "from=2031-07-01&to=2031-07-01&size=1").andExpect(status().isOk())
+			.andExpect(jsonPath("$.items[*].redemptionId", contains((int) mine)))
+			.andExpect(jsonPath("$.totalElements").value(1))
+			.andExpect(jsonPath("$.totalPages").value(1));
 		list(UserRole.STAFF, DONGTAN, "campusId=2&from=2031-07-01&to=2031-07-01").andExpect(status().isForbidden())
 			.andExpect(jsonPath("$.code").value("AUTH_CAMPUS_NOT_ALLOWED"));
 	}
@@ -153,9 +156,11 @@ class RedemptionLedgerApiTest {
 		long neungdong = insert(NEUNGDONG, "2031-07-02 11:00:00");
 
 		list(UserRole.ADMIN, null, "from=2031-07-02&to=2031-07-02").andExpect(status().isOk())
-			.andExpect(jsonPath("$.items[*].redemptionId", contains((int) neungdong, (int) dongtan)));
+			.andExpect(jsonPath("$.items[*].redemptionId", contains((int) neungdong, (int) dongtan)))
+			.andExpect(jsonPath("$.totalElements").value(2));
 		list(UserRole.ADMIN, null, "campusId=1&from=2031-07-02&to=2031-07-02").andExpect(status().isOk())
-			.andExpect(jsonPath("$.items[*].redemptionId", contains((int) dongtan)));
+			.andExpect(jsonPath("$.items[*].redemptionId", contains((int) dongtan)))
+			.andExpect(jsonPath("$.totalElements").value(1));
 	}
 
 	@Test
