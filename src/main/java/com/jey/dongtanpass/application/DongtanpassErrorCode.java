@@ -80,6 +80,9 @@ public enum DongtanpassErrorCode implements ErrorCode {
 
 	// 장부의 기간이 틀렸다: 시작일이 종료일보다 뒤이거나, 날짜가 받는 범위(2000-01-01~2099-12-31) 밖이다.
 	// 빈 장부로 답하지 않는다(화면의 실수가 "발급 없음"으로 보이지 않게).
+	// 사용 내역의 기간이 1년(시작일 + 1년)을 넘었다. 아주 넓은 조회를 막는다.
+	PERIOD_TOO_LONG(HttpStatus.BAD_REQUEST, "기간은 1년까지 볼 수 있습니다. 기간을 줄여 주세요."),
+
 	INVALID_PERIOD(HttpStatus.BAD_REQUEST, "기간이 올바르지 않습니다. 시작일은 종료일보다 뒤일 수 없고, 2000-01-01부터 2099-12-31 사이여야 합니다.");
 
 	private final HttpStatus status;

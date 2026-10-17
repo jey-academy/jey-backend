@@ -1113,6 +1113,92 @@
         "required" : [ "phone" ],
         "type" : "object"
       },
+      "RedemptionItemResponse" : {
+        "description" : "패스를 쓴 기록 하나. 학부모 번호는 없다",
+        "properties" : {
+          "campusId" : {
+            "description" : "쓴 지점",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "partnerName" : {
+            "description" : "패스를 발급한 연계 학원",
+            "type" : "string"
+          },
+          "passId" : {
+            "description" : "패스 ID",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "passNo" : {
+            "description" : "패스 번호",
+            "type" : "string"
+          },
+          "redeemedAt" : {
+            "description" : "사용 처리한 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "redeemedOn" : {
+            "description" : "사용일(한국 날짜). 기간 조건은 이 날짜로 자른다",
+            "format" : "date",
+            "type" : "string"
+          },
+          "redemptionId" : {
+            "description" : "사용 기록 ID",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "staffId" : {
+            "description" : "처리한 직원의 계정 ID. 로그인 없이 넣은 기록이면 null",
+            "format" : "int64",
+            "type" : [ "integer", "null" ]
+          },
+          "studentId" : {
+            "description" : "학생 ID",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "studentName" : {
+            "description" : "학생 이름. 학생을 찾지 못하면 null(있어서는 안 되는 자료)",
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "campusId", "partnerName", "passId", "passNo", "redeemedAt", "redeemedOn", "redemptionId", "staffId", "studentId", "studentName" ],
+        "type" : "object"
+      },
+      "RedemptionPageResponse" : {
+        "description" : "패스 사용 내역의 한 페이지. 최신 사용 순이다",
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/RedemptionItemResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "description" : "지금 페이지. 0부터",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "size" : {
+            "description" : "한 페이지의 크기",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "totalElements" : {
+            "description" : "조건에 맞는 전체 건수",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalPages" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "items", "page", "size", "totalElements", "totalPages" ],
+        "type" : "object"
+      },
       "RelationUpdateRequest" : {
         "properties" : {
           "relation" : {
@@ -1912,7 +1998,7 @@
     },
     "/api/v1/campuses" : {
       "get" : {
-        "operationId" : "list_1",
+        "operationId" : "list_2",
         "responses" : {
           "200" : {
             "content" : {
@@ -2786,6 +2872,77 @@
         },
         "summary" : "패스 사용 처리",
         "tags" : [ "desk-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/redemptions" : {
+      "get" : {
+        "description" : "최신 사용 순이다. 직원은 지점을 고르지 않으면 소속 지점이고, 다른 지점을 고르면 403(AUTH_CAMPUS_NOT_ALLOWED). 관리자는 고르지 않으면 전 지점이다. 기간은 사용일(한국 날짜)로 자르고 양끝을 포함하며 둘 다 필수다. 시작일이 종료일보다 뒤이거나 2000-01-01~2099-12-31 밖이면 400(DONGTANPASS_INVALID_PERIOD), 1년(시작일 + 1년)을 넘으면 400(DONGTANPASS_PERIOD_TOO_LONG)",
+        "operationId" : "list_1",
+        "parameters" : [ {
+          "description" : "지점. 안 주면 직원은 소속 지점, 관리자는 전 지점",
+          "in" : "query",
+          "name" : "campusId",
+          "required" : false,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "이 사용일(한국 날짜)부터, 포함",
+          "in" : "query",
+          "name" : "from",
+          "required" : true,
+          "schema" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        }, {
+          "description" : "이 사용일(한국 날짜)까지, 포함. 시작일 + 1년까지",
+          "in" : "query",
+          "name" : "to",
+          "required" : true,
+          "schema" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        }, {
+          "description" : "0부터 10000까지",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "format" : "int32",
+            "maximum" : 10000,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RedemptionPageResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "패스 사용 내역",
+        "tags" : [ "redemption-controller" ]
       }
     },
     "/api/v1/guardians/{id}" : {
