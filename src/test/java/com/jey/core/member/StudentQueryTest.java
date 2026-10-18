@@ -24,6 +24,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import static com.jey.core.member.MemberFixtures.DONGTAN;
 import static com.jey.core.member.MemberFixtures.NEUNGDONG;
+import static com.jey.core.member.MemberFixtures.distinctPhonesEndingWith;
 import static com.jey.core.member.MemberFixtures.father;
 import static com.jey.core.member.MemberFixtures.mother;
 import static com.jey.core.member.MemberFixtures.randomLast4;
@@ -241,8 +242,8 @@ class StudentQueryTest {
 	void 맞는_번호가_여럿이어도_학생은_한_번만_나온다() {
 		String name = uniqueName();
 		String last4 = randomLast4();
-		studentService.register(registrationWithPhone(name, randomPhoneEndingWith(last4),
-				mother(randomPhoneEndingWith(last4)), father(randomPhoneEndingWith(last4))));
+		List<PhoneNumber> phones = distinctPhonesEndingWith(last4, 3);
+		studentService.register(registrationWithPhone(name, phones.get(0), mother(phones.get(1)), father(phones.get(2))));
 
 		Page<StudentSummaryView> found = studentService.search(null, name, last4, 0, 20);
 
