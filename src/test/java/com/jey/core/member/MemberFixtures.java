@@ -34,6 +34,16 @@ public final class MemberFixtures {
 		return PhoneNumber.of("010" + String.format("%04d", ThreadLocalRandom.current().nextInt(10_000)) + last4);
 	}
 
+	/** 뒷자리가 정해진 서로 다른 번호 {@code count}개. 한 학생의 학부모처럼 겹치면 안 되는 번호에 쓴다. */
+	public static List<PhoneNumber> distinctPhonesEndingWith(String last4, int count) {
+		if (count < 1 || count > 10_000) {
+			throw new IllegalArgumentException("가운데 4자리로 만들 수 있는 번호는 1~10000개다: " + count);
+		}
+		return ThreadLocalRandom.current().ints(0, 10_000).distinct().limit(count)
+				.mapToObj(middle -> PhoneNumber.of("010" + String.format("%04d", middle) + last4))
+				.toList();
+	}
+
 	public static String randomLast4() {
 		return String.format("%04d", ThreadLocalRandom.current().nextInt(10_000));
 	}
