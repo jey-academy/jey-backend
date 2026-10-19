@@ -48,7 +48,10 @@ enum DongtanpassAuditAction implements AuditAction {
 	REDEEM_LIMITED("dongtanpass.redeem-limited", AuditOutcome.DENIED),
 
 	/** 쓰지 않은 패스를 취소했다. 대상은 그 패스다. 결제 환불은 연계 학원이 따로 한다. */
-	PASS_CANCELED("dongtanpass.pass-canceled", AuditOutcome.DONE);
+	PASS_CANCELED("dongtanpass.pass-canceled", AuditOutcome.DONE),
+
+	/** 반대 방향 패스의 할인율을 바꿨다. 대상은 없고, 새 할인율을 덧붙인다(이미 발급한 패스는 발급 때 값 그대로다). */
+	CAMPUS_BENEFIT_CHANGED("dongtanpass.campus-benefit-changed", AuditOutcome.DONE);
 
 	private final String code;
 

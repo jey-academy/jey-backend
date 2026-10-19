@@ -216,6 +216,30 @@
         "required" : [ "action", "actorId", "campusId", "detail", "id", "occurredAt", "outcome", "targetId", "targetType" ],
         "type" : "object"
       },
+      "CampusBenefitResponse" : {
+        "properties" : {
+          "discountRate" : {
+            "description" : "할인율. 5%는 0.05. 발급할 때 이 값이 패스에 남는다",
+            "type" : "number"
+          }
+        },
+        "required" : [ "discountRate" ],
+        "type" : "object"
+      },
+      "CampusBenefitUpdateRequest" : {
+        "description" : "JEY 발급 패스의 할인율 바꾸기",
+        "properties" : {
+          "discountRate" : {
+            "description" : "할인율. 퍼센트가 아니라 비율이다(5%는 0.05). 0보다 크고 1 이하, 소수 넷째 자리까지",
+            "example" : 0.05,
+            "exclusiveMinimum" : 0,
+            "maximum" : 1,
+            "type" : "number"
+          }
+        },
+        "required" : [ "discountRate" ],
+        "type" : "object"
+      },
       "CampusResponse" : {
         "properties" : {
           "id" : {
@@ -2253,6 +2277,54 @@
           }
         },
         "tags" : [ "discount-type-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/campus-benefit" : {
+      "get" : {
+        "description" : "연계 학원에서 쓰는 JEY 발급 패스의 지금 할인율. 발급할 때 이 값이 패스에 남는다",
+        "operationId" : "get",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CampusBenefitResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "JEY 발급 패스의 할인율",
+        "tags" : [ "campus-benefit-controller" ]
+      },
+      "put" : {
+        "description" : "이후에 발급하는 패스부터 새 값이다. 이미 발급한 패스는 발급 때 값 그대로다",
+        "operationId" : "change",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CampusBenefitUpdateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CampusBenefitResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "JEY 발급 패스의 할인율 바꾸기",
+        "tags" : [ "campus-benefit-controller" ]
       }
     },
     "/api/v1/dongtanpass/consent-notice" : {
