@@ -1,0 +1,46 @@
+# 운영 앱 서버의 컨테이너. 서버에서는 /opt/jey/compose.yaml이다.
+# 언제나 이렇게 부른다: docker compose -p jey -f /opt/jey/compose.yaml --env-file /opt/jey/runtime/slots.env …
+# 슬롯(blue/green)을 띄우고 옮기는 것은 bin/deploy.sh가 한다. 손으로 up 하지 않는다.
+name: jey
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+x-app: &app
+  # 배포 때마다 Parameter Store에서 다시 만든다(권한 600). 이미지와 저장소에는 비밀값이 없다.
+  env_file: /opt/jey/runtime/app.env
+  environment:
+    SPRING_PROFILES_ACTIVE: prod
+    # 전환하는 동안 두 슬롯이 잠깐 같이 뜬다(서버 메모리 2GB, 스왑 2GB).
+    JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=60"
+  mem_limit: 900m
+  # 앱의 종료 대기(20초)보다 길게.
+  stop_grace_period: 30s
+  restart: unless-stopped
+  logging: *logging
+
+services:
+  nginx:
+    image: nginx:1.28
+    # VPC 안에서만 닿는다(CloudFront VPC 오리진). TLS는 CloudFront가 한다.
+    ports: ["80:80"]
+    volumes:
+      - /opt/jey/nginx/conf.d:/etc/nginx/conf.d:ro
+      # active.conf = 지금 슬롯. 배포 스크립트가 쓴다.
+      - /opt/jey/nginx/upstream:/etc/nginx/upstream:ro
+    restart: unless-stopped
+    logging: *logging
+
+  app-blue:
+    <<: *app
+    image: ${ECR_REGISTRY:?slots.env에 ECR_REGISTRY가 없다}/jey-app:${BLUE_TAG:-unset}
+    # 서버 안에서 readiness를 보는 데만 쓴다. 바깥 요청은 Nginx로만 들어온다.
+    ports: ["127.0.0.1:8081:8080"]
+
+  app-green:
+    <<: *app
+    image: ${ECR_REGISTRY:?slots.env에 ECR_REGISTRY가 없다}/jey-app:${GREEN_TAG:-unset}
+    ports: ["127.0.0.1:8082:8080"]
