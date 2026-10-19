@@ -9,10 +9,20 @@ spring:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+      # ElastiCache는 전송 암호화를 켜 두어 TLS가 아니면 연결을 받지 않는다.
+      ssl:
+        enabled: true
 
-# Nginx가 HTTPS를 받아 넘기므로, 원래 요청의 주소와 프로토콜을 전달 헤더에서 읽는다.
+# CloudFront가 HTTPS를 받고 Nginx가 넘기므로, 원래 요청의 프로토콜과 클라이언트 IP를 전달 헤더에서 읽는다.
+# 프로토콜은 Nginx가 CloudFront-Forwarded-Proto를 X-Forwarded-Proto로 옮겨 싣는다.
 server:
   forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      # 프록시로 믿는 주소: VPC(CloudFront VPC 오리진), Docker 브리지(Nginx 컨테이너), 루프백.
+      # X-Forwarded-For를 오른쪽부터 읽어 이 주소들을 건너뛴 첫 주소를 클라이언트로 본다.
+      # 로그인 시도 한도와 패스 다시 연결이 그 IP로 센다. 넓히면 요청자가 적은 주소를 믿게 된다.
+      internal-proxies: '10\.0\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|127\.0\.0\.1'
 
 jey:
   auth:
