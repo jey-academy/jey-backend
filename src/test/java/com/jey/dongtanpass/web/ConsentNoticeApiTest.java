@@ -73,4 +73,25 @@ class ConsentNoticeApiTest {
 		mockMvc.perform(get(NOTICE)).andExpect(status().isForbidden());
 	}
 
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 관리자는_JEY_발급_문구와_버전을_받는다() throws Exception {
+		mockMvc.perform(get("/api/v1/dongtanpass/campus-passes/consent-notice"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.version").value(ConsentNotice.CAMPUS_ISSUED.version()))
+			.andExpect(jsonPath("$.text").value(ConsentNotice.CAMPUS_ISSUED.text()));
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.PARTNER, partnerId = ACTIVE)
+	void 연계_학원은_JEY_발급_문구를_받지_못한다() throws Exception {
+		mockMvc.perform(get("/api/v1/dongtanpass/campus-passes/consent-notice")).andExpect(status().isForbidden());
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1)
+	void 직원은_JEY_발급_문구를_받지_못한다() throws Exception {
+		mockMvc.perform(get("/api/v1/dongtanpass/campus-passes/consent-notice")).andExpect(status().isForbidden());
+	}
+
 }

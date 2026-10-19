@@ -2327,6 +2327,26 @@
         "tags" : [ "campus-benefit-controller" ]
       }
     },
+    "/api/v1/dongtanpass/campus-passes/consent-notice" : {
+      "get" : {
+        "description" : "JEY 발급 화면에 보여 줄 지금 문구와 버전. 발급 요청에 이 버전을 함께 보낸다(연계 학원 발급의 문구와 다르다)",
+        "operationId" : "consentNotice_1",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ConsentNoticeResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "JEY 발급 고지 문구",
+        "tags" : [ "campus-pass-controller" ]
+      }
+    },
     "/api/v1/dongtanpass/consent-notice" : {
       "get" : {
         "description" : "발급 화면에 보여 줄 지금 문구와 버전. 발급 요청에 이 버전을 함께 보낸다",
