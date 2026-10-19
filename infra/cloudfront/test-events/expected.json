@@ -1,0 +1,8 @@
+{
+  "apex-api": { "statusCode": 301, "location": "https://www.example.com/api/v1/x?a=1&a=2" },
+  "apex-root": { "statusCode": 301, "location": "https://www.example.com/" },
+  "www-route": { "uri": "/index.html" },
+  "www-root": { "uri": "/index.html" },
+  "www-asset": { "uri": "/assets/app.3f2a.js" },
+  "www-api": { "uri": "/api/v1/students" }
+}
