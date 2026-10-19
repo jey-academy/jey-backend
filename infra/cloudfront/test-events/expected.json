@@ -4,5 +4,8 @@
   "www-route": { "uri": "/index.html" },
   "www-root": { "uri": "/index.html" },
   "www-asset": { "uri": "/assets/app.3f2a.js" },
-  "www-api": { "uri": "/api/v1/students" }
+  "www-api": { "uri": "/api/v1/students" },
+  "no-host": { "uri": "/index.html" },
+  "www-api-no-slash": { "uri": "/index.html" },
+  "www-route-query": { "uri": "/index.html", "querystring": { "tab": { "value": "billing" } } }
 }

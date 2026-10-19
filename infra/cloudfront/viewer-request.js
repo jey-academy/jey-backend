@@ -1,10 +1,10 @@
 // CloudFront Function jey-prod-viewer-request (cloudfront-js-2.0, 뷰어 요청).
 // 배포의 두 동작(기본 = S3 프론트, /api/* = 앱)에 같이 붙인다. 도메인은 코드에 적지 않는다(요청의 host를 쓴다).
-// 1) 상위 도메인으로 온 요청은 같은 경로·쿼리로 www에 301.
+// 1) host가 www.로 시작하지 않는 요청(상위 도메인, 배포의 기본 도메인)은 같은 경로·쿼리로 www.<host>에 301.
 // 2) www의 프론트 경로(/students/1 처럼 확장자가 없는 것)는 /index.html로 바꿔 S3에 묻는다(SPA).
-//    /api/는 건드리지 않는다. 배포의 오류 페이지 설정(403/404 → index.html)을 쓰지 않는 이유다 —
+//    /api/는 건드리지 않는다(끝 슬래시가 없는 /api는 API가 아니라 프론트 경로로 본다). 배포의 오류 페이지 설정(403/404 → index.html)을 쓰지 않는 이유다 —
 //    그 설정은 /api/*의 404 Problem Details까지 HTML로 덮는다.
-// 시험: infra/cloudfront/test-events (기대값은 expected.json)
+// 시험: node infra/cloudfront/run-tests.mjs (이벤트 test-events/*.json, 기대값 expected.json. CI가 돌린다)
 function handler(event) {
 	var request = event.request;
 	var host = request.headers.host ? request.headers.host.value : '';
