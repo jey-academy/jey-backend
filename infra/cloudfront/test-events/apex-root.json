@@ -1,0 +1,12 @@
+{
+  "version": "1.0",
+  "context": { "eventType": "viewer-request" },
+  "viewer": { "ip": "203.0.113.10" },
+  "request": {
+    "method": "GET",
+    "uri": "/",
+    "querystring": {},
+    "headers": { "host": { "value": "example.com" } },
+    "cookies": {}
+  }
+}

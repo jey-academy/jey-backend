@@ -9,10 +9,28 @@ spring:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+      # ElastiCache는 전송 암호화를 켜 두어 TLS가 아니면 연결을 받지 않는다.
+      ssl:
+        enabled: true
+  session:
+    data:
+      redis:
+        # ElastiCache는 CONFIG 명령을 막아, 앱이 키 만료 알림을 직접 켜려 하면 서버가 뜨지 않는다.
+        # 색인 세션은 만료 알림으로 계정별 색인을 치우므로 알림은 ElastiCache 파라미터 그룹에서 켠다(notify-keyspace-events = Egx).
+        configure-action: none
 
-# Nginx가 HTTPS를 받아 넘기므로, 원래 요청의 주소와 프로토콜을 전달 헤더에서 읽는다.
+# CloudFront가 HTTPS를 받고 Nginx가 넘기므로, 원래 요청의 프로토콜과 클라이언트 IP를 전달 헤더에서 읽는다.
+# 프로토콜은 Nginx가 CloudFront-Forwarded-Proto를 X-Forwarded-Proto로 옮겨 싣는다.
+# 클라이언트 IP는 Nginx가 CloudFront-Viewer-Address에서 뗀 IP 하나를 X-Forwarded-For로 싣는다(요청이 보낸 값은 버린다).
 server:
   forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      # 프록시로 믿는 주소: Docker 브리지(앱에 접속하는 Nginx 컨테이너)와 루프백. VPC 대역은 Nginx를 거치지 않고
+      # VPC 안에서 앱에 닿는 경로를 위한 것이다(지금은 없다). 이 주소에서 온 요청만 X-Forwarded-For를 믿는다.
+      # 로그인 시도 한도와 패스 다시 연결이 그 IP로 센다. Nginx를 못 믿으면 모든 요청이 Nginx 주소 하나로 보이고,
+      # 대역을 넓히면 바깥 주소에서 온 요청이 적은 X-Forwarded-For까지 믿게 된다.
+      internal-proxies: '10\.0\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|127\.0\.0\.1'
 
 jey:
   auth:

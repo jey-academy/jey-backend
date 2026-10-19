@@ -1,6 +1,9 @@
 spring:
   application:
     name: jey-backend
+  lifecycle:
+    # 종료 신호를 받으면 처리 중인 요청을 이만큼 기다린다(graceful 종료는 기본값). 컨테이너의 정지 대기(30초)보다 짧게.
+    timeout-per-shutdown-phase: 20s
   web:
     # 에러 응답 문구(검증 메시지 포함)를 Accept-Language와 무관하게 한국어로 고정한다 (ADR-0014).
     locale: ko_KR
@@ -142,3 +145,14 @@ management:
     web:
       exposure:
         include: health
+  endpoint:
+    health:
+      probes:
+        # 배포 스크립트가 /actuator/health/readiness를 보고 새 슬롯으로 옮긴다. 기본값에 기대지 않고 명시한다.
+        enabled: true
+      group:
+        readiness:
+          # DB·Redis에 닿아야 요청을 받을 수 있다. 닿기 전에 UP이면 고장 난 슬롯으로 옮긴다.
+          # liveness에는 넣지 않는다(DB가 잠깐 멈출 때 멀쩡한 앱을 죽은 것으로 보지 않게).
+          include: readinessState,db,redis
+

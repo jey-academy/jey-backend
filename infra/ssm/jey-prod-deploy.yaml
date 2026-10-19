@@ -1,0 +1,16 @@
+# SSM 문서 jey-prod-deploy (명령 문서). CI 역할은 이 문서만 보낼 수 있다(AWS-RunShellScript는 못 보낸다).
+# 받는 값은 이미지 태그(커밋 SHA) 하나뿐이라, 서버에서 할 수 있는 일은 "이 저장소의 이미지로 배포" 하나다.
+schemaVersion: "2.2"
+description: "Deploy the app with blue/green. Takes one image tag (commit SHA) only."
+parameters:
+  ImageTag:
+    type: String
+    description: "Image tag to deploy (40-char commit SHA)"
+    allowedPattern: "^[0-9a-f]{40}$"
+mainSteps:
+  - action: aws:runShellScript
+    name: deploy
+    inputs:
+      timeoutSeconds: "600"
+      runCommand:
+        - "/opt/jey/bin/deploy.sh {{ ImageTag }}"
