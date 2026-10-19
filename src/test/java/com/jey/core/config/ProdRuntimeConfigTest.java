@@ -28,9 +28,10 @@ class ProdRuntimeConfigTest {
 
 	@Test
 	void 프록시로_믿는_주소는_VPC와_도커와_루프백뿐이다() throws Exception {
-		// 로그인 시도 한도와 패스 다시 연결이 클라이언트 IP로 센다.
-		// 믿는 대역이 넓으면 요청자가 X-Forwarded-For에 적은 주소를 그대로 믿게 되고,
-		// 좁아서 Nginx·CloudFront의 주소를 못 믿으면 모든 요청이 VPC 주소 하나로 보인다.
+		// 로그인 시도 한도와 패스 다시 연결이 클라이언트 IP로 센다. 앱에 접속하는 것은 Nginx 컨테이너(Docker 브리지)다.
+		// 좁아서 Nginx를 못 믿으면 모든 요청이 Nginx 주소 하나로 보이고, 넓으면 바깥 주소에서 온 요청의
+		// X-Forwarded-For까지 믿게 된다. VPC 대역(10.0.x)은 Nginx를 거치지 않고 VPC 안에서 닿는 경로를 위해 둔다.
+		// 실제로 어떤 값이 실려 오는지는 NginxConfigTest가 본다.
 		Pattern trusted = Pattern.compile((String) prodProperty("server.tomcat.remoteip.internal-proxies"));
 
 		assertThat(List.of("10.0.10.17", "10.0.0.7", "172.18.0.3", "127.0.0.1"))

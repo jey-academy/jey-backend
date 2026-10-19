@@ -20,7 +20,8 @@ repositories {
 extra["springModulithVersion"] = "2.1.1"
 extra["springdocVersion"] = "3.1.1"
 // Spring Boot 4.1.1이 넣는 Tomcat 11.0.24에 고칠 수 있는 치명적 취약점이 있다(CVE-2026-65182, -65905, -68525. 11.0.25에서 고쳐짐).
-// 배포의 이미지 검사가 막는다. Boot가 이 버전 이상을 넣는 패치를 내면 이 줄을 지운다.
+// 배포의 이미지 검사가 막는다. 고친 버전 중 가장 최신인 11.0.27로 올린다.
+// Boot가 Tomcat 11.0.27 이상을 넣는 패치를 내면 이 줄을 지운다.
 extra["tomcat.version"] = "11.0.27"
 
 dependencies {
