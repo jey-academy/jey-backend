@@ -53,15 +53,34 @@ jobs:
           path: build/libs/app.jar
           retention-days: 1
 
+  # 서버 쪽 파일의 검사: 배포 스크립트(shellcheck, 실패 경로 시험), CloudFront Function(시험 이벤트).
+  # Nginx 설정은 build의 NginxConfigTest가 실제 nginx로 본다.
+  infra:
+    name: infra
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Shellcheck
+        run: docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:v0.10.0 /mnt/infra/app/bin/deploy.sh /mnt/infra/app/test/deploy.bats /mnt/infra/nat/user-data.sh
+
+      - name: Deploy script tests
+        run: docker run --rm -v "$PWD:/repo" -w /repo bats/bats:1.11.0 infra/app/test
+
+      - name: CloudFront Function tests
+        run: node infra/cloudfront/run-tests.mjs
+
   # main에 머지하면 이미지를 ECR에 올리고, 앱 서버에서 blue/green으로 바꿔 끼운다 (ADR-0039).
-  # AWS 인증은 OIDC(장기 키 없음). 역할은 환경 production에서만 맡을 수 있고, 할 수 있는 일은
-  # 이 이미지를 올리는 것과 배포 문서(태그 하나만 받는다)를 앱 서버에 보내는 것뿐이다.
+  # AWS 인증은 OIDC(장기 키 없음). 역할은 환경 production에서만 맡을 수 있고, 바꿀 수 있는 것은
+  # 이 저장소의 이미지를 올리는 것과 배포 문서(태그 하나만 받는다)를 앱 서버에 보내는 것뿐이다(그 밖에는 결과 읽기와 자기 명령 취소).
   deploy:
     name: deploy
-    needs: build
+    needs: [build, infra]
     # 환경 production도 main만 허용한다(둘 중 하나가 풀려도 다른 쪽이 막는다).
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    # 서버가 Graviton이라 arm 러너에서 에뮬레이션 없이 만든다.
+    # 서버가 Graviton(arm64)이다. 이미지는 어느 PC에서든 만들 수 있지만(Dockerfile), 검사하는 이미지가
+    # 서버에서 돌 바로 그 arm64 이미지가 되도록 arm 러너에서 만든다.
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     environment: production
@@ -119,20 +138,30 @@ jobs:
           docker tag "$IMAGE" "$REGISTRY/$REPOSITORY:$GITHUB_SHA"
           docker push "$REGISTRY/$REPOSITORY:$GITHUB_SHA"
 
-      # 서버의 배포 스크립트가 끝날 때까지(최대 10분) 기다리고, 그 출력을 그대로 보여 준다.
+      # 서버의 배포 스크립트가 끝날 때까지 기다리고, 그 출력을 그대로 보여 준다(앱 로그는 싣지 않는다 — 서버 파일).
+      # 전달 제한 120초: 서버가 그 안에 명령을 받지 못하면 실행하지 않는다(늦게 받은 옛 배포가 나중에 도는 일을 막는다).
+      # 기다림(12분 30초)은 전달 제한 + 문서의 실행 제한(600초)보다 길다.
       - name: Deploy on app server
         env:
           INSTANCE_ID: ${{ vars.APP_INSTANCE_ID }}
         run: |
           command_id=$(aws ssm send-command --document-name jey-prod-deploy --instance-ids "$INSTANCE_ID" \
-            --parameters "ImageTag=$GITHUB_SHA" --comment "deploy $GITHUB_SHA" \
+            --parameters "ImageTag=$GITHUB_SHA" --comment "deploy $GITHUB_SHA" --timeout-seconds 120 \
             --query Command.CommandId --output text)
           echo "SSM command: $command_id"
           status=Pending
-          for _ in $(seq 1 120); do
+          for _ in $(seq 1 150); do
             sleep 5
-            status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" \
-              --query Status --output text 2>/dev/null || echo Pending)
+            # 보낸 직후에는 아직 기록이 없다(InvocationDoesNotExist). 그 밖의 오류(권한, 잘못된 인스턴스 등)는 바로 멈춘다.
+            if ! status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>"$RUNNER_TEMP/ssm.err"); then
+              if grep -q InvocationDoesNotExist "$RUNNER_TEMP/ssm.err"; then
+                status=Pending
+              else
+                echo "::error::배포 결과를 읽지 못했다: $(cat "$RUNNER_TEMP/ssm.err")"
+                exit 1
+              fi
+            fi
             case "$status" in
               Pending|InProgress|Delayed) ;;
               *) break ;;
@@ -142,7 +171,13 @@ jobs:
             aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" \
               --query "$stream" --output text || true
           done
-          if [ "$status" != Success ]; then
-            echo "::error::배포가 끝나지 않았다(SSM 상태: $status). 서버는 이전 슬롯 그대로다."
-            exit 1
-          fi
+          case "$status" in
+            Success) ;;
+            Pending|InProgress|Delayed)
+              aws ssm cancel-command --command-id "$command_id" || true
+              echo "::error::기다리는 동안 끝나지 않아 명령을 취소했다(SSM 상태: $status). 서버에서 이미 돌고 있었다면 끝까지 갈 수 있다 — 서버의 active.conf와 슬롯을 직접 본다."
+              exit 1 ;;
+            *)
+              echo "::error::배포가 성공하지 못했다(SSM 상태: $status). 위 출력의 마지막 줄을 본다: kept = 그 슬롯이 그대로 요청을 받는다, failed = 서버를 직접 본다."
+              exit 1 ;;
+          esac
