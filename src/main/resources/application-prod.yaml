@@ -12,6 +12,12 @@ spring:
       # ElastiCache는 전송 암호화를 켜 두어 TLS가 아니면 연결을 받지 않는다.
       ssl:
         enabled: true
+  session:
+    data:
+      redis:
+        # ElastiCache는 CONFIG 명령을 막아, 앱이 키 만료 알림을 직접 켜려 하면 서버가 뜨지 않는다.
+        # 색인 세션은 만료 알림으로 계정별 색인을 치우므로 알림은 ElastiCache 파라미터 그룹에서 켠다(notify-keyspace-events = Egx).
+        configure-action: none
 
 # CloudFront가 HTTPS를 받고 Nginx가 넘기므로, 원래 요청의 프로토콜과 클라이언트 IP를 전달 헤더에서 읽는다.
 # 프로토콜은 Nginx가 CloudFront-Forwarded-Proto를 X-Forwarded-Proto로 옮겨 싣는다.

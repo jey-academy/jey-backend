@@ -20,6 +20,13 @@ class ProdRuntimeConfigTest {
 	}
 
 	@Test
+	void 운영_프로필은_Redis_설정을_앱에서_바꾸지_않는다() throws Exception {
+		// ElastiCache는 CONFIG 명령을 막는다. 앱이 시작할 때 키 만료 알림을 켜려고 CONFIG SET을 보내면 서버가 뜨지 않는다.
+		// 그 알림은 ElastiCache 파라미터 그룹에서 켠다(notify-keyspace-events).
+		assertThat(prodProperty("spring.session.data.redis.configure-action")).isEqualTo("none");
+	}
+
+	@Test
 	void 프록시로_믿는_주소는_VPC와_도커와_루프백뿐이다() throws Exception {
 		// 로그인 시도 한도와 패스 다시 연결이 클라이언트 IP로 센다.
 		// 믿는 대역이 넓으면 요청자가 X-Forwarded-For에 적은 주소를 그대로 믿게 되고,
