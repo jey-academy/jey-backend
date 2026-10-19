@@ -45,8 +45,17 @@ public enum DongtanpassErrorCode implements ErrorCode {
 	// 관리자가 다시 켜면 같은 요청이 지나가므로 잠시 막은 거부다(멱등 응답으로 보관하지 않는다).
 	DISCOUNT_INACTIVE(HttpStatus.CONFLICT, "패스 할인이 꺼져 있어 사용 처리할 수 없습니다. 관리자에게 문의해 주세요.", true),
 
-	// 사용 처리에 넘긴 학생 ID가 없다.
+	// 사용 처리나 JEY 발급에 넘긴 학생 ID가 없다.
 	STUDENT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생을 찾을 수 없습니다."),
+
+	// JEY 발급: 퇴원한 학생이다. 다니는 학생의 월 결제에 발급한다.
+	STUDENT_NOT_ENROLLED(HttpStatus.CONFLICT, "재원 중인 학생에게만 발급할 수 있습니다."),
+
+	// JEY 발급: 학생의 지점이 패스를 발급하는 지점(패스 제도에 참여하는 지점)이 아니다.
+	STUDENT_NOT_AT_ISSUING_CAMPUS(HttpStatus.CONFLICT, "패스를 발급하는 지점의 학생이 아닙니다."),
+
+	// JEY 발급: 학부모 번호도 학생 본인 번호도 없다. 패스의 학부모 번호(본인 확인·링크 다시 받기에 쓴다)를 정할 수 없다.
+	STUDENT_HAS_NO_CONTACT(HttpStatus.CONFLICT, "학부모나 학생의 연락처가 없어 발급할 수 없습니다. 연락처를 먼저 더해 주세요."),
 
 	// 학생의 지점이 패스를 받는 지점이 아니다(관리자가 다른 지점 학생에게 쓰려 했거나, 등록 폼에서 지점을 잘못 골랐다).
 	STUDENT_NOT_AT_PROVIDING_CAMPUS(HttpStatus.CONFLICT, "패스를 받는 지점의 학생이 아닙니다. 학생의 지점을 확인해 주세요."),
