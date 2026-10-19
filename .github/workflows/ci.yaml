@@ -103,11 +103,18 @@ jobs:
       - id: ecr
         uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
 
+      # 태그는 덮어쓸 수 없다(ECR IMMUTABLE). 같은 커밋을 다시 배포할 때는 이미 올린 이미지를 그대로 쓴다.
       - name: Push image
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
           REPOSITORY: ${{ vars.ECR_REPOSITORY }}
         run: |
+          found=$(aws ecr batch-get-image --repository-name "$REPOSITORY" --image-ids imageTag="$GITHUB_SHA" \
+            --query 'length(images)' --output text)
+          if [ "$found" != 0 ]; then
+            echo "이 커밋의 이미지가 이미 있다. 올리지 않고 그 이미지로 배포한다."
+            exit 0
+          fi
           docker tag "$IMAGE" "$REGISTRY/$REPOSITORY:$GITHUB_SHA"
           docker push "$REGISTRY/$REPOSITORY:$GITHUB_SHA"
 
