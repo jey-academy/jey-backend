@@ -65,6 +65,15 @@ dependencyManagement {
 	}
 }
 
+// 이미지(Dockerfile)가 이 이름으로 받는다. 실행할 수 없는 plain jar는 만들지 않는다.
+tasks.bootJar {
+	archiveFileName = "app.jar"
+}
+
+tasks.jar {
+	enabled = false
+}
+
 tasks.withType<Test> {
 	useJUnitPlatform()
 	// 테스트 JVM의 시간대를 한국도 UTC도 아닌 곳으로 고정한다.
