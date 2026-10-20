@@ -8,7 +8,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
  * "이 타입은 팩터리로만 만든다"를 보는 규칙. record는 생성자를 감출 수 없어서, 생성자를 쓰는 코드를 규칙 테스트로 막는다
- * ({@code EventMetadata.create}, {@code NotificationRequest.causedBy}, {@code RateLimit.of}).
+ * ({@code EventMetadata.create}, {@code NotificationRequest.causedBy}, {@code RateLimit.of}, {@code PartnerDiscount.of}).
  *
  * <p>생성자를 부르는 것({@code new X(…)})뿐 아니라 가리키는 것({@code X::new})도 본다.
  * 부르는 것만 보면 가리키는 쪽이 빠져나간다(ArchUnit은 둘을 따로 다룬다).

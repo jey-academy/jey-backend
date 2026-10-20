@@ -2,6 +2,7 @@ package com.jey.dongtanpass.application;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
 
@@ -10,6 +11,8 @@ import com.jey.core.shared.BusinessException;
 import com.jey.dongtanpass.domain.LinkToken;
 import com.jey.dongtanpass.domain.MaskedName;
 import com.jey.dongtanpass.domain.Partner;
+import com.jey.dongtanpass.domain.PartnerRedemption;
+import com.jey.dongtanpass.domain.PartnerRedemptionRepository;
 import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PartnerRepository;
 import com.jey.dongtanpass.domain.PassRepository;
@@ -45,11 +48,15 @@ public class HolderPassService {
 
 	private final CampusCatalog catalog;
 
+	private final PartnerRedemptionRepository partnerRedemptions;
+
 	private final Clock clock;
 
 	HolderPassService(PassRepository passes, PartnerRepository partners, PassBenefits passBenefits,
-			PassQrCodes passQrCodes, RedemptionRepository redemptions, CampusCatalog catalog, Clock clock) {
+			PassQrCodes passQrCodes, RedemptionRepository redemptions, CampusCatalog catalog,
+			PartnerRedemptionRepository partnerRedemptions, Clock clock) {
 		this.catalog = catalog;
+		this.partnerRedemptions = partnerRedemptions;
 		this.passes = passes;
 		this.redemptions = redemptions;
 		this.partners = partners;
@@ -97,16 +104,20 @@ public class HolderPassService {
 
 	// 사용 기록의 시각을 한국 날짜로 바꾼다. 쓰지 않은 패스에는 기록이 없다.
 	// 사용됨인데 기록이 없으면 있어서는 안 되는 자료다. 화면은 사용일 없이 그대로 보여 주고 경고만 남긴다.
+	// 방향마다 사용 기록이 다른 테이블이다(JEY 지점에서 쓴 기록 / 연계 학원에서 쓴 기록).
 	private LocalDate redeemedOn(Pass pass) {
-		Optional<Redemption> redemption = redemptions.findByPassId(pass.getId());
-		if (redemption.isEmpty() && pass.getStatus() == PassStatus.REDEEMED) {
+		Optional<Instant> redeemedAt = switch (pass.getDirection()) {
+			case PARTNER_ISSUED -> redemptions.findByPassId(pass.getId()).map(Redemption::getRedeemedAt);
+			case CAMPUS_ISSUED -> partnerRedemptions.findByPassId(pass.getId()).map(PartnerRedemption::getRedeemedAt);
+		};
+		if (redeemedAt.isEmpty() && pass.getStatus() == PassStatus.REDEEMED) {
 			log.warn("사용됨인 패스의 사용 기록이 없다: passId={}", pass.getId());
 		}
-		return redemption.map(found -> LocalDate.ofInstant(found.getRedeemedAt(), clock.getZone())).orElse(null);
+		return redeemedAt.map(at -> LocalDate.ofInstant(at, clock.getZone())).orElse(null);
 	}
 
 	/**
-	 * 할인을 주는 곳에 보여 줄 QR 토큰을 준다(JEY 발급분을 확인하는 곳은 연계 학원의 사용 처리다). 부를 때마다 새 토큰이다(수명 {@link PassQrCodes#TTL}).
+	 * 할인을 주는 곳에 보여 줄 QR 토큰을 준다(JEY 발급분은 연계 학원이 확인한다). 부를 때마다 새 토큰이다(수명 {@link PassQrCodes#TTL}).
 	 *
 	 * @throws BusinessException 그 토큰의 패스가 없을 때(404), 기간이 지났거나 취소됐거나 사용된 패스일 때(409)
 	 */

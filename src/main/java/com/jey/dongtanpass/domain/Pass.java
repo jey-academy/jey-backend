@@ -27,7 +27,7 @@ import jakarta.persistence.Version;
  *
  * <p>학부모 번호는 전체 번호 색인만 가진다(ADR-0035). 번호를 꺼낼 수 없고, 데스크가 받은 번호의 색인과 비교하는 데만 쓴다.
  * 만료 여부는 저장하지 않고 만료일과 오늘로 계산한다. 결제 기록은 발급한 뒤 고치지 않는다.
- * 동시에 고치는 요청(사용 처리와 취소 등)은 버전으로 막는다.
+ * 동시에 고치는 요청(사용 처리와 취소 등)은 행 잠금이나 버전으로 막는다(데스크의 사용 처리는 버전, 연계 학원의 사용 처리·취소·링크는 잠금).
  */
 @Entity
 @Table(name = "dongtanpass_pass")
@@ -144,7 +144,7 @@ public class Pass extends BaseEntity {
 	 * JEY 지점이 다니는 학생에게 발급한 패스를 만든다. 검증은 {@link #issue}와 같고 할인율 규칙을 더한다.
 	 *
 	 * @param issuerCampusId 발급한 JEY 지점
-	 * @param studentId 받은 학생. 연계 학원에서 같은 학생의 두 번째 사용을 가려낼 근거로 남긴다(그 확인은 연계 학원의 사용 처리에서 한다 — 아직 없다)
+	 * @param studentId 받은 학생. 연계 학원에서 같은 학생의 두 번째 사용을 가려낼 근거로 남긴다(그 확인은 연계 학원의 사용 처리가 한다, ADR-0041)
 	 * @param discountRate 발급 때의 할인율. 0보다 크고 1 이하, 소수 {@value #DISCOUNT_RATE_SCALE}자리까지
 	 * @throws IllegalArgumentException {@link #issue}의 경우와, 할인율이 비었거나 규칙 밖일 때
 	 */
@@ -246,7 +246,8 @@ public class Pass extends BaseEntity {
 	}
 
 	/**
-	 * 패스를 쓴 것으로 표시하고 그 사용 기록을 만든다. 사용 기록은 이 메서드로만 만든다(사용됨인 패스에는 기록이 하나 있다).
+	 * 패스를 쓴 것으로 표시하고 그 사용 기록을 만든다. JEY 지점의 사용 기록({@link Redemption})은 이 메서드로만 만든다
+	 * (사용됨인 연계 학원 발급분에는 그 기록이 하나 있다. JEY 발급분은 {@link #redeemAtPartner}).
 	 * 기간은 보지 않는다(오늘을 아는 사용 처리가 먼저 본다). 저장은 부르는 쪽이 한다(패스를 먼저, 기록을 나중에).
 	 *
 	 * @param campusId 쓴 지점(패스를 받는 지점)
@@ -264,6 +265,41 @@ public class Pass extends BaseEntity {
 		}
 		requireIssued();
 		Redemption redemption = Redemption.of(id, studentId, campusId, redeemedAt);
+		this.status = PassStatus.REDEEMED;
+		return redemption;
+	}
+
+	/**
+	 * 이 패스에 남은 발급 때 할인율로 연계 학원의 금액을 계산한다. 미리 보기와 사용 처리가 같은 계산을 쓴다.
+	 *
+	 * @throws IllegalArgumentException 규칙 밖의 수강료({@link PartnerDiscount#acceptsFee})
+	 */
+	public PartnerDiscount partnerDiscountFor(Money originalFee) {
+		return PartnerDiscount.of(originalFee, discountRate);
+	}
+
+	/**
+	 * JEY 발급 패스를 연계 학원에서 쓴 것으로 표시하고 그 사용 기록을 만든다. 연계 학원 사용 기록은 이 메서드로만 만든다.
+	 * 금액은 이 패스의 할인율로 계산한다({@link #partnerDiscountFor}). 기간·본인·신규는 보지 않는다(부르는 쪽이 먼저 본다).
+	 * 저장은 부르는 쪽이 한다(패스를 먼저, 기록을 나중에).
+	 *
+	 * @param partnerId 쓴 연계 학원
+	 * @param originalFee 원래 수강료(첫 달 한 달 치)
+	 * @throws IllegalStateException 저장하지 않은 패스이거나 연계 학원이 발급한 패스일 때(부르는 쪽이 먼저 409로 막는다 — 코드의 버그)
+	 * @throws PassStatusException 발급 상태가 아닐 때(이미 사용됨, 취소됨)
+	 * @throws IllegalArgumentException 규칙 밖의 수강료이거나 사용 시각이 없을 때
+	 */
+	public PartnerRedemption redeemAtPartner(long partnerId, Money originalFee, Instant redeemedAt) {
+		if (id == null) {
+			throw new IllegalStateException("저장한 패스만 사용 처리할 수 있다");
+		}
+		if (direction != PassDirection.CAMPUS_ISSUED) {
+			throw new IllegalStateException("연계 학원이 발급한 패스는 연계 학원에서 사용 처리하지 않는다: passId=" + id);
+		}
+		requireIssued();
+		// 상태를 바꾸기 전에 금액을 계산한다(규칙 밖의 수강료면 패스는 그대로다).
+		PartnerRedemption redemption = PartnerRedemption.of(id, partnerId, studentId, partnerDiscountFor(originalFee),
+				redeemedAt);
 		this.status = PassStatus.REDEEMED;
 		return redemption;
 	}

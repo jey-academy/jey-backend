@@ -38,13 +38,13 @@ enum DongtanpassAuditAction implements AuditAction {
 	/** 학부모 링크 다시 받기가 틀린 시도 한도에 처음 막혔다(구간마다 한 번). 대상은 없다. */
 	HOLDER_RELINK_LIMITED("dongtanpass.holder-relink-limited", AuditOutcome.DENIED),
 
-	/** 데스크의 패스 번호 확인이 계정별 한도에 처음 막혔다(구간마다 한 번). 대상은 없다. 행위자가 그 계정이다. */
+	/** 데스크나 연계 학원의 패스 번호 확인이 계정별 한도에 처음 막혔다(구간마다 한 번). 대상은 없다. 행위자가 그 계정이다. */
 	PASS_NO_VERIFY_LIMITED("dongtanpass.pass-no-verify-limited", AuditOutcome.DENIED),
 
-	/** 데스크의 본인 미리 확인이 계정별 한도에 처음 막혔다(구간마다 한 번). 대상은 없다. 행위자가 그 계정이다. */
+	/** 데스크나 연계 학원의 본인 미리 확인이 계정별 한도에 처음 막혔다(구간마다 한 번). 대상은 없다. 행위자가 그 계정이다. */
 	HOLDER_CHECK_LIMITED("dongtanpass.holder-check-limited", AuditOutcome.DENIED),
 
-	/** 데스크의 사용 처리가 계정별 한도에 처음 막혔다(구간마다 한 번). 대상은 없다. 행위자가 그 계정이다. */
+	/** 데스크나 연계 학원의 사용 처리가 계정별 한도에 처음 막혔다(구간마다 한 번). 대상은 없다. 행위자가 그 계정이다. */
 	REDEEM_LIMITED("dongtanpass.redeem-limited", AuditOutcome.DENIED),
 
 	/** 쓰지 않은 패스를 취소했다. 대상은 그 패스다(두 방향 모두). 결제 환불은 발급한 쪽이 따로 한다. */

@@ -6,7 +6,7 @@ import com.jey.core.auth.api.RateLimit;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * 데스크의 패스 번호 확인 한도({@code jey.dongtanpass.pass-no-verify.*}). 계정마다 맞든 틀리든 센다.
+ * 데스크·연계 학원의 패스 번호 확인 한도({@code jey.dongtanpass.pass-no-verify.*}). 계정마다 맞든 틀리든 센다.
  * 값이 없거나 잘못되면 서버가 뜨지 않는다.
  *
  * @param max 한 계정이 구간 안에 패스 번호로 확인할 수 있는 횟수

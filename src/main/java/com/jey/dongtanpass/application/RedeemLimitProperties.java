@@ -6,7 +6,7 @@ import com.jey.core.auth.api.RateLimit;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * 데스크의 패스 사용 처리 한도({@code jey.dongtanpass.redeem-limit.*}). 계정마다 맞든 틀리든 센다.
+ * 데스크·연계 학원의 패스 사용 처리 한도({@code jey.dongtanpass.redeem-limit.*}). 계정마다 맞든 틀리든 센다.
  * 사용 처리는 이름·학부모 번호가 패스와 맞는지를 오류 코드로 알려 주므로, 패스 ID를 바꿔 가며 패스 주인을 훑지 못하게 막는다.
  * 값이 없거나 잘못되면 서버가 뜨지 않는다.
  *

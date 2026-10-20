@@ -6,7 +6,7 @@ import com.jey.core.auth.api.RateLimit;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * 데스크의 본인 미리 확인 한도({@code jey.dongtanpass.holder-check.*}). 계정마다 맞든 틀리든 센다(ADR-0033).
+ * 데스크·연계 학원의 본인 미리 확인 한도({@code jey.dongtanpass.holder-check.*}). 계정마다 맞든 틀리든 센다(ADR-0033).
  * 값이 없거나 잘못되면 서버가 뜨지 않는다.
  *
  * @param max 한 계정이 구간 안에 이름과 학부모 번호를 패스와 맞춰 볼 수 있는 횟수

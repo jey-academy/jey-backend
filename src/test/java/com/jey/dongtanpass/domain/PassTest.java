@@ -366,6 +366,68 @@ class PassTest {
 		assertThat(pass.getStatus()).isEqualTo(PassStatus.ISSUED);
 	}
 
+	// JEY 발급 패스는 연계 학원에서 쓴다. 쓰면 사용됨이 되고, 금액이 든 연계 학원 사용 기록이 하나 생긴다.
+	@Test
+	void JEY_발급_패스를_연계_학원에서_쓰면_사용됨이_되고_기록을_만든다() {
+		Pass pass = issueAtCampus(new BigDecimal("0.05"));
+		ReflectionTestUtils.setField(pass, "id", 9L);
+
+		PartnerRedemption redemption = pass.redeemAtPartner(3L, Money.of(280000), ISSUED_AT);
+
+		assertThat(pass.getStatus()).isEqualTo(PassStatus.REDEEMED);
+		assertThat(redemption.getPassId()).isEqualTo(9L);
+		assertThat(redemption.getPartnerId()).isEqualTo(3L);
+		assertThat(redemption.getStudentId()).isEqualTo(42L);
+		assertThat(redemption.getOriginalFee()).isEqualTo(Money.of(280000));
+		assertThat(redemption.getDiscountRate()).isEqualByComparingTo("0.05");
+		assertThat(redemption.getDiscountAmount()).isEqualTo(Money.of(14000));
+		assertThat(redemption.getPayableAmount()).isEqualTo(Money.of(266000));
+		assertThat(redemption.getRedeemedAt()).isEqualTo(ISSUED_AT);
+	}
+
+	@Test
+	void 연계_학원이_발급한_패스로는_연계_학원_사용_기록을_만들지_않는다() {
+		Pass pass = issue("김하윤", ISSUED_ON);
+		ReflectionTestUtils.setField(pass, "id", 9L);
+
+		assertThatThrownBy(() -> pass.redeemAtPartner(3L, Money.of(280000), ISSUED_AT))
+			.isInstanceOf(IllegalStateException.class);
+		assertThat(pass.getStatus()).isEqualTo(PassStatus.ISSUED);
+	}
+
+	@Test
+	void 연계_학원에서_쓴_패스는_다시_쓰지_못한다() {
+		Pass pass = issueAtCampus(new BigDecimal("0.05"));
+		ReflectionTestUtils.setField(pass, "id", 9L);
+		pass.redeemAtPartner(3L, Money.of(280000), ISSUED_AT);
+
+		assertThatThrownBy(() -> pass.redeemAtPartner(4L, Money.of(280000), ISSUED_AT))
+			.isInstanceOf(PassStatusException.class);
+	}
+
+	// 금액은 늘 이 패스에 남은 발급 때 할인율로 계산한다(미리 보기와 사용 처리가 같은 값). 밖에서 다른 할인율을 넣을 길이 없다.
+	@Test
+	void 연계_학원의_금액은_이_패스의_할인율로_계산한다() {
+		Pass pass = issueAtCampus(new BigDecimal("0.0725"));
+		ReflectionTestUtils.setField(pass, "id", 9L);
+
+		assertThat(pass.partnerDiscountFor(Money.of(300000)).payableAmount()).isEqualTo(Money.of(278250));
+		PartnerRedemption redemption = pass.redeemAtPartner(3L, Money.of(300000), ISSUED_AT);
+		assertThat(redemption.getDiscountRate()).isEqualByComparingTo("0.0725");
+		assertThat(redemption.getPayableAmount()).isEqualTo(Money.of(278250));
+		assertThat(redemption.getDiscountAmount()).isEqualTo(Money.of(21750));
+	}
+
+	@Test
+	void 규칙_밖의_수강료로는_쓰지_않는다() {
+		Pass pass = issueAtCampus(new BigDecimal("0.05"));
+		ReflectionTestUtils.setField(pass, "id", 9L);
+
+		assertThatThrownBy(() -> pass.redeemAtPartner(3L, Money.ZERO, ISSUED_AT))
+			.isInstanceOf(IllegalArgumentException.class);
+		assertThat(pass.getStatus()).isEqualTo(PassStatus.ISSUED);
+	}
+
 	private static Pass issue(String name, LocalDate issuedOn) {
 		return Pass.issue(1L, "DT-ABC234", HASH, name, "idx", issuedOn.atTime(10, 0).atZone(SEOUL).toInstant(), SEOUL,
 				issuedOn, Money.of(150000), PaymentMethod.CARD);

@@ -120,6 +120,23 @@ class HolderViewApiTest {
 			.andExpect(header().doesNotExist("Set-Cookie"));
 	}
 
+	// JEY 발급 패스는 연계 학원에서 쓴다. 사용일은 연계 학원 사용 기록의 날짜다.
+	@Test
+	void JEY_발급_패스를_연계_학원에서_쓰면_사용일을_한국_날짜로_준다() throws Exception {
+		LinkToken link = LinkToken.generate(RANDOM);
+		Pass pass = saveCampusPass(link, new BigDecimal("0.05"));
+		jdbc.update("UPDATE dongtanpass_pass SET status = 'REDEEMED' WHERE id = ?", pass.getId());
+		jdbc.update("""
+				INSERT INTO dongtanpass_partner_redemption (pass_id, partner_id, student_id, original_fee, discount_rate,
+				  discount_amount, payable_amount, redeemed_at, created_at, updated_at)
+				VALUES (?, ?, ?, 280000, 0.05, 14000, 266000, '2026-10-21 00:30:00', NOW(6), NOW(6))
+				""", pass.getId(), PARTNER, pass.getStudentId());
+
+		view(link.raw()).andExpect(status().isOk())
+			.andExpect(jsonPath("$.state").value("REDEEMED"))
+			.andExpect(jsonPath("$.redeemedOn").value("2026-10-21"));
+	}
+
 	// 쓰지 않은 패스는 사용일이 null이다(칸은 늘 있다). 취소한 패스도 null이다(취소일은 싣지 않는다).
 	@ParameterizedTest(name = "{0}")
 	@ValueSource(strings = { "ISSUED", "CANCELED" })
