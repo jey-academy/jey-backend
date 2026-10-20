@@ -45,6 +45,9 @@ public enum DongtanpassErrorCode implements ErrorCode {
 	// 관리자가 다시 켜면 같은 요청이 지나가므로 잠시 막은 거부다(멱등 응답으로 보관하지 않는다).
 	DISCOUNT_INACTIVE(HttpStatus.CONFLICT, "패스 할인이 꺼져 있어 사용 처리할 수 없습니다. 관리자에게 문의해 주세요.", true),
 
+	// 동탄관 데스크가 JEY 지점이 발급한 패스를 확인·본인 확인·사용 처리하려 했다. 그 패스는 연계 학원에서 쓴다.
+	PASS_FOR_PARTNER_USE(HttpStatus.CONFLICT, "JEY 어학원이 발급한 패스입니다. 연계 학원에서만 쓸 수 있습니다."),
+
 	// 사용 처리나 JEY 발급에 넘긴 학생 ID가 없다.
 	STUDENT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생을 찾을 수 없습니다."),
 

@@ -141,6 +141,7 @@ public class PassRedeemService {
 		Instant now = clock.instant();
 		Pass pass = locking.load(passId)
 			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
+		DeskChecks.requirePartnerIssued(pass);
 		DeskChecks.requireUsable(pass, todayAt(now));
 		if (!benefit.discountActive()) {
 			throw new BusinessException(DongtanpassErrorCode.DISCOUNT_INACTIVE);
