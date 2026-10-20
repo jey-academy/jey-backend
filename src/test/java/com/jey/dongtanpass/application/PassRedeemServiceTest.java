@@ -92,7 +92,8 @@ class PassRedeemServiceTest {
 		when(currentActor.get()).thenReturn(new Actor.User(STAFF.id()));
 		when(passes.findById(PASS_ID)).thenReturn(Optional.of(issuedPass()));
 		when(members.findStudent(STUDENT_ID)).thenReturn(Optional.of(
-				new StudentInfo(STUDENT_ID, 1L, null, "김하윤", true, CLOCK.instant().minus(Duration.ofHours(1)))));
+				new StudentInfo(STUDENT_ID, 1L, null, "김하윤", true, CLOCK.instant().minus(Duration.ofHours(1)),
+						"동탄고1")));
 		when(members.hasGuardianWithPhoneIndex(STUDENT_ID, "phone-index")).thenReturn(true);
 		service = serviceWith(new OptimisticRedeemLocking(passes, redemptions));
 	}

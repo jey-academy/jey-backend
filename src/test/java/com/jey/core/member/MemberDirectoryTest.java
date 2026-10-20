@@ -53,7 +53,7 @@ class MemberDirectoryTest {
 		assertThat(directory.findStudent(created.id())).get()
 				.usingRecursiveComparison()
 				.ignoringFields("createdAt")
-				.isEqualTo(new StudentInfo(created.id(), DONGTAN, null, name, true, null));
+				.isEqualTo(new StudentInfo(created.id(), DONGTAN, null, name, true, null, "동탄고1"));
 		assertThat(directory.findStudent(999_999_999L)).isEmpty();
 	}
 
