@@ -1,0 +1,236 @@
+package com.jey.billing.application;
+
+import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import com.jey.billing.domain.DiscountRate;
+import com.jey.billing.domain.DiscountTooLargeException;
+import com.jey.billing.domain.Invoice;
+import com.jey.billing.domain.InvoiceLine;
+import com.jey.billing.domain.InvoiceLineDiscount;
+import com.jey.billing.domain.InvoiceRepository;
+import com.jey.billing.domain.LineCharge;
+import com.jey.billing.domain.TooManyDiscountsException;
+import com.jey.billing.domain.TuitionCalculator;
+import com.jey.core.audit.api.AuditEntry;
+import com.jey.core.audit.api.AuditLog;
+import com.jey.core.auth.api.AuthenticatedUser;
+import com.jey.core.auth.api.CampusScope;
+import com.jey.core.campus.api.CampusCatalog;
+import com.jey.core.campus.api.ClassFee;
+import com.jey.core.campus.api.ClassInfo;
+import com.jey.core.campus.api.DiscountTypeInfo;
+import com.jey.core.member.api.MemberDirectory;
+import com.jey.core.member.api.MemberRefs;
+import com.jey.core.member.api.StudentInfo;
+import com.jey.core.shared.BusinessException;
+import com.jey.core.shared.Money;
+import com.jey.core.shared.UniqueKeys;
+
+/**
+ * 학생의 한 달 수강료를 계산하고(미리 계산) 청구로 남긴다. 데스크 직원과 관리자가 부른다(컨트롤러가 막는다).
+ *
+ * <p>청구는 학생의 지점에 속한다(직원은 소속 지점의 학생만). 학생은 재원 중이어야 하고, 반은 켜져 있고 학생과 같은 지점이어야 하며,
+ * 할인 유형은 켜져 있어야 한다. 금액은 {@link TuitionCalculator}가 설정의 할인 방식({@link BillingProperties})으로 계산한다.
+ * 한 학생 한 달에 열린 청구는 하나다(유니크 키가 마지막에 막는다 — 동시 요청도).
+ */
+@Service
+@EnableConfigurationProperties(BillingProperties.class)
+public class InvoiceService {
+
+	private final InvoiceRepository invoices;
+
+	private final CampusCatalog catalog;
+
+	private final MemberDirectory members;
+
+	private final BillingProperties properties;
+
+	private final AuditLog auditLog;
+
+	private final TransactionTemplate transaction;
+
+	InvoiceService(InvoiceRepository invoices, CampusCatalog catalog, MemberDirectory members,
+			BillingProperties properties, AuditLog auditLog, TransactionTemplate transaction) {
+		this.invoices = invoices;
+		this.catalog = catalog;
+		this.members = members;
+		this.properties = properties;
+		this.auditLog = auditLog;
+		this.transaction = transaction;
+	}
+
+	/**
+	 * 저장하지 않고 계산만 한다.
+	 *
+	 * @throws BusinessException 학생·반·할인이 규칙 밖이거나, 다룰 수 없는 지점의 학생일 때
+	 */
+	@Transactional(readOnly = true)
+	public InvoiceDetail quote(InvoiceDraft draft, AuthenticatedUser user) {
+		Prepared prepared = prepare(draft, user);
+		List<InvoiceDetail.LineDetail> lines = new ArrayList<>();
+		for (PreparedLine line : prepared.lines()) {
+			LineCharge charge = charge(line, prepared.discounts());
+			lines.add(lineDetail(line.info(), line.draft().lessonCount(), charge.listAmount(),
+					charge.discounts().stream()
+						.map(applied -> new InvoiceDetail.DiscountDetail(applied.code(), nameOf(prepared, applied.code()),
+								applied.rate(), applied.amount()))
+						.toList(),
+					charge.chargeAmount()));
+		}
+		return new InvoiceDetail(null, prepared.student().campusId(), draft.studentId(), draft.targetMonth(), null,
+				properties.discountPolicy(),
+				lines.stream().map(InvoiceDetail.LineDetail::chargeAmount).reduce(Money.ZERO, Money::plus), lines);
+	}
+
+	/**
+	 * 청구를 만든다. 감사 로그({@code billing.invoice-created})가 같은 트랜잭션에 남는다.
+	 *
+	 * @throws BusinessException {@link #quote}의 거부에 더해, 그 학생의 그 달 청구가 이미 있을 때
+	 */
+	public InvoiceDetail issue(InvoiceDraft draft, AuthenticatedUser user) {
+		try {
+			return transaction.execute(status -> {
+				Prepared prepared = prepare(draft, user);
+				List<InvoiceLine> lines = prepared.lines().stream()
+					.map(line -> InvoiceLine.of(line.fee().classId(), line.draft().lessonCount(), line.fee().baseFee8(),
+							charge(line, prepared.discounts())))
+					.toList();
+				Invoice saved = invoices.saveAndFlush(Invoice.issue(prepared.student().campusId(), draft.studentId(),
+						draft.targetMonth(), properties.discountPolicy(), lines));
+				auditLog.record(AuditEntry.of(BillingAuditAction.INVOICE_CREATED)
+					.target(MemberRefs.student(saved.getStudentId()))
+					.campus(saved.getCampusId())
+					.with("invoiceId", saved.getId())
+					.with("targetMonth", saved.getTargetMonth().toString())
+					.with("totalAmount", saved.getTotalAmount().amount().longValueExact()));
+				return detail(saved);
+			});
+		}
+		catch (DataIntegrityViolationException e) {
+			if (UniqueKeys.isViolationOf(e, Invoice.OPEN_UNIQUE_KEY)) {
+				throw new BusinessException(BillingErrorCode.INVOICE_ALREADY_EXISTS);
+			}
+			throw e;
+		}
+	}
+
+	/**
+	 * @throws BusinessException 없는 청구이거나 다룰 수 없는 지점의 청구일 때
+	 */
+	@Transactional(readOnly = true)
+	public InvoiceDetail get(long invoiceId, AuthenticatedUser user) {
+		Invoice invoice = invoices.findById(invoiceId)
+			.orElseThrow(() -> new BusinessException(BillingErrorCode.INVOICE_NOT_FOUND));
+		user.requireCampus(invoice.getCampusId());
+		return detail(invoice);
+	}
+
+	/** 그 달의 청구. 학생 ID 순. */
+	@Transactional(readOnly = true)
+	public Page<InvoiceDetail> list(CampusScope scope, YearMonth targetMonth, int page, int size) {
+		PageRequest pageable = PageRequest.of(page, size, Sort.by("studentId", "id"));
+		Page<Invoice> found = switch (scope) {
+			case CampusScope.All all -> invoices.findByTargetMonth(targetMonth, pageable);
+			case CampusScope.Only only -> invoices.findByCampusIdAndTargetMonth(only.campusId(), targetMonth, pageable);
+		};
+		return found.map(this::detail);
+	}
+
+	private Prepared prepare(InvoiceDraft draft, AuthenticatedUser user) {
+		StudentInfo student = members.findStudent(draft.studentId())
+			.orElseThrow(() -> new BusinessException(BillingErrorCode.STUDENT_NOT_FOUND));
+		user.requireCampus(student.campusId());
+		if (!student.enrolled()) {
+			throw new BusinessException(BillingErrorCode.STUDENT_NOT_ENROLLED);
+		}
+		List<PreparedLine> lines = new ArrayList<>();
+		for (InvoiceDraft.LineDraft line : draft.lines()) {
+			ClassInfo info = catalog.findClass(line.classId())
+				.orElseThrow(() -> new BusinessException(BillingErrorCode.CLASS_NOT_FOUND));
+			ClassFee fee = catalog.findClassFee(line.classId())
+				.orElseThrow(() -> new BusinessException(BillingErrorCode.CLASS_NOT_FOUND));
+			if (!fee.active()) {
+				throw new BusinessException(BillingErrorCode.CLASS_INACTIVE);
+			}
+			if (fee.campusId() != student.campusId()) {
+				throw new BusinessException(BillingErrorCode.CLASS_NOT_AT_STUDENT_CAMPUS);
+			}
+			lines.add(new PreparedLine(line, info, fee));
+		}
+		List<DiscountTypeInfo> discounts = new ArrayList<>();
+		for (String code : draft.discountCodes()) {
+			DiscountTypeInfo type = catalog.findDiscountType(code)
+				.orElseThrow(() -> new BusinessException(BillingErrorCode.DISCOUNT_TYPE_NOT_FOUND));
+			if (!type.active()) {
+				throw new BusinessException(BillingErrorCode.DISCOUNT_TYPE_INACTIVE);
+			}
+			discounts.add(type);
+		}
+		return new Prepared(student, lines, discounts);
+	}
+
+	private LineCharge charge(PreparedLine line, List<DiscountTypeInfo> discounts) {
+		List<DiscountRate> rates = discounts.stream().map(type -> new DiscountRate(type.code(), type.rate())).toList();
+		try {
+			return TuitionCalculator.charge(line.fee().baseFee8(), line.draft().lessonCount(), rates,
+					properties.discountPolicy());
+		}
+		catch (TooManyDiscountsException e) {
+			throw new BusinessException(BillingErrorCode.TOO_MANY_DISCOUNTS);
+		}
+		catch (DiscountTooLargeException e) {
+			throw new BusinessException(BillingErrorCode.DISCOUNT_TOO_LARGE);
+		}
+	}
+
+	// 저장한 청구에 반·할인의 지금 이름을 붙인다. 반과 할인 유형은 지우지 않으므로 없으면 자료가 깨진 것이다.
+	private InvoiceDetail detail(Invoice invoice) {
+		List<InvoiceDetail.LineDetail> lines = invoice.getLines().stream()
+			.map(line -> lineDetail(
+					catalog.findClass(line.getClassId())
+						.orElseThrow(() -> new IllegalStateException("청구 라인의 반이 없다: " + line.getClassId())),
+					line.getLessonCount(), line.getListAmount(),
+					line.getDiscounts().stream().map(this::discountDetail).toList(), line.getChargeAmount()))
+			.toList();
+		return new InvoiceDetail(invoice.getId(), invoice.getCampusId(), invoice.getStudentId(),
+				invoice.getTargetMonth(), invoice.getStatus(), invoice.getDiscountPolicy(), invoice.getTotalAmount(),
+				lines);
+	}
+
+	private InvoiceDetail.DiscountDetail discountDetail(InvoiceLineDiscount discount) {
+		String name = catalog.findDiscountType(discount.getDiscountTypeCode())
+			.map(DiscountTypeInfo::name)
+			.orElseThrow(() -> new IllegalStateException("청구의 할인 유형이 없다: " + discount.getDiscountTypeCode()));
+		return new InvoiceDetail.DiscountDetail(discount.getDiscountTypeCode(), name, discount.getRate(),
+				discount.getAmount());
+	}
+
+	private static InvoiceDetail.LineDetail lineDetail(ClassInfo info, int lessonCount,
+			Money listAmount, List<InvoiceDetail.DiscountDetail> discounts,
+			Money chargeAmount) {
+		return new InvoiceDetail.LineDetail(info.classId(), info.name(), lessonCount, listAmount, discounts,
+				chargeAmount);
+	}
+
+	private static String nameOf(Prepared prepared, String code) {
+		return prepared.discounts().stream().filter(type -> type.code().equals(code)).findFirst().orElseThrow().name();
+	}
+
+	private record Prepared(StudentInfo student, List<PreparedLine> lines, List<DiscountTypeInfo> discounts) {
+	}
+
+	private record PreparedLine(InvoiceDraft.LineDraft draft, ClassInfo info, ClassFee fee) {
+	}
+
+}

@@ -882,6 +882,200 @@
         "required" : [ "token" ],
         "type" : "object"
       },
+      "InvoiceDiscountResponse" : {
+        "description" : "라인에 적용한 할인 하나",
+        "properties" : {
+          "amount" : {
+            "description" : "이 할인이 줄인 금액(원). 할인을 순서대로 하나씩 더 적용했을 때 줄어든 만큼",
+            "type" : "number"
+          },
+          "code" : {
+            "description" : "할인 유형 코드",
+            "type" : "string"
+          },
+          "name" : {
+            "description" : "할인 유형 이름(지금 이름)",
+            "type" : "string"
+          },
+          "rate" : {
+            "description" : "할인율. 5%는 0.05",
+            "type" : "number"
+          }
+        },
+        "required" : [ "amount", "code", "name", "rate" ],
+        "type" : "object"
+      },
+      "InvoiceLineRequest" : {
+        "description" : "청구 라인 하나의 입력",
+        "properties" : {
+          "classId" : {
+            "description" : "반 ID. 학생과 같은 지점의 켜진 반",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "lessonCount" : {
+            "description" : "그 달의 수업 횟수. 1~31",
+            "format" : "int32",
+            "maximum" : 31,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        },
+        "required" : [ "classId", "lessonCount" ],
+        "type" : "object"
+      },
+      "InvoiceLineResponse" : {
+        "description" : "청구 라인 하나(반 하나). 정가 = 청구액 + 할인 금액의 합",
+        "properties" : {
+          "chargeAmount" : {
+            "description" : "청구액(원). 1원 미만 버림",
+            "type" : "number"
+          },
+          "classId" : {
+            "description" : "반 ID",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "className" : {
+            "description" : "반 이름(지금 이름)",
+            "type" : "string"
+          },
+          "discounts" : {
+            "description" : "고른 순서대로",
+            "items" : {
+              "$ref" : "#/components/schemas/InvoiceDiscountResponse"
+            },
+            "type" : "array"
+          },
+          "lessonCount" : {
+            "description" : "그 달의 수업 횟수",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "listAmount" : {
+            "description" : "할인 없는 그 횟수의 금액(원). 1원 미만 버림",
+            "type" : "number"
+          }
+        },
+        "required" : [ "chargeAmount", "classId", "className", "discounts", "lessonCount", "listAmount" ],
+        "type" : "object"
+      },
+      "InvoicePageResponse" : {
+        "description" : "그 달 청구의 한 페이지. 학생 ID 순이다",
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/InvoiceResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "description" : "지금 페이지. 0부터",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "size" : {
+            "description" : "한 페이지의 크기",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "totalElements" : {
+            "description" : "조건에 맞는 전체 건수",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalPages" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "items", "page", "size", "totalElements", "totalPages" ],
+        "type" : "object"
+      },
+      "InvoiceRequest" : {
+        "description" : "청구 계산·만들기의 입력. 할인은 청구 전체에 고르고 반마다 같은 할인이 붙는다",
+        "properties" : {
+          "discountCodes" : {
+            "description" : "할인 유형 코드(예: SIBLING_5). 0~4개, 같은 할인은 한 번. 고른 순서대로 계산한다(순차 방식이면 금액이 달라진다). 없으면 비우거나 보내지 않는다",
+            "items" : {
+              "maxLength" : 30,
+              "minLength" : 0,
+              "type" : "string"
+            },
+            "maxItems" : 4,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "lines" : {
+            "description" : "반과 그 달의 수업 횟수. 1~4개, 같은 반은 한 번. 반 나눔이면 둘 이상",
+            "items" : {
+              "$ref" : "#/components/schemas/InvoiceLineRequest"
+            },
+            "maxItems" : 4,
+            "minItems" : 1,
+            "type" : "array"
+          },
+          "studentId" : {
+            "description" : "학생 ID. 재원 중이어야 한다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "targetMonth" : {
+            "description" : "대상 월(YYYY-MM). 2000-01~2099-12",
+            "example" : "2026-11",
+            "type" : "string"
+          }
+        },
+        "required" : [ "lines", "studentId", "targetMonth" ],
+        "type" : "object"
+      },
+      "InvoiceResponse" : {
+        "description" : "수강료 청구(또는 미리 계산한 결과). 금액은 원 단위 숫자. 8회 기준 수강료는 싣지 않는다",
+        "properties" : {
+          "campusId" : {
+            "description" : "청구가 속한 지점(학생의 지점)",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "discountPolicy" : {
+            "description" : "할인이 여러 개일 때의 계산 방식. ADDITIVE 할인율을 더해 한 번에, SEQUENTIAL 앞의 할인을 뺀 금액에서 다음 할인, SINGLE 하나만. 만든 청구는 만들 때의 방식이다",
+            "enum" : [ "ADDITIVE", "SEQUENTIAL", "SINGLE" ],
+            "type" : "string"
+          },
+          "id" : {
+            "description" : "청구 ID. 미리 계산이면 null",
+            "format" : "int64",
+            "type" : [ "integer", "null" ]
+          },
+          "lines" : {
+            "items" : {
+              "$ref" : "#/components/schemas/InvoiceLineResponse"
+            },
+            "type" : "array"
+          },
+          "status" : {
+            "description" : "상태. ISSUED 만들었고 결제 전. 미리 계산이면 null",
+            "enum" : [ "ISSUED" ],
+            "type" : [ "string", "null" ]
+          },
+          "studentId" : {
+            "description" : "학생 ID",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "targetMonth" : {
+            "description" : "대상 월(YYYY-MM)",
+            "example" : "2026-11",
+            "type" : "string"
+          },
+          "totalAmount" : {
+            "description" : "청구 합계(원). 라인 청구액의 합",
+            "type" : "number"
+          }
+        },
+        "required" : [ "campusId", "discountPolicy", "id", "lines", "status", "studentId", "targetMonth", "totalAmount" ],
+        "type" : "object"
+      },
       "LedgerItemResponse" : {
         "description" : "발급한 패스 하나. 학부모 번호는 없다",
         "properties" : {
@@ -2417,6 +2611,168 @@
         },
         "summary" : "자기 비밀번호 바꾸기",
         "tags" : [ "auth-controller" ]
+      }
+    },
+    "/api/v1/billing/invoices" : {
+      "get" : {
+        "description" : "학생 ID 순이다. 직원은 지점을 고르지 않으면 소속 지점이고, 다른 지점을 고르면 403(AUTH_CAMPUS_NOT_ALLOWED). 관리자는 고르지 않으면 전 지점이다",
+        "operationId" : "listInvoices",
+        "parameters" : [ {
+          "description" : "지점. 안 주면 직원은 소속 지점, 관리자는 전 지점",
+          "in" : "query",
+          "name" : "campusId",
+          "required" : false,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "대상 월(YYYY-MM)",
+          "example" : "2026-11",
+          "in" : "query",
+          "name" : "targetMonth",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "0부터 10000까지",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "format" : "int32",
+            "maximum" : 10000,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InvoicePageResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "그 달의 청구",
+        "tags" : [ "invoice-controller" ]
+      },
+      "post" : {
+        "description" : "학생의 그 달 청구를 만든다. 한 학생 한 달에 열린 청구는 하나다(있으면 409 BILLING_INVOICE_ALREADY_EXISTS). 금액은 미리 계산과 같다. 학생이 없으면 404(BILLING_STUDENT_NOT_FOUND), 재원 중이 아니면 409(BILLING_STUDENT_NOT_ENROLLED). 반이 없으면 404(BILLING_CLASS_NOT_FOUND), 꺼진 반 409(BILLING_CLASS_INACTIVE), 학생과 다른 지점의 반 409(BILLING_CLASS_NOT_AT_STUDENT_CAMPUS). 할인 유형이 없으면 404(BILLING_DISCOUNT_TYPE_NOT_FOUND), 꺼진 할인 409(BILLING_DISCOUNT_TYPE_INACTIVE). 할인을 하나만 받는 설정에 둘 이상이면 400(BILLING_TOO_MANY_DISCOUNTS), 할인율의 합이 100% 이상이면 400(BILLING_DISCOUNT_TOO_LARGE). 다른 지점의 학생이면 403(AUTH_CAMPUS_NOT_ALLOWED). 칸의 값이 틀리면 400(COMMON_VALIDATION_FAILED), 같은 반·같은 할인을 두 번 넣거나 모르는 칸이 있으면 400",
+        "operationId" : "issueInvoice",
+        "parameters" : [ {
+          "description" : "이번 시도의 키(UUID). 같은 시도를 다시 보낼 때는 같은 키를, 값을 고쳐 새로 낼 때는 새 키를 쓴다. 같은 키의 같은 요청은 한 번만 실행되고 처음의 응답이 다시 온다(응답 헤더 Idempotency-Replayed: true). 없거나 형식이 틀리면 400(COMMON_IDEMPOTENCY_KEY_REQUIRED), 같은 키에 다른 내용이면 422(COMMON_IDEMPOTENCY_KEY_REUSED), 처음 요청이 처리 중이면 409(COMMON_IDEMPOTENCY_IN_PROGRESS). 409는 업무 규칙의 거부에도 쓰이므로 코드로 가른다. 다시 온 응답에는 상태와 본문만 있다",
+          "example" : "3f2b8c1e-5a7d-4e2f-9b1c-0d6a8e4f2c11",
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 128,
+            "minLength" : 8,
+            "pattern" : "^[A-Za-z0-9_-]{8,128}$",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/InvoiceRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InvoiceResponse"
+                }
+              }
+            },
+            "description" : "Created"
+          }
+        },
+        "summary" : "청구 만들기",
+        "tags" : [ "invoice-controller" ]
+      }
+    },
+    "/api/v1/billing/invoices/{id}" : {
+      "get" : {
+        "description" : "없으면 404(BILLING_INVOICE_NOT_FOUND), 다른 지점의 청구면 403(AUTH_CAMPUS_NOT_ALLOWED)",
+        "operationId" : "getInvoice",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InvoiceResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "청구 하나",
+        "tags" : [ "invoice-controller" ]
+      }
+    },
+    "/api/v1/billing/quote" : {
+      "post" : {
+        "description" : "저장하지 않고 계산만 한다. 청구액 = 8회 기준 수강료 × (1 − 할인율) × 횟수 ÷ 8, 1원 미만 버림. 학생이 없으면 404(BILLING_STUDENT_NOT_FOUND), 재원 중이 아니면 409(BILLING_STUDENT_NOT_ENROLLED). 반이 없으면 404(BILLING_CLASS_NOT_FOUND), 꺼진 반 409(BILLING_CLASS_INACTIVE), 학생과 다른 지점의 반 409(BILLING_CLASS_NOT_AT_STUDENT_CAMPUS). 할인 유형이 없으면 404(BILLING_DISCOUNT_TYPE_NOT_FOUND), 꺼진 할인 409(BILLING_DISCOUNT_TYPE_INACTIVE). 할인을 하나만 받는 설정에 둘 이상이면 400(BILLING_TOO_MANY_DISCOUNTS), 할인율의 합이 100% 이상이면 400(BILLING_DISCOUNT_TOO_LARGE). 다른 지점의 학생이면 403(AUTH_CAMPUS_NOT_ALLOWED). 칸의 값이 틀리면 400(COMMON_VALIDATION_FAILED), 같은 반·같은 할인을 두 번 넣거나 모르는 칸이 있으면 400",
+        "operationId" : "quoteInvoice",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/InvoiceRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InvoiceResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "청구액 미리 계산",
+        "tags" : [ "invoice-controller" ]
       }
     },
     "/api/v1/campuses" : {
