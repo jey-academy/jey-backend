@@ -19,9 +19,8 @@ record PartnerRedeemResponse(
 		@Schema(description = "사용 처리한 시각", requiredMode = RequiredMode.REQUIRED) Instant redeemedAt) {
 
 	static PartnerRedeemResponse from(PartnerRedeemedPass pass) {
-		return new PartnerRedeemResponse(pass.redemptionId(), pass.passId(), pass.discount().originalFee(),
-				pass.discount().discountRate(), pass.discount().discountAmount(), pass.discount().payableAmount(),
-				pass.redeemedAt());
+		return new PartnerRedeemResponse(pass.redemptionId(), pass.passId(), pass.originalFee(), pass.discountRate(),
+				pass.discountAmount(), pass.payableAmount(), pass.redeemedAt());
 	}
 
 }

@@ -3,6 +3,7 @@ package com.jey.dongtanpass.web;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.UUID;
 
@@ -21,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContext;
@@ -81,6 +83,9 @@ class PartnerRedeemApiTest {
 
 	@Autowired
 	PartnerVerifiedPasses verifiedPasses;
+
+	@Autowired
+	StringRedisTemplate redis;
 
 	private PhoneNumber phone;
 
@@ -235,12 +240,65 @@ class PartnerRedeemApiTest {
 	}
 
 	@Test
-	void 이_학원이_확인하지_않은_패스는_없는_패스와_같은_404다() throws Exception {
+	void 이_학원이_확인하지_않은_패스는_다시_확인하라는_404다() throws Exception {
 		Pass notVerified = saveNotVerified(newStudentId());
 
 		redeem(notVerified.getId(), body("김하윤", "280000"), partner(PARTNER)).andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_FOUND"));
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_VERIFIED"));
 		assertThat(redemptionCount(notVerified)).isZero();
+	}
+
+	// 다시 확인하면 같은 요청이 지나가므로 잠시 막은 거부다. 같은 키로 다시 보내도 처음의 404를 되돌려주지 않고 처리한다.
+	@Test
+	void 확인하지_않아_막힌_요청은_다시_확인한_뒤_같은_키로_보내면_처리된다() throws Exception {
+		Pass pass = saveNotVerified(newStudentId());
+		SecurityContext account = partner(PARTNER);
+		String key = UUID.randomUUID().toString();
+		redeemWithKey(pass.getId(), body("김하윤", "280000"), account, key).andExpect(status().isNotFound());
+
+		verifyAt(mockMvc, pass, PARTNER);
+
+		redeemWithKey(pass.getId(), body("김하윤", "280000"), account, key).andExpect(status().isOk());
+		assertThat(redemptionCount(pass)).isEqualTo(1);
+	}
+
+	// 확인한 뒤에 취소되거나 기간이 지난 패스는 사용 처리가 다시 본다(확인 기록은 30분 남는다). 기록을 남기지 않는다.
+	@Test
+	void 확인한_뒤에_취소되거나_기간이_지난_패스는_409이고_기록이_없다() throws Exception {
+		Pass canceled = save(newStudentId());
+		jdbc.update("UPDATE dongtanpass_pass SET status = 'CANCELED' WHERE id = ?", canceled.getId());
+		Pass expired = save(newStudentId());
+		jdbc.update("UPDATE dongtanpass_pass SET expires_on = ? WHERE id = ?",
+				LocalDate.now(clock).minusDays(1), expired.getId());
+
+		redeem(canceled.getId(), body("김하윤", "280000"), partner(PARTNER)).andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_CANCELED"));
+		redeem(expired.getId(), body("김하윤", "280000"), partner(PARTNER)).andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_EXPIRED"));
+
+		assertThat(redemptionCount(canceled)).isZero();
+		assertThat(redemptionCount(expired)).isZero();
+		assertThat(passes.findById(canceled.getId()).orElseThrow().getStatus()).isEqualTo(PassStatus.CANCELED);
+		assertThat(passes.findById(expired.getId()).orElseThrow().getStatus()).isEqualTo(PassStatus.ISSUED);
+	}
+
+	// 이름과 번호를 주소에 실어 보내면 앞단의 접근 로그에 남는다. 조용히 무시하지 않고 거부해서 드러나게 한다(ADR-0032).
+	@Test
+	void 쿼리_문자열이_실려_오면_400이고_세지도_기록하지도_않는다() throws Exception {
+		Pass pass = save(newStudentId());
+		long account = newAccount();
+
+		mockMvc.perform(post("/api/v1/dongtanpass/partner-redemptions/{id}/redeem?studentName=김하윤", pass.getId())
+			.with(securityContext(login(account, UserRole.PARTNER, null, PARTNER)))
+			.with(csrfToken(mockMvc))
+			.header("Idempotency-Key", UUID.randomUUID().toString())
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(body("김하윤", "280000")))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+
+		assertThat(redemptionCount(pass)).isZero();
+		assertThat(redis.hasKey("jey:auth:account-limit:dongtanpass.redeem:" + account)).isFalse();
 	}
 
 	private String body(String name, String fee) {

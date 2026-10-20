@@ -17,7 +17,6 @@ import com.jey.core.shared.Money;
 import com.jey.dongtanpass.application.PassBenefits;
 import com.jey.dongtanpass.application.PassQrCodes;
 import com.jey.dongtanpass.domain.LinkToken;
-import com.jey.dongtanpass.domain.PartnerDiscount;
 import com.jey.dongtanpass.domain.PartnerRedemptionRepository;
 import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PassNumber;
@@ -247,8 +246,7 @@ class PartnerVerifyApiTest {
 	private void redeemDirectly(Pass pass, long partnerId) {
 		transaction.executeWithoutResult(status -> {
 			Pass locked = passes.findById(pass.getId()).orElseThrow();
-			var redemption = locked.redeemAtPartner(partnerId,
-					PartnerDiscount.of(Money.of(280000), locked.getDiscountRate()), clock.instant());
+			var redemption = locked.redeemAtPartner(partnerId, Money.of(280000), clock.instant());
 			passes.saveAndFlush(locked);
 			partnerRedemptions.saveAndFlush(redemption);
 		});

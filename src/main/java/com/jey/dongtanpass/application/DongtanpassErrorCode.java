@@ -31,7 +31,13 @@ public enum DongtanpassErrorCode implements ErrorCode {
 	INVALID_ORIGINAL_FEE(HttpStatus.BAD_REQUEST, "원래 수강료는 0원보다 크고 1원 단위이며 10,000,000원을 넘을 수 없습니다."),
 
 	// 없는 패스이거나 부른 쪽이 발급하지 않은 패스다(다른 연계 학원의 패스, JEY 관리에서의 연계 학원 발급분). 있는지를 드러내지 않는다.
+	// 연계 학원이 확인하지 않은 패스는 PASS_NOT_VERIFIED다.
 	PASS_NOT_FOUND(HttpStatus.NOT_FOUND, "패스를 찾을 수 없습니다."),
+
+	// 연계 학원의 본인 확인·금액 미리 보기·사용 처리: 이 학원이 확인(QR·패스 번호)하지 않았거나 확인한 지 30분이 지난 패스다.
+	// 패스를 찾기 전에 보므로 있는 패스인지는 드러나지 않는다. 다시 확인하면 같은 요청이 지나가므로 잠시 막은 거부다
+	// (멱등 응답으로 보관하지 않는다).
+	PASS_NOT_VERIFIED(HttpStatus.NOT_FOUND, "패스를 다시 확인해 주세요. 확인한 지 30분이 지났거나 이 학원에서 확인하지 않은 패스입니다.", true),
 
 	PASS_CANCELED(HttpStatus.CONFLICT, "취소된 패스입니다."),
 
@@ -48,10 +54,10 @@ public enum DongtanpassErrorCode implements ErrorCode {
 	// 관리자가 다시 켜면 같은 요청이 지나가므로 잠시 막은 거부다(멱등 응답으로 보관하지 않는다).
 	DISCOUNT_INACTIVE(HttpStatus.CONFLICT, "패스 할인이 꺼져 있어 사용 처리할 수 없습니다. 관리자에게 문의해 주세요.", true),
 
-	// 동탄관 데스크가 JEY 지점이 발급한 패스를 확인·본인 확인·사용 처리하려 했다. 그 패스는 연계 학원에서 쓴다.
+	// JEY 지점 데스크가 JEY 지점이 발급한 패스를 확인·본인 확인·사용 처리하려 했다. 그 패스는 연계 학원에서 쓴다.
 	PASS_FOR_PARTNER_USE(HttpStatus.CONFLICT, "JEY 어학원이 발급한 패스입니다. 연계 학원에서만 쓸 수 있습니다."),
 
-	// 연계 학원이 연계 학원 발급 패스를 확인·사용 처리하려 했다. 그 패스는 JEY 지점의 데스크에서 쓴다.
+	// 연계 학원이 연계 학원 발급 패스를 확인·본인 확인·금액 미리 보기·사용 처리하려 했다. 그 패스는 JEY 지점의 데스크에서 쓴다.
 	PASS_FOR_CAMPUS_USE(HttpStatus.CONFLICT, "연계 학원이 발급한 패스입니다. JEY 어학원에서 쓰는 패스입니다."),
 
 	// 연계 학원 계정이 사용 내역에서 다른 학원을 골랐다. 조용히 자기 학원으로 바꾸지 않는다(화면의 실수가 드러나게).
@@ -82,25 +88,25 @@ public enum DongtanpassErrorCode implements ErrorCode {
 	// 학생 이름이 패스의 이름과 다르다(띄어쓰기는 무관). 이름과 번호가 모두 다르면 이것이 나간다.
 	HOLDER_NAME_MISMATCH(HttpStatus.CONFLICT, "학생 이름이 패스의 이름과 다릅니다. 패스를 발급한 곳에 확인해 주세요."),
 
-	// 학생의 학부모 중 패스를 받을 때 적은 번호의 학부모가 없다.
+	// 학생의 학부모 번호(연계 학원은 학원이 넣은 번호) 중에 패스를 받을 때 적은 번호가 없다.
 	HOLDER_PHONE_MISMATCH(HttpStatus.CONFLICT, "학부모 번호 중에 패스에 등록된 번호가 없습니다. 학부모 번호를 확인하거나 패스를 발급한 곳에 확인해 주세요."),
 
 	// 학부모 링크 다시 받기에서 이름과 번호가 여러 번 맞지 않았다(ADR-0035). 어느 기준에 걸렸는지 드러내지 않는다.
 	HOLDER_RELINK_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "입력이 여러 번 맞지 않아 잠시 막았습니다. 잠시 뒤 다시 시도해 주세요."),
 
-	// 데스크가 읽은 QR 토큰이 틀렸거나 만료됐거나 이미 쓴 것이다(ADR-0010). 어느 쪽인지 드러내지 않는다(이유는 서버 로그에만).
+	// 데스크나 연계 학원이 읽은 QR 토큰이 틀렸거나 만료됐거나 이미 쓴 것이다(ADR-0010). 어느 쪽인지 드러내지 않는다(이유는 서버 로그에만).
 	QR_INVALID(HttpStatus.BAD_REQUEST, "QR을 확인할 수 없습니다. 학부모 화면에서 QR을 새로 받아 다시 읽어 주세요."),
 
 	// 패스를 받지 않는 지점의 직원이 패스를 확인하거나 사용 처리하려 했다.
 	CAMPUS_NOT_PROVIDING(HttpStatus.FORBIDDEN, "이 지점에서는 패스를 받지 않습니다."),
 
-	// 데스크 계정이 패스 번호로 확인한 횟수가 한도를 넘었다(맞든 틀리든 센다). QR 확인은 세지 않는다.
+	// 데스크·연계 학원 계정이 패스 번호로 확인한 횟수가 한도를 넘었다(맞든 틀리든 센다). QR 확인은 세지 않는다.
 	PASS_NO_VERIFY_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "패스 번호 확인이 너무 많습니다. 잠시 뒤 다시 시도하거나 QR로 확인해 주세요."),
 
-	// 데스크 계정이 이름·학부모 번호를 패스와 맞춰 본 횟수가 한도를 넘었다(맞든 틀리든 센다).
+	// 데스크·연계 학원 계정이 이름·학부모 번호를 패스와 맞춰 본 횟수가 한도를 넘었다(맞든 틀리든 센다).
 	HOLDER_CHECK_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "본인 확인을 너무 많이 했습니다. 잠시 뒤 다시 시도해 주세요."),
 
-	// 데스크 계정이 사용 처리를 부른 횟수가 한도를 넘었다(맞든 틀리든 센다).
+	// 데스크·연계 학원 계정이 사용 처리를 부른 횟수가 한도를 넘었다(맞든 틀리든 센다).
 	REDEEM_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "사용 처리를 너무 많이 했습니다. 잠시 뒤 다시 시도해 주세요."),
 
 	// 사용 내역의 기간이 1년(시작일 + 1년)을 넘었다. 아주 넓은 조회를 막는다.

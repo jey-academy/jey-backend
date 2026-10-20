@@ -2,6 +2,7 @@ package com.jey.dongtanpass.web;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.util.concurrent.TimeUnit;
 
 import com.jey.TestcontainersConfiguration;
 import com.jey.core.auth.api.UserRole;
@@ -16,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContext;
@@ -32,6 +34,7 @@ import static com.jey.dongtanpass.web.PartnerPassFixtures.newAccount;
 import static com.jey.dongtanpass.web.PartnerPassFixtures.newStudentId;
 import static com.jey.dongtanpass.web.PartnerPassFixtures.partner;
 import static com.jey.dongtanpass.web.PartnerPassFixtures.verifyAt;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.securityContext;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -70,6 +73,9 @@ class PartnerHolderCheckApiTest {
 	@Autowired
 	Clock clock;
 
+	@Autowired
+	StringRedisTemplate redis;
+
 	private PhoneNumber phone;
 
 	private Pass pass;
@@ -84,15 +90,19 @@ class PartnerHolderCheckApiTest {
 	}
 
 	// 확인하지 않은 패스 ID로는 본인 확인을 할 수 없다(패스의 있음·주인을 알아내지 못하게). 다른 학원이 확인한 것도 같다.
+	// 패스를 찾기 전에 막으므로, 있는 패스든 없는 패스든 같은 답이다.
 	@Test
-	void 이_학원이_확인하지_않은_패스는_없는_패스와_같은_404다() throws Exception {
+	void 이_학원이_확인하지_않은_패스는_다시_확인하라는_404다() throws Exception {
 		Pass notVerified = passes.saveAndFlush(campusPass(passBenefits.current().campusId(), newStudentId(), "김하윤",
 				phoneProtector.fullIndex(phone), clock.instant(), new BigDecimal("0.05")));
 		upsertPartner(jdbc, OTHER_PARTNER, true);
 
 		check(notVerified.getId(), body("김하윤", phone.value()), partner(PARTNER)).andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_FOUND"));
-		check(pass.getId(), body("김하윤", phone.value()), partner(OTHER_PARTNER)).andExpect(status().isNotFound());
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_VERIFIED"));
+		check(pass.getId(), body("김하윤", phone.value()), partner(OTHER_PARTNER)).andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_VERIFIED"));
+		check(Long.MAX_VALUE, body("김하윤", phone.value()), partner(PARTNER)).andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_VERIFIED"));
 	}
 
 	@Test
@@ -119,9 +129,32 @@ class PartnerHolderCheckApiTest {
 			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_CANCELED"));
 	}
 
+	// 확인 기록은 정해진 시간이 지나면 사라진다. 사라진 뒤에는 확인하지 않은 패스와 같다.
 	@Test
-	void 없는_패스는_404다() throws Exception {
-		check(Long.MAX_VALUE, body("김하윤", phone.value()), partner(PARTNER)).andExpect(status().isNotFound());
+	void 확인_기록은_30분_안에_사라지고_사라지면_다시_확인해야_한다() throws Exception {
+		String key = "jey:dongtanpass:partner-verified:" + PARTNER + ":" + pass.getId();
+		Long ttl = redis.getExpire(key, TimeUnit.SECONDS);
+		assertThat(ttl).isPositive().isLessThanOrEqualTo(30 * 60);
+
+		redis.delete(key);
+
+		check(pass.getId(), body("김하윤", phone.value()), partner(PARTNER)).andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_VERIFIED"));
+	}
+
+	// 이름과 번호를 주소에 실어 보내면 앞단의 접근 로그에 남는다. 조용히 무시하지 않고 거부해서 드러나게 한다(ADR-0032).
+	@Test
+	void 쿼리_문자열이_실려_오면_400이고_세지_않는다() throws Exception {
+		long account = newAccount();
+
+		mockMvc.perform(post("/api/v1/dongtanpass/partner-redemptions/{id}/holder-check?studentName=김하윤", pass.getId())
+			.with(securityContext(login(account, UserRole.PARTNER, null, PARTNER)))
+			.with(csrfToken(mockMvc))
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(body("김하윤", phone.value())))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+		assertThat(redis.hasKey("jey:auth:account-limit:dongtanpass.holder-check:" + account)).isFalse();
 	}
 
 	// 데스크와 같은 한도(계정마다, 맞든 틀리든). 번호를 넣어 보며 패스 주인을 알아내지 못하게 한다.

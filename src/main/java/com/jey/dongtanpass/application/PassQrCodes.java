@@ -23,7 +23,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.stereotype.Component;
 
 /**
- * 학부모 화면의 QR에 넣는 서명 토큰을 만들고 확인한다(ADR-0010). 만드는 쪽(학부모 QR)과 확인하는 쪽(데스크)이 이것 하나를 쓴다.
+ * 학부모 화면의 QR에 넣는 서명 토큰을 만들고 확인한다(ADR-0010). 만드는 쪽(학부모 QR)과 확인하는 쪽(데스크, 연계 학원)이 이것 하나를 쓴다.
  *
  * <p>토큰은 {@code {키 버전}.{본문}.{서명}}이다. 본문은 패스 ID, 만료 시각(초), 무작위 토큰 ID 16바이트를 이은 32바이트이고,
  * 서명은 용도 문자열({@code dongtanpass.pass|}) 뒤에 {@code {키 버전}.{본문}}을 이은 것의 HMAC-SHA256이다. 본문과 서명은 Base64url(패딩 없음)이다.

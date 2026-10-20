@@ -38,7 +38,9 @@ class ErrorCodeRulesTest {
 			.containsExactlyInAnyOrder("DONGTANPASS_PARTNER_INACTIVE", "DONGTANPASS_PASS_CHANGED_CONCURRENTLY",
 					"DONGTANPASS_DISCOUNT_INACTIVE",
 					// JEY 발급: 학생에게 연락처를 더하면 같은 요청이 지나간다.
-					"DONGTANPASS_STUDENT_HAS_NO_CONTACT");
+					"DONGTANPASS_STUDENT_HAS_NO_CONTACT",
+					// 연계 학원: 패스를 다시 확인하면 같은 요청이 지나간다.
+					"DONGTANPASS_PASS_NOT_VERIFIED");
 	}
 
 	// 보관하지 않는 표시는 보관될 수 있는 응답(4xx)에만 뜻이 있다. 429와 5xx는 원래 보관하지 않는다.

@@ -38,10 +38,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 연계 학원이 JEY 발급 패스를 확인하고, 본인을 확인하고, 받을 금액을 미리 보고, 사용 처리한다.
- * 확인 뒤의 단계는 그 학원이 방금 확인한 패스에만 된다({@link PartnerVerifiedPasses}, 나머지는 없는 패스와 같은 404). 연계 학원 계정만 부른다(컨트롤러가 막고, 꺼진 학원은 인터셉터가 403).
+ * 확인 뒤의 단계는 그 학원이 방금 확인한 패스에만 된다({@link PartnerVerifiedPasses}, 나머지는 404 {@code PASS_NOT_VERIFIED}). 연계 학원 계정만 부른다(컨트롤러가 막고, 꺼진 학원은 인터셉터가 403).
  *
- * <p>확인 순서가 오류를 정한다: (번호는 계정별 한도) → 패스(404, QR은 서명 400) → 연계 학원 발급분(409 {@code PASS_FOR_CAMPUS_USE})
- * → 이 학원에서 같은 학생이 이미 할인받음(409 {@code STUDENT_ALREADY_USED_AT_PARTNER}) → (QR이면 여기서 토큰을 쓴 것으로 적는다) → 상태(409).
+ * <p>확인(verify)의 순서가 오류를 정한다: (번호는 계정별 한도) → 패스(404, QR은 서명 400) → 연계 학원 발급분(409 {@code PASS_FOR_CAMPUS_USE})
+ * → 이 학원에서 같은 학생이 이미 할인받음(409 {@code STUDENT_ALREADY_USED_AT_PARTNER}) → (QR이면 여기서 토큰을 쓴 것으로 적는다.
+ * 이미 쓴 토큰은 여기서 400) → 상태(409). 그래서 이미 쓴 토큰이라도 앞의 두 409가 먼저 나간다. 사용 처리의 순서는 {@link #redeem}에 있다.
  * 앞의 둘은 그 패스를 다른 곳에서 그대로 쓸 수 있으므로 토큰을 쓰기 전에 거부한다. 상태가 틀린 패스는 데스크와 같이 토큰을 쓴 뒤 거부한다
  * (어디서도 쓸 수 없다). 횟수 한도는 데스크와 같은 이름·값이다(계정마다 센다).
  */
@@ -156,7 +157,7 @@ public class PartnerPassService {
 	 * 이름은 공백(전각 포함)을 모두 빼고 NFC로 모아 비교하고, 번호는 여럿 중 하나라도 패스의 번호 색인과 같으면 맞다.
 	 * 바꾸는 자료가 없다. 최종 판단은 사용 처리가 다시 한다.
 	 *
-	 * @throws BusinessException 없는 패스(404), 연계 학원 발급 패스·이 학원에서 이미 할인받은 학생·쓸 수 없는 패스(409)
+	 * @throws BusinessException 이 학원이 확인하지 않은 패스(404), 연계 학원 발급 패스·이 학원에서 이미 할인받은 학생·쓸 수 없는 패스(409)
 	 * @throws com.jey.core.shared.RateLimitedException 그 계정의 본인 확인이 한도를 넘었을 때(429)
 	 */
 	public HolderCheckResult holderCheck(long passId, StudentNameKey studentName, List<PhoneNumber> guardianPhones,
@@ -176,19 +177,17 @@ public class PartnerPassService {
 	/**
 	 * 원래 수강료로 받을 금액을 미리 계산한다. 할인율은 그 패스에 남은 발급 때 값이다. 기록을 남기지 않고 세지도 않는다(드러나는 것이 없다).
 	 *
-	 * @throws BusinessException 없는 패스(404), 연계 학원 발급 패스·이 학원에서 이미 할인받은 학생·쓸 수 없는 패스(409)
+	 * @throws BusinessException 이 학원이 확인하지 않은 패스(404), 연계 학원 발급 패스·이 학원에서 이미 할인받은 학생·쓸 수 없는 패스(409)
 	 * @throws BusinessException 원래 수강료가 규칙 밖일 때(400 INVALID_ORIGINAL_FEE)
 	 */
 	public PartnerDiscount quote(long passId, Money originalFee, AuthenticatedUser user) {
 		requireFee(originalFee);
-		Pass pass = usablePass(passId, partnerIdOf(user));
-		return PartnerDiscount.of(originalFee, pass.getDiscountRate());
+		return usablePass(passId, partnerIdOf(user)).partnerDiscountFor(originalFee);
 	}
 
-	// 수강료 규칙(PartnerDiscount)을 업무 오류로 먼저 본다(발급의 결제 금액과 같은 방식).
+	// 수강료 규칙(PartnerDiscount#acceptsFee)을 업무 오류로 먼저 본다(발급의 결제 금액과 같은 방식).
 	private static void requireFee(Money originalFee) {
-		if (originalFee.isZero() || !originalFee.isWholeWon()
-				|| originalFee.compareTo(PartnerDiscount.MAX_ORIGINAL_FEE) > 0) {
+		if (!PartnerDiscount.acceptsFee(originalFee)) {
 			throw new BusinessException(DongtanpassErrorCode.INVALID_ORIGINAL_FEE);
 		}
 	}
@@ -197,7 +196,7 @@ public class PartnerPassService {
 	 * 사용 처리한다. 한 트랜잭션에서 패스를 잠그고, 학원이 적은 이름·학부모 번호를 다시 맞춰 보고, 금액을 계산해 패스를 사용됨으로 바꾸고,
 	 * 사용 기록을 저장하고, {@code dongtanpass.partner-pass-redeemed} 이벤트를 낸다(감사 로그는 이 이벤트로 남는다).
 	 *
-	 * <p>순서가 오류를 정한다: 수강료(400) → 계정별 한도(429) → 이 학원이 확인한 패스(404) → 연계 학원 발급분(409) → 상태(409)
+	 * <p>순서가 오류를 정한다: 수강료(400) → 계정별 한도(429) → 이 학원이 확인한 패스(404 {@code PASS_NOT_VERIFIED}) → 연계 학원 발급분(409) → 상태(409)
 	 * → 이름(409) → 학부모 번호(409) → 이 학원에서 같은 학생(409). 같은 패스를 동시에 쓰면 패스 행의 잠금이, 같은 학생의 다른 패스를
 	 * 동시에 쓰면 (학원, 학생) 유니크 키가 막고, 진 쪽은 트랜잭션 밖에서 상태에 맞는 409로 바꾼다.
 	 *
@@ -218,7 +217,8 @@ public class PartnerPassService {
 				.execute(status -> redeemInTransaction(passId, partnerId, studentName, guardianPhones, originalFee));
 		}
 		catch (DataIntegrityViolationException ex) {
-			// 같은 학생의 다른 패스를 먼저 쓴 요청이 있다(같은 패스는 잠금이 막는다). 다른 제약은 그대로 던진다(서버 오류로 드러나야 한다).
+			// 대개 같은 학생의 다른 패스를 먼저 쓴 요청이다(같은 패스는 잠금이 먼저 막고, 패스 유니크 키는 마지막 방어선이다).
+			// 다른 제약은 그대로 던진다(서버 오류로 드러나야 한다).
 			if (UniqueKeys.isViolationOf(ex, STUDENT_UNIQUE_KEY)) {
 				throw new BusinessException(DongtanpassErrorCode.STUDENT_ALREADY_USED_AT_PARTNER, null, ex);
 			}
@@ -249,18 +249,17 @@ public class PartnerPassService {
 		if (partnerRedemptions.existsByPartnerIdAndStudentId(partnerId, pass.getStudentId())) {
 			throw new BusinessException(DongtanpassErrorCode.STUDENT_ALREADY_USED_AT_PARTNER);
 		}
-		PartnerDiscount discount = PartnerDiscount.of(originalFee, pass.getDiscountRate());
-		PartnerRedemption redemption = pass.redeemAtPartner(partnerId, discount, now);
+		PartnerRedemption redemption = pass.redeemAtPartner(partnerId, originalFee, now);
 		// 패스를 먼저(사용됨으로), 기록을 나중에. 같은 학생의 다른 패스를 먼저 쓴 요청이 있으면 여기서 유니크 키에 걸린다.
 		passes.saveAndFlush(pass);
 		PartnerRedemption saved = partnerRedemptions.saveAndFlush(redemption);
 		events.publishEvent(new PartnerPassRedeemed(EventMetadata.create(PartnerPassRedeemed.TYPE,
 				PartnerPassRedeemed.VERSION, pass.getIssuerCampusId(), currentActor.get(), clock), passId, partnerId,
 				pass.getStudentId()));
-		return new PartnerRedeemedPass(saved.getId(), passId, discount, now);
+		return PartnerRedeemedPass.of(saved);
 	}
 
-	// 확인 뒤의 단계들이 패스를 찾는 길. 이 학원이 확인한 패스만 있는 것으로 본다(나머지는 없는 패스와 같은 404).
+	// 확인 뒤의 단계들이 패스를 찾는 길. 이 학원이 확인한 패스만 다룬다(나머지는 찾기 전에 404 PASS_NOT_VERIFIED).
 	// 그 뒤로는 확인과 같은 순서로 거부한다(토큰은 없다).
 	private Pass usablePass(long passId, long partnerId) {
 		requireVerified(partnerId, passId);
@@ -271,9 +270,10 @@ public class PartnerPassService {
 		return pass;
 	}
 
+	// 패스를 찾기 전에 본다. 있는 패스든 없는 패스든 같은 답이라 있는지를 드러내지 않는다.
 	private void requireVerified(long partnerId, long passId) {
 		if (!verifiedPasses.isVerified(partnerId, passId)) {
-			throw new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND);
+			throw new BusinessException(DongtanpassErrorCode.PASS_NOT_VERIFIED);
 		}
 	}
 

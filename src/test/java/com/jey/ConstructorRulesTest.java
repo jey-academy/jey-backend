@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 // "팩터리로만 만든다"는 규칙(ConstructorRules)이 실제로 잡는지를 본보기로 본다.
 // 이 규칙을 쓰는 곳: AuditActionRulesTest(EventMetadata), NotificationTypeRulesTest(NotificationRequest),
-// RateLimitRulesTest(RateLimit).
+// RateLimitRulesTest(RateLimit), DongtanpassRulesTest(PartnerDiscount).
 class ConstructorRulesTest {
 
 	private static final ArchRule RULE = ConstructorRules.constructedOnlyInside(Guarded.class);

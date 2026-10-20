@@ -15,7 +15,7 @@ record PartnerRedeemRequest(
 		@Schema(description = "학부모 휴대전화 번호(전체) 1~" + HolderCheckRequest.MAX_PHONES
 				+ "개. 하나라도 패스의 번호와 같으면 맞다") @NotNull @Size(min = 1,
 						max = HolderCheckRequest.MAX_PHONES) List<@NotNull PhoneNumber> guardianPhones,
-		@Schema(description = "원래 수강료(원, 첫 달 한 달 치). 0보다 크고 1원 단위, 10,000,000원까지. 아니면 400(DONGTANPASS_INVALID_ORIGINAL_FEE)")
+		@Schema(description = "원래 수강료(원, 첫 달 한 달 치). 0보다 크고 1원 단위, 10,000,000원까지. 아니면 400(DONGTANPASS_INVALID_ORIGINAL_FEE). 음수·문자열처럼 금액으로 읽을 수 없으면 400(COMMON_VALIDATION_FAILED)")
 		@NotNull Money originalFee) {
 
 	// 칸 검증(@StudentNameText)을 거친 뒤에 부른다.

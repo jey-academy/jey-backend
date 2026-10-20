@@ -8,6 +8,7 @@ import com.jey.core.auth.api.UserRole;
 import com.jey.dongtanpass.application.PassBenefits;
 import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PassRepository;
+import com.jey.dongtanpass.domain.PassStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,7 +74,11 @@ class PartnerQuoteApiTest {
 			.andExpect(jsonPath("$.discountRate").value(0.05))
 			.andExpect(jsonPath("$.discountAmount").value(14000))
 			.andExpect(jsonPath("$.payableAmount").value(266000));
-		assertThat(pass.getStatus()).isEqualTo(passes.findById(pass.getId()).orElseThrow().getStatus());
+		// 기록을 남기지 않는다: 패스는 그대로이고 사용 기록이 없다.
+		assertThat(passes.findById(pass.getId()).orElseThrow().getStatus()).isEqualTo(PassStatus.ISSUED);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM dongtanpass_partner_redemption WHERE pass_id = ?",
+				Long.class, pass.getId()))
+			.isZero();
 	}
 
 	@Test
@@ -135,12 +140,12 @@ class PartnerQuoteApiTest {
 
 	// 확인하지 않은 패스 ID로는 할인율·상태를 알아내지 못한다.
 	@Test
-	void 이_학원이_확인하지_않은_패스는_없는_패스와_같은_404다() throws Exception {
+	void 이_학원이_확인하지_않은_패스는_다시_확인하라는_404다() throws Exception {
 		Pass notVerified = passes.saveAndFlush(campusPass(passBenefits.current().campusId(), newStudentId(), "김하윤",
 				"idx", clock.instant(), new BigDecimal("0.05")));
 
 		quote(notVerified.getId(), "280000", partner(PARTNER)).andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_FOUND"));
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_VERIFIED"));
 	}
 
 	private ResultActions quote(long passId, String fee, SecurityContext login) throws Exception {

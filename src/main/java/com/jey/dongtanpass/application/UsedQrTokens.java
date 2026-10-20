@@ -3,7 +3,7 @@ package com.jey.dongtanpass.application;
 import java.time.Instant;
 
 /**
- * 데스크가 확인한 QR 토큰을 기억해 같은 토큰이 두 번 통과하지 않게 한다(ADR-0010). 토큰 문자열이 아니라 토큰 ID로 기억한다.
+ * 데스크나 연계 학원이 확인한 QR 토큰을 기억해 같은 토큰이 두 번 통과하지 않게 한다(ADR-0010). 토큰 문자열이 아니라 토큰 ID로 기억한다.
  * 토큰이 무효가 되는 때(만료 시각)까지만 기억한다.
  */
 public interface UsedQrTokens {

@@ -58,6 +58,20 @@ class PartnerDiscountTest {
 			.isThrownBy(() -> PartnerDiscount.of(Money.of(new BigDecimal(fee)), FIVE_PERCENT));
 	}
 
+	// 수강료 규칙은 여기 한 곳이다. 서비스는 이것으로 먼저 보고 업무 오류(400)로 답한다.
+	@ParameterizedTest(name = "{0}")
+	@ValueSource(strings = { "1", "280000", "10000000" })
+	void 규칙_안의_수강료는_받는다(String fee) {
+		assertThat(PartnerDiscount.acceptsFee(Money.of(new BigDecimal(fee)))).isTrue();
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@ValueSource(strings = { "0", "0.5", "1.5", "10000001" })
+	void 규칙_밖의_수강료는_받지_않는다(String fee) {
+		assertThat(PartnerDiscount.acceptsFee(Money.of(new BigDecimal(fee)))).isFalse();
+		assertThat(PartnerDiscount.acceptsFee(null)).isFalse();
+	}
+
 	@Test
 	void 빈_값은_거부한다() {
 		assertThatIllegalArgumentException().isThrownBy(() -> PartnerDiscount.of(null, FIVE_PERCENT));

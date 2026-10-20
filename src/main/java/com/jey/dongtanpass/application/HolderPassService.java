@@ -117,7 +117,7 @@ public class HolderPassService {
 	}
 
 	/**
-	 * 할인을 주는 곳에 보여 줄 QR 토큰을 준다(JEY 발급분을 확인하는 곳은 연계 학원의 사용 처리다). 부를 때마다 새 토큰이다(수명 {@link PassQrCodes#TTL}).
+	 * 할인을 주는 곳에 보여 줄 QR 토큰을 준다(JEY 발급분은 연계 학원이 확인한다). 부를 때마다 새 토큰이다(수명 {@link PassQrCodes#TTL}).
 	 *
 	 * @throws BusinessException 그 토큰의 패스가 없을 때(404), 기간이 지났거나 취소됐거나 사용된 패스일 때(409)
 	 */

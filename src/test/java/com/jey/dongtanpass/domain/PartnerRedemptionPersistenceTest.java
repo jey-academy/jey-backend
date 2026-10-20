@@ -90,8 +90,7 @@ class PartnerRedemptionPersistenceTest {
 	private PartnerRedemption redeem(long passId, long partnerId, long fee) {
 		return transaction.execute(status -> {
 			Pass pass = passes.findById(passId).orElseThrow();
-			PartnerRedemption redemption = pass.redeemAtPartner(partnerId,
-					PartnerDiscount.of(Money.of(fee), pass.getDiscountRate()), AT);
+			PartnerRedemption redemption = pass.redeemAtPartner(partnerId, Money.of(fee), AT);
 			passes.saveAndFlush(pass);
 			return redemptions.saveAndFlush(redemption);
 		});

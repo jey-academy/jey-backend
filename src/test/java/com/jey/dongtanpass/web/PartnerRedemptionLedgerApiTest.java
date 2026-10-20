@@ -9,7 +9,6 @@ import com.jey.TestcontainersConfiguration;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.shared.Money;
 import com.jey.dongtanpass.application.PassBenefits;
-import com.jey.dongtanpass.domain.PartnerDiscount;
 import com.jey.dongtanpass.domain.PartnerRedemption;
 import com.jey.dongtanpass.domain.PartnerRedemptionRepository;
 import com.jey.dongtanpass.domain.Pass;
@@ -130,9 +129,9 @@ class PartnerRedemptionLedgerApiTest {
 			.andExpect(jsonPath("$.code").value("DONGTANPASS_PERIOD_TOO_LONG"));
 	}
 
-	// 두 방향의 사용 기록은 따로다. 동탄관 데스크의 사용 내역에 연계 학원 기록이 섞이지 않는다.
+	// 두 방향의 사용 기록은 따로다. JEY 지점 데스크의 사용 내역에 연계 학원 기록이 섞이지 않는다.
 	@Test
-	void 동탄관_데스크의_사용_내역에는_섞이지_않는다() throws Exception {
+	void JEY_지점_데스크의_사용_내역에는_섞이지_않는다() throws Exception {
 		redeem(PARTNER, "김하윤", 280000, day.atTime(10, 0));
 
 		mockMvc.perform(get("/api/v1/dongtanpass/redemptions").with(securityContext(login(newAccount(), UserRole.ADMIN, null, null)))
@@ -158,8 +157,7 @@ class PartnerRedemptionLedgerApiTest {
 		return transaction.execute(status -> {
 			Pass pass = passes.saveAndFlush(campusPass(passBenefits.current().campusId(), newStudentId(), name, "idx",
 					redeemedAt.minusSeconds(3600), new BigDecimal("0.05")));
-			PartnerRedemption redemption = pass.redeemAtPartner(partnerId,
-					PartnerDiscount.of(Money.of(fee), pass.getDiscountRate()), redeemedAt);
+			PartnerRedemption redemption = pass.redeemAtPartner(partnerId, Money.of(fee), redeemedAt);
 			passes.saveAndFlush(pass);
 			return partnerRedemptions.saveAndFlush(redemption);
 		});
