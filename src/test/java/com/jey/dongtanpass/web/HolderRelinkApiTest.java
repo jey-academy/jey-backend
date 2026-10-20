@@ -2,6 +2,7 @@ package com.jey.dongtanpass.web;
 
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.concurrent.ThreadLocalRandom;
@@ -300,6 +301,55 @@ class HolderRelinkApiTest {
 			.andExpect(jsonPath("$.passNo").value(pass.getPassNo()))
 			.andExpect(jsonPath("$.direction").value("CAMPUS_ISSUED"));
 		view(old.raw()).andExpect(status().isNotFound());
+	}
+
+	// JEY 발급은 달마다 나가므로 같은 이름·번호의 패스가 여러 장 쌓인다. 쓸 수 있는 것 중 가장 최근 것을 다시 준다(방향과 무관).
+	@Test
+	void 쓸_수_있는_패스가_여럿이면_가장_최근_것을_다시_준다() throws Exception {
+		Pass older = saveCampusAt(LinkToken.generate(RANDOM), clock.instant().minus(Duration.ofDays(10)));
+		Pass newer = saveCampusAt(LinkToken.generate(RANDOM), clock.instant().minus(Duration.ofDays(1)));
+
+		String token = JsonPath.read(relink(NAME, phone, address).andExpect(status().isOk()).andReturn()
+			.getResponse()
+			.getContentAsString(), "$.linkToken");
+
+		assertThat(passes.findById(newer.getId()).orElseThrow().getLinkTokenHash()).isEqualTo(LinkToken.hashOf(token));
+		assertThat(passes.findById(older.getId()).orElseThrow().getLinkTokenHash()).isEqualTo(older.getLinkTokenHash());
+	}
+
+	@Test
+	void 가장_최근_패스를_쓸_수_없으면_쓸_수_있는_이전_패스를_다시_준다() throws Exception {
+		Pass older = saveCampusAt(LinkToken.generate(RANDOM), clock.instant().minus(Duration.ofDays(10)));
+		Pass newer = saveCampusAt(LinkToken.generate(RANDOM), clock.instant().minus(Duration.ofDays(1)));
+		jdbc.update("UPDATE dongtanpass_pass SET status = 'CANCELED' WHERE id = ?", newer.getId());
+
+		String token = JsonPath.read(relink(NAME, phone, address).andExpect(status().isOk()).andReturn()
+			.getResponse()
+			.getContentAsString(), "$.linkToken");
+
+		assertThat(passes.findById(older.getId()).orElseThrow().getLinkTokenHash()).isEqualTo(LinkToken.hashOf(token));
+	}
+
+	@Test
+	void 연계_학원_발급분과_JEY_발급분이_함께_있으면_더_최근_것을_다시_준다() throws Exception {
+		Pass partner = save(LinkToken.generate(RANDOM), NAME);
+		Pass campus = saveCampusAt(LinkToken.generate(RANDOM), clock.instant().plus(Duration.ofMinutes(1)));
+
+		String token = JsonPath.read(relink(NAME, phone, address).andExpect(status().isOk()).andReturn()
+			.getResponse()
+			.getContentAsString(), "$.linkToken");
+
+		assertThat(passes.findById(campus.getId()).orElseThrow().getLinkTokenHash()).isEqualTo(LinkToken.hashOf(token));
+		assertThat(passes.findById(partner.getId()).orElseThrow().getLinkTokenHash())
+			.isEqualTo(partner.getLinkTokenHash());
+	}
+
+	private Pass saveCampusAt(LinkToken link, java.time.Instant issuedAt) {
+		return passes.saveAndFlush(Pass.issueAtCampus(1L,
+				ThreadLocalRandom.current().nextLong(1_000_000_000L, Long.MAX_VALUE / 2), PassNumber.generate(RANDOM),
+				link.hash(), NAME, phoneProtector.fullIndex(PhoneNumber.of(phone)), issuedAt, SEOUL,
+				LocalDate.ofInstant(issuedAt, SEOUL), Money.of(280000), PaymentMethod.CARD,
+				new java.math.BigDecimal("0.05")));
 	}
 
 	private Pass save(LinkToken link, String name) {

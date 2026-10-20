@@ -80,13 +80,15 @@ class CampusPassLedgerApiTest {
 	@Test
 	@WithJeyUser(role = UserRole.ADMIN)
 	void 연계_학원이_발급한_패스는_보이지_않는다() throws Exception {
-		Instant farDay = Instant.parse("2031-03-03T01:00:00Z");
+		// 다른 시험과 겹치지 않는 먼 날짜를 고른다(그날 발급분만 비교한다).
+		LocalDate day = LocalDate.of(2040, 1, 1).plusDays(ThreadLocalRandom.current().nextInt(3000));
+		Instant farDay = day.atTime(10, 0).atZone(SEOUL).toInstant();
 		long partnerId = partners.saveAndFlush(Partner.create("JEY목록-" + newStudentId())).getId();
 		passes.saveAndFlush(Pass.issue(partnerId, PassNumber.generate(RANDOM), LinkToken.generate(RANDOM).hash(),
 				"이연계", "phone-index", farDay, SEOUL, LocalDate.of(2031, 3, 3), Money.of(150000), PaymentMethod.CARD));
 		Pass campus = saveCampusPass(newStudentId(), farDay);
 
-		mockMvc.perform(get(PASSES).param("from", "2031-03-03").param("to", "2031-03-03"))
+		mockMvc.perform(get(PASSES).param("from", day.toString()).param("to", day.toString()))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.items[*].id").value(contains(campus.getId().intValue())));
 	}

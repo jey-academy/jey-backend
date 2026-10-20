@@ -71,7 +71,8 @@ class CampusPassChangeApiTest {
 	@Test
 	@WithJeyUser(role = UserRole.ADMIN)
 	void 링크를_새로_만들면_새_토큰을_주고_옛_토큰은_쓸_수_없다() throws Exception {
-		Pass pass = saveCampusPass();
+		LinkToken old = LinkToken.generate(RANDOM);
+		Pass pass = saveCampusPass(old);
 		String oldHash = pass.getLinkTokenHash();
 
 		String token = change(pass.getId(), "link").andExpect(status().isOk())
@@ -84,6 +85,15 @@ class CampusPassChangeApiTest {
 		String hash = hashOf(pass);
 		assertThat(hash).isNotEqualTo(oldHash).isEqualTo(LinkToken.hashOf(token));
 		assertThat(auditCount("dongtanpass.pass-link-renewed", pass.getId())).isEqualTo(1);
+		// 학부모 화면으로 본다: 새 토큰은 열리고 옛 토큰은 없는 링크와 같다.
+		holderView(token).andExpect(status().isOk());
+		holderView(old.raw()).andExpect(status().isNotFound());
+	}
+
+	private ResultActions holderView(String token) throws Exception {
+		return mockMvc.perform(post("/api/v1/dongtanpass/holder/view").with(csrfToken(mockMvc))
+			.contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+			.content("{\"token\":\"" + token + "\"}"));
 	}
 
 	@Test
@@ -154,9 +164,13 @@ class CampusPassChangeApiTest {
 	}
 
 	private Pass saveCampusPass() {
+		return saveCampusPass(LinkToken.generate(RANDOM));
+	}
+
+	private Pass saveCampusPass(LinkToken link) {
 		Instant now = Instant.now();
 		return passes.saveAndFlush(Pass.issueAtCampus(PROVIDER, ThreadLocalRandom.current().nextLong(1_000_000_000L,
-				Long.MAX_VALUE / 2), PassNumber.generate(RANDOM), LinkToken.generate(RANDOM).hash(), "김하윤",
+				Long.MAX_VALUE / 2), PassNumber.generate(RANDOM), link.hash(), "김하윤",
 				"phone-index", now, SEOUL, LocalDate.ofInstant(now, SEOUL), Money.of(280000), PaymentMethod.CARD,
 				new BigDecimal("0.05")));
 	}
