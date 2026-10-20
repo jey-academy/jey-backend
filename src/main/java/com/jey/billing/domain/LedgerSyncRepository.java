@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -15,6 +16,12 @@ import jakarta.persistence.LockModeType;
 public interface LedgerSyncRepository extends JpaRepository<LedgerSync, Long> {
 
 	Optional<LedgerSync> findByPaymentId(long paymentId);
+
+	/** 그 상태의 줄(관리자의 미반영 목록). */
+	Page<LedgerSync> findByStatus(LedgerSyncStatus status, Pageable pageable);
+
+	/** 한 지점의 그 상태의 줄. */
+	Page<LedgerSync> findByStatusAndCampusId(LedgerSyncStatus status, long campusId, Pageable pageable);
 
 	/** 잠가서 읽는다. 맡기({@link LedgerSync#claim})와 결과 적기는 이것으로 읽은 뒤에 한다. */
 	@Lock(LockModeType.PESSIMISTIC_WRITE)

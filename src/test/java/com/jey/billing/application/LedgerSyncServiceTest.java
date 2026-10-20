@@ -5,8 +5,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.matching;
-import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
-import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.jey.core.member.MemberFixtures.DONGTAN;
@@ -21,19 +19,12 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
 
-import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
 import com.jey.billing.LedgerSheetsTestSupport;
 import com.jey.billing.api.PaymentMethod;
@@ -50,12 +41,8 @@ import com.jey.core.member.StudentService;
 import com.jey.core.member.domain.Grade;
 import com.jey.core.shared.Money;
 import com.jey.core.shared.PhoneNumber;
-import tools.jackson.databind.json.JsonMapper;
 
 // 결제를 기록하면 리스너가 그 지점 장부의 반 블록 빈 줄에 쓴다. 구글은 흉내 낸 서버다.
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-@ActiveProfiles("test")
 @WithJeyUser(id = LedgerSyncServiceTest.ADMIN_ID, role = UserRole.ADMIN)
 class LedgerSyncServiceTest extends LedgerSheetsTestSupport {
 
@@ -65,10 +52,6 @@ class LedgerSyncServiceTest extends LedgerSheetsTestSupport {
 			null, null);
 
 	private static final YearMonth NOVEMBER = YearMonth.of(2026, 11);
-
-	private static final String READ_PATH = "/v4/spreadsheets/" + SHEET_ID + "/values/'2026-11'!A:AZ";
-
-	private static final String WRITE_PATH = "/v4/spreadsheets/" + SHEET_ID + "/values:batchUpdate";
 
 	@Autowired
 	PaymentService payments;
@@ -250,8 +233,8 @@ class LedgerSyncServiceTest extends LedgerSheetsTestSupport {
 		PaymentView paid = pay(invoice(student, List.of(cls), 8), Money.of(280_000), Money.ZERO);
 		awaitStatus(paid.paymentId(), LedgerSyncStatus.SYNCED);
 		google.resetAll();
-		stubTab(className, List.of("", "2", "동탄초5", "박박박(" + className + ")"), List.of("", "3", "동탄고1",
-				"누누누(" + className + ")", "", "", "", "", "", "", "", "", "", "", "", LedgerFormats.marker(paid.paymentId())));
+		stubRead(tab(className, List.of(filled("박박박", className),
+				written("누누누", className, LedgerFormats.marker(paid.paymentId())), empty())));
 		stubWriteOk();
 
 		PaymentView canceled = payments.cancel(paid.paymentId(), ADMIN);
@@ -307,37 +290,6 @@ class LedgerSyncServiceTest extends LedgerSheetsTestSupport {
 
 	private static StudentRegistration registration(long campus, String name, PhoneNumber phone) {
 		return new StudentRegistration(campus, null, name, "동탄고", Grade.HIGH_1, null, null, List.of(mother(phone)));
-	}
-
-	private static String newClassName() {
-		return "L" + UUID.randomUUID().toString().substring(0, 6);
-	}
-
-	// 시안 모양의 11월 탭: 3행 머리글(P열 비고), 4행 보조 머리글, 5행부터 그 반 블록(5·6행은 사람이 쓴 줄, 7행부터 빈 줄 셋).
-	@SafeVarargs
-	private static void stubTab(String className, List<String>... extraRows) {
-		List<List<String>> values = new ArrayList<>();
-		values.add(List.of("11월 수강료 납부 일지 [동탄관]"));
-		values.add(List.of());
-		values.add(List.of("학년", "No", "학교", "성명", "부모 전화", "납입금액", "결제 내용", "매월 납입금액\n(8회기준)", "8월", "9월",
-				"10월", "11월", "수강료", "교재비", "이번달 납부 내용", "비고"));
-		values.add(List.of("", "", "", "", "", "", "", "", "납부일", "납부일", "납부일", "납부일"));
-		values.add(List.of(className + "\nBH/SH", "1", "동탄초5", "김김김(" + className + ")", "(010) 0000-0101"));
-		if (extraRows.length == 0) {
-			values.add(List.of("", "2", "동탄초5", "박박박(" + className + ")"));
-		} else {
-			values.addAll(List.of(extraRows));
-		}
-		values.add(List.of("", "3"));
-		values.add(List.of("", "4"));
-		values.add(List.of("", "5"));
-		values.add(List.of("Z9\nBH", "1"));
-		google.stubFor(get(urlPathEqualTo(READ_PATH))
-			.willReturn(okJson(JsonMapper.builder().build().writeValueAsString(Map.of("values", values)))));
-	}
-
-	private static void stubWriteOk() {
-		google.stubFor(post(urlPathEqualTo(WRITE_PATH)).willReturn(okJson("{\"totalUpdatedCells\": 1}")));
 	}
 
 }

@@ -12,7 +12,9 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -20,6 +22,7 @@ import com.jey.billing.domain.InvoiceRepository;
 import com.jey.billing.domain.LedgerSync;
 import com.jey.billing.domain.LedgerSyncReason;
 import com.jey.billing.domain.LedgerSyncRepository;
+import com.jey.billing.domain.LedgerSyncStateException;
 import com.jey.billing.domain.LedgerSyncStatus;
 import com.jey.billing.domain.Payment;
 import com.jey.billing.domain.PaymentRepository;
@@ -31,6 +34,7 @@ import com.jey.billing.domain.ledger.LedgerTarget;
 import com.jey.core.audit.api.AuditEntry;
 import com.jey.core.audit.api.AuditLog;
 import com.jey.core.member.api.MemberRefs;
+import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.UniqueKeys;
 
 /**
@@ -108,6 +112,34 @@ public class LedgerSyncService {
 			sync.requestCancel(LocalDate.ofInstant(payment.getCanceledAt(), clock.getZone()), clock.instant());
 		});
 		attempt(id);
+	}
+
+	/**
+	 * 관리자가 장부(탭, 반 블록, 빈 줄, 권한)를 고친 뒤 미반영 줄을 다시 반영한다. 바로 한 번 시도하고 그 뒤의 상태를 돌려준다
+	 * (구글 장애가 아직이면 대기 중으로 남아 정한 간격대로 다시 한다).
+	 *
+	 * @throws BusinessException 줄이 없을 때(404), 미반영이 아닐 때(409)
+	 */
+	public LedgerSyncView retryUnsynced(long id) {
+		transaction.executeWithoutResult(status -> {
+			LedgerSync sync = syncs.findByIdForUpdate(id)
+				.orElseThrow(() -> new BusinessException(BillingErrorCode.LEDGER_SYNC_NOT_FOUND));
+			try {
+				sync.retryByAdmin(clock.instant());
+			} catch (LedgerSyncStateException e) {
+				throw new BusinessException(BillingErrorCode.LEDGER_SYNC_NOT_RETRYABLE);
+			}
+		});
+		attempt(id);
+		return LedgerSyncView.of(syncs.findById(id).orElseThrow());
+	}
+
+	/** 미반영 줄, 최근 것부터. 지점을 주지 않으면 전 지점이다(관리자 전용 — 지점 범위를 걸지 않는다). */
+	public Page<LedgerSyncView> listUnsynced(Long campusId, int page, int size) {
+		PageRequest request = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+		Page<LedgerSync> found = campusId == null ? syncs.findByStatus(LedgerSyncStatus.UNSYNCED, request)
+				: syncs.findByStatusAndCampusId(LedgerSyncStatus.UNSYNCED, campusId, request);
+		return found.map(LedgerSyncView::of);
 	}
 
 	/** 다시 시도할 때가 된 줄(구글 장애 뒤, 미뤄 둔 것, 맡은 서버가 내려간 것)을 집어 시도한다. 스케줄러가 부른다. */

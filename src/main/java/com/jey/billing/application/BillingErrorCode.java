@@ -60,7 +60,12 @@ public enum BillingErrorCode implements ErrorCode {
 
 	INVALID_PERIOD(HttpStatus.BAD_REQUEST, "기간이 올바르지 않습니다. 시작일은 종료일보다 뒤일 수 없고, 2000-01-01부터 2099-12-31 사이여야 합니다."),
 
-	PERIOD_TOO_LONG(HttpStatus.BAD_REQUEST, "기간은 1년까지 볼 수 있습니다.");
+	PERIOD_TOO_LONG(HttpStatus.BAD_REQUEST, "기간은 1년까지 볼 수 있습니다."),
+
+	LEDGER_SYNC_NOT_FOUND(HttpStatus.NOT_FOUND, "장부 반영 기록을 찾을 수 없습니다."),
+
+	/** 미반영이 아닌 줄(반영됨, 대기 중, 시도 중, 취소됨)은 다시 반영하지 않는다. */
+	LEDGER_SYNC_NOT_RETRYABLE(HttpStatus.CONFLICT, "장부에 반영되지 않은 결제만 다시 반영할 수 있습니다.");
 
 	private final HttpStatus status;
 
