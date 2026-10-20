@@ -310,6 +310,100 @@
         "required" : [ "discountRate", "expiresOn", "id", "issuedAt", "linkToken", "passNo" ],
         "type" : "object"
       },
+      "CampusPassItemResponse" : {
+        "description" : "JEY가 발급한 패스 하나. 학부모 번호는 없다",
+        "properties" : {
+          "discountRate" : {
+            "description" : "이 패스의 할인율(발급 때의 설정). 5%는 0.05",
+            "type" : "number"
+          },
+          "expiresOn" : {
+            "description" : "이날(한국 날짜)까지 쓸 수 있다",
+            "format" : "date",
+            "type" : "string"
+          },
+          "id" : {
+            "description" : "패스 ID. 링크 새로 만들기와 취소에 쓴다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "issuedAt" : {
+            "description" : "발급 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "issuedOn" : {
+            "description" : "발급일(한국 날짜). 기간 조건은 이 날짜로 자른다",
+            "format" : "date",
+            "type" : "string"
+          },
+          "paidAmount" : {
+            "description" : "근거 결제의 금액(원)",
+            "type" : "number"
+          },
+          "paidOn" : {
+            "description" : "근거 결제의 결제일",
+            "format" : "date",
+            "type" : "string"
+          },
+          "passNo" : {
+            "description" : "패스 번호",
+            "type" : "string"
+          },
+          "paymentMethod" : {
+            "description" : "근거 결제의 수단",
+            "enum" : [ "CARD", "CASH", "TRANSFER", "OTHER" ],
+            "type" : "string"
+          },
+          "state" : {
+            "description" : "오늘 기준으로 보이는 상태. EXPIRED는 쓰지 않은 채 만료일이 지난 패스",
+            "enum" : [ "ISSUED", "EXPIRED", "REDEEMED", "CANCELED" ],
+            "type" : "string"
+          },
+          "studentId" : {
+            "description" : "학생 ID",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "studentName" : {
+            "description" : "발급 때의 학생 이름",
+            "type" : "string"
+          }
+        },
+        "required" : [ "discountRate", "expiresOn", "id", "issuedAt", "issuedOn", "paidAmount", "paidOn", "passNo", "paymentMethod", "state", "studentId", "studentName" ],
+        "type" : "object"
+      },
+      "CampusPassPageResponse" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CampusPassItemResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "description" : "지금 페이지. 0부터",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "size" : {
+            "description" : "한 페이지의 크기",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "totalElements" : {
+            "description" : "조건에 맞는 전체 건수",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalPages" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "items", "page", "size", "totalElements", "totalPages" ],
+        "type" : "object"
+      },
       "CampusResponse" : {
         "properties" : {
           "id" : {
@@ -2398,6 +2492,84 @@
       }
     },
     "/api/v1/dongtanpass/campus-passes" : {
+      "get" : {
+        "description" : "JEY가 발급한 패스. 최신 발급 순이다. 연계 학원이 발급한 패스는 없다. 학부모 번호는 없다",
+        "operationId" : "ledger_1",
+        "parameters" : [ {
+          "description" : "이 학생의 패스만. 안 주면 모두",
+          "in" : "query",
+          "name" : "studentId",
+          "required" : false,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "이 발급일(한국 날짜)부터, 포함. 2000-01-01~2099-12-31",
+          "in" : "query",
+          "name" : "from",
+          "required" : false,
+          "schema" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        }, {
+          "description" : "이 발급일(한국 날짜)까지, 포함. from보다 앞이거나 2000-01-01~2099-12-31 밖이면 400",
+          "in" : "query",
+          "name" : "to",
+          "required" : false,
+          "schema" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        }, {
+          "description" : "오늘 기준으로 보이는 상태. 안 주면 모두",
+          "in" : "query",
+          "name" : "status",
+          "required" : false,
+          "schema" : {
+            "enum" : [ "ISSUED", "EXPIRED", "REDEEMED", "CANCELED" ],
+            "type" : "string"
+          }
+        }, {
+          "description" : "0부터 10000까지",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "format" : "int32",
+            "maximum" : 10000,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CampusPassPageResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "JEY 발급 장부",
+        "tags" : [ "campus-pass-controller" ]
+      },
       "post" : {
         "description" : "다니는 학생의 그 달 수강료 결제를 확인한 뒤 보낸다. 같은 학생이 여러 장 받을 수 있다. 링크 토큰은 이 응답에만 있다. 잃어버리면 링크를 새로 만든다",
         "operationId" : "issue_1",
@@ -2457,6 +2629,88 @@
           }
         },
         "summary" : "JEY 발급 고지 문구",
+        "tags" : [ "campus-pass-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/campus-passes/{id}/cancel" : {
+      "post" : {
+        "description" : "쓰지 않은 JEY 발급 패스를 취소한다. 기간이 지난 패스도 된다. 결제 환불은 따로 한다. 사용됐거나 이미 취소된 패스는 409",
+        "operationId" : "cancel_1",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "이번 시도의 키(UUID). 같은 시도를 다시 보낼 때는 같은 키를, 값을 고쳐 새로 낼 때는 새 키를 쓴다. 같은 키의 같은 요청은 한 번만 실행되고 처음의 응답이 다시 온다(응답 헤더 Idempotency-Replayed: true). 없거나 형식이 틀리면 400(COMMON_IDEMPOTENCY_KEY_REQUIRED), 같은 키에 다른 내용이면 422(COMMON_IDEMPOTENCY_KEY_REUSED), 처음 요청이 처리 중이면 409(COMMON_IDEMPOTENCY_IN_PROGRESS). 409는 업무 규칙의 거부에도 쓰이므로 코드로 가른다. 다시 온 응답에는 상태와 본문만 있다",
+          "example" : "3f2b8c1e-5a7d-4e2f-9b1c-0d6a8e4f2c11",
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 128,
+            "minLength" : 8,
+            "pattern" : "^[A-Za-z0-9_-]{8,128}$",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PassCancelResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "JEY 패스 취소",
+        "tags" : [ "campus-pass-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/campus-passes/{id}/link" : {
+      "post" : {
+        "description" : "JEY 발급 패스의 학부모 링크 토큰을 새로 만든다. 예전 링크는 바로 쓸 수 없게 된다. 새 토큰은 이 응답에만 있다. 사용됐거나 취소된 패스는 409",
+        "operationId" : "renewLink_1",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "이번 시도의 키(UUID). 같은 시도를 다시 보낼 때는 같은 키를, 값을 고쳐 새로 낼 때는 새 키를 쓴다. 같은 키의 같은 요청은 한 번만 실행되고 처음의 응답이 다시 온다(응답 헤더 Idempotency-Replayed: true). 없거나 형식이 틀리면 400(COMMON_IDEMPOTENCY_KEY_REQUIRED), 같은 키에 다른 내용이면 422(COMMON_IDEMPOTENCY_KEY_REUSED), 처음 요청이 처리 중이면 409(COMMON_IDEMPOTENCY_IN_PROGRESS). 409는 업무 규칙의 거부에도 쓰이므로 코드로 가른다. 다시 온 응답에는 상태와 본문만 있다",
+          "example" : "3f2b8c1e-5a7d-4e2f-9b1c-0d6a8e4f2c11",
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 128,
+            "minLength" : 8,
+            "pattern" : "^[A-Za-z0-9_-]{8,128}$",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PassLinkResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "링크 새로 만들기",
         "tags" : [ "campus-pass-controller" ]
       }
     },

@@ -37,6 +37,28 @@ public interface PassRepository extends JpaRepository<Pass, Long> {
 	@Query("select p from Pass p where p.id = :id and p.partnerId = :partnerId")
 	Optional<Pass> findByIdAndPartnerIdForUpdate(@Param("id") Long id, @Param("partnerId") Long partnerId);
 
+	/** JEY 발급분의 링크 새로 만들기와 취소. 그 지점이 발급한 패스만 찾는다(연계 학원 발급분은 없는 것과 같다). */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select p from Pass p where p.id = :id and p.issuerCampusId = :campusId")
+	Optional<Pass> findByIdAndIssuerCampusIdForUpdate(@Param("id") Long id, @Param("campusId") Long campusId);
+
+	/**
+	 * JEY 발급 장부. {@link #ledger}와 같은 조건에 학생을 더한다. 조건은 모두 선택이다(null이면 걸지 않는다).
+	 */
+	@Query("""
+			select p from Pass p where p.issuerCampusId = :campusId
+			 and (:studentId is null or p.studentId = :studentId)
+			 and (:issuedFrom is null or p.issuedAt >= :issuedFrom)
+			 and (:issuedBefore is null or p.issuedAt < :issuedBefore)
+			 and (:status is null or p.status = :status)
+			 and (:expiresOnOrAfter is null or p.expiresOn >= :expiresOnOrAfter)
+			 and (:expiresBefore is null or p.expiresOn < :expiresBefore)
+			""")
+	Page<Pass> campusLedger(@Param("campusId") Long campusId, @Param("studentId") Long studentId,
+			@Param("issuedFrom") Instant issuedFrom, @Param("issuedBefore") Instant issuedBefore,
+			@Param("status") PassStatus status, @Param("expiresOnOrAfter") LocalDate expiresOnOrAfter,
+			@Param("expiresBefore") LocalDate expiresBefore, Pageable pageable);
+
 	/**
 	 * 발급 장부. 조건은 모두 선택이다(null이면 걸지 않는다).
 	 *

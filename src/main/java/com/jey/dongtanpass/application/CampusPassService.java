@@ -4,7 +4,10 @@ import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 
+import com.jey.core.audit.api.AuditEntry;
+import com.jey.core.audit.api.AuditLog;
 import com.jey.core.auth.api.CurrentActor;
 import com.jey.core.member.api.ContactInfo;
 import com.jey.core.member.api.MemberDirectory;
@@ -13,6 +16,7 @@ import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.EventMetadata;
 import com.jey.core.shared.PhoneProtector;
 import com.jey.dongtanpass.api.CampusPassIssued;
+import com.jey.dongtanpass.api.PassRefs;
 import com.jey.dongtanpass.domain.Consent;
 import com.jey.dongtanpass.domain.ConsentRepository;
 import com.jey.dongtanpass.domain.LinkToken;
@@ -24,7 +28,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * JEY 지점이 다니는 학생에게 패스를 발급한다(연계 학원에서 쓴다). 관리자만 부른다(컨트롤러가 막는다).
+ * JEY 지점이 다니는 학생에게 패스를 발급하고, 학부모 링크를 새로 만들고, 쓰지 않은 패스를 취소한다(연계 학원에서 쓴다).
+ * 관리자만 부른다(컨트롤러가 막는다). 연계 학원이 발급한 패스는 여기서 없는 것과 같다(404).
  *
  * <p>대상은 패스 제도에 참여하는 지점({@link PassBenefits#current()}의 지점)에 재원 중인 학생이고, 월 결제마다 받을 수 있다
  * (같은 학생이 여러 장). 신규 조건은 할인을 주는 연계 학원 쪽의 것이라 여기서 보지 않는다.
@@ -56,12 +61,14 @@ public class CampusPassService {
 
 	private final PassNumbers passNumbers;
 
+	private final AuditLog auditLog;
+
 	private final SecureRandom random = new SecureRandom();
 
 	CampusPassService(PassRepository passes, ConsentRepository consents, TransactionTemplate transaction,
 			MemberDirectory members, PassBenefits passBenefits, CampusBenefitService campusBenefits,
 			PhoneProtector phoneProtector, ApplicationEventPublisher events, CurrentActor currentActor, Clock clock,
-			PassNumbers passNumbers) {
+			PassNumbers passNumbers, AuditLog auditLog) {
 		this.passes = passes;
 		this.consents = consents;
 		this.transaction = transaction;
@@ -73,6 +80,7 @@ public class CampusPassService {
 		this.currentActor = currentActor;
 		this.clock = clock;
 		this.passNumbers = passNumbers;
+		this.auditLog = auditLog;
 	}
 
 	/**
@@ -103,6 +111,42 @@ public class CampusPassService {
 		String phoneIndex = phoneProtector.fullIndex(contact.phone());
 		return PassIssuing.withPassNoRetry(
 				() -> transaction.execute(status -> save(campusId, student, phoneIndex, input)), "campusId=" + campusId);
+	}
+
+	/**
+	 * 학부모 링크를 새로 만든다. 예전 링크는 바로 쓸 수 없다. 기간이 지난 패스도 된다.
+	 *
+	 * @throws BusinessException 이 지점이 발급한 패스가 아닐 때(404 — 연계 학원 발급분도), 사용됐거나 취소된 패스일 때(409)
+	 */
+	public RenewedLink renewLink(long passId) {
+		long campusId = passBenefits.current().campusId();
+		return transaction.execute(status -> {
+			Pass pass = lockedPass(campusId, passId);
+			LinkToken link = LinkToken.generate(random);
+			PassService.changeState(() -> pass.renewLink(link.hash()));
+			auditLog.record(AuditEntry.of(DongtanpassAuditAction.PASS_LINK_RENEWED).target(PassRefs.pass(passId)));
+			return new RenewedLink(passId, link.raw());
+		});
+	}
+
+	/**
+	 * 쓰지 않은 패스를 취소한다. 기간이 지난 패스도 된다. 결제 환불은 따로 한다.
+	 *
+	 * @throws BusinessException 이 지점이 발급한 패스가 아닐 때(404 — 연계 학원 발급분도), 사용됐거나 이미 취소된 패스일 때(409)
+	 */
+	public CanceledPass cancel(long passId) {
+		long campusId = passBenefits.current().campusId();
+		return transaction.execute(status -> {
+			Pass pass = lockedPass(campusId, passId);
+			PassService.changeState(pass::cancel);
+			auditLog.record(AuditEntry.of(DongtanpassAuditAction.PASS_CANCELED).target(PassRefs.pass(passId)));
+			return new CanceledPass(passId, pass.stateOn(LocalDate.now(clock)));
+		});
+	}
+
+	private Pass lockedPass(long campusId, long passId) {
+		return passes.findByIdAndIssuerCampusIdForUpdate(passId, campusId)
+			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
 	}
 
 	private CampusIssuedPass save(long campusId, StudentInfo student, String phoneIndex, NewCampusPass input) {

@@ -118,8 +118,8 @@ public class PassService {
 			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
 	}
 
-	// 지금 상태에서 할 수 없는 일이면 상태에 맞는 오류로 바꾼다.
-	private static void changeState(Runnable change) {
+	// 지금 상태에서 할 수 없는 일이면 상태에 맞는 오류로 바꾼다. JEY 발급의 링크·취소도 쓴다(CampusPassService).
+	static void changeState(Runnable change) {
 		try {
 			change.run();
 		}
