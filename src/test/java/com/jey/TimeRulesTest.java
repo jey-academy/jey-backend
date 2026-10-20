@@ -11,7 +11,6 @@ import java.time.ZonedDateTime;
 import java.util.Date;
 
 import com.tngtech.archunit.core.importer.ClassFileImporter;
-import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
 import org.junit.jupiter.api.Test;
 
@@ -38,11 +37,7 @@ class TimeRulesTest {
 
 	@Test
 	void 운영_코드는_현재_시각을_직접_구하지_않는다() {
-		var mainClasses = new ClassFileImporter()
-				.withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-				.importPackages("com.jey");
-
-		NO_DIRECT_NOW.check(mainClasses);
+		NO_DIRECT_NOW.check(MainClasses.get());
 	}
 
 	// 규칙이 실제로 위반을 잡는지 확인한다.

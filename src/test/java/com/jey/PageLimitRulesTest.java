@@ -11,8 +11,6 @@ import java.util.Optional;
 import com.jey.core.shared.PageLimits;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
-import com.tngtech.archunit.core.importer.ClassFileImporter;
-import com.tngtech.archunit.core.importer.ImportOption;
 import jakarta.validation.constraints.Max;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -28,9 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // 찾지 못한다. 페이지를 그렇게 받는 목록을 만들 때는 이 검사를 넓힌다.
 class PageLimitRulesTest {
 
-	private static final JavaClasses MAIN = new ClassFileImporter()
-			.withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-			.importPackages("com.jey");
+	private static final JavaClasses MAIN = MainClasses.get();
 
 	@Test
 	void 컨트롤러가_받는_page에는_상한이_있다() {

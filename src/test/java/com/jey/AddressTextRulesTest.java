@@ -9,8 +9,6 @@ import java.util.UUID;
 
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
-import com.tngtech.archunit.core.importer.ClassFileImporter;
-import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.AnnotatedElementUtils;
@@ -40,9 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // 못 보는 것: 요청 객체(HttpServletRequest, WebRequest)를 받아 getParameter로 직접 읽는 코드.
 class AddressTextRulesTest {
 
-	private static final JavaClasses MAIN = new ClassFileImporter()
-			.withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-			.importPackages("com.jey");
+	private static final JavaClasses MAIN = MainClasses.get();
 
 	// 주소로 받아도 되는 값. "컨트롤러#메서드(파라미터)"로 적는다.
 	private static final Set<String> ALLOWED = Set.of(

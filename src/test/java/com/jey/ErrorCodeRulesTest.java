@@ -6,8 +6,6 @@ import java.util.List;
 import java.util.Set;
 
 import com.jey.core.shared.ErrorCode;
-import com.tngtech.archunit.core.importer.ClassFileImporter;
-import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
@@ -66,8 +64,7 @@ class ErrorCodeRulesTest {
 
 	private static List<ErrorCode> allConstants() {
 		List<ErrorCode> constants = new ArrayList<>();
-		new ClassFileImporter().withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-				.importPackages("com.jey")
+		MainClasses.get()
 				.stream()
 				.filter(type -> type.isEnum() && type.isAssignableTo(ErrorCode.class))
 				.forEach(type -> {

@@ -49,8 +49,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 class IdempotencyRulesTest {
 
-	private static final JavaClasses CLASSES = new ClassFileImporter().importPackages("com.jey");
-
 	// 메서드를 가리지 않고 받는 경로라 POST로도 불리지만 일을 하지 않는다. 컨테이너가 오류 응답을 만들려고 부른다.
 	private static final Set<String> NOT_AN_ACTION = Set.of("ProblemDetailsErrorController#error");
 
@@ -105,7 +103,9 @@ class IdempotencyRulesTest {
 	@Test
 	void 표시는_POST에만_붙인다() {
 		Set<Method> posts = postHandlers().stream().map(HandlerMethod::getMethod).collect(Collectors.toSet());
-		List<String> misplaced = CLASSES.stream()
+		// 테스트용 컨트롤러도 보므로 테스트 소스까지 읽는다(MainClasses와 범위가 달라 이 테스트 안에서만 쓴다).
+		JavaClasses classes = new ClassFileImporter().importPackages("com.jey");
+		List<String> misplaced = classes.stream()
 				.flatMap(type -> type.getMethods().stream())
 				.filter(method -> method.isAnnotatedWith(Idempotent.class)
 						|| method.isAnnotatedWith(NotIdempotent.class))

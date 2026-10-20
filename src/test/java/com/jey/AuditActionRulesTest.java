@@ -12,8 +12,6 @@ import com.jey.core.shared.DomainEvent;
 import com.jey.core.shared.EventMetadata;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
-import com.tngtech.archunit.core.importer.ClassFileImporter;
-import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,9 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // 409 대신 500이 처음 나온다. 선언된 행위를 모두 모아 미리 검사한다.
 class AuditActionRulesTest {
 
-	private static final JavaClasses MAIN = new ClassFileImporter()
-			.withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-			.importPackages("com.jey");
+	private static final JavaClasses MAIN = MainClasses.get();
 
 	@Test
 	void 행위는_enum으로_선언한다() {
