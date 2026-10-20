@@ -121,7 +121,7 @@ public class Pass extends BaseEntity {
 	}
 
 	/**
-	 * 발급한 패스를 만든다. 결제일과 금액이 업무 규칙에 맞는지(미래 날짜, 0원)는 부르는 쪽이 먼저 보고 업무 오류로 답한다.
+	 * 연계 학원이 발급한 패스(PARTNER_ISSUED)를 만든다. 결제일과 금액이 업무 규칙에 맞는지(미래 날짜, 0원)는 부르는 쪽이 먼저 보고 업무 오류로 답한다.
 	 * 여기서는 저장할 수 없는 금액(0원, 1원 미만)을 다시 막는다(다른 길로 만들어도 DB가 조용히 반올림하지 않게).
 	 *
 	 * @param studentName 앞뒤 공백만 떼고 저장한다(가운데 띄어쓰기는 그대로. 비교는 사용 처리 때 따로 정리해서 한다)
@@ -144,7 +144,7 @@ public class Pass extends BaseEntity {
 	 * JEY 지점이 다니는 학생에게 발급한 패스를 만든다. 검증은 {@link #issue}와 같고 할인율 규칙을 더한다.
 	 *
 	 * @param issuerCampusId 발급한 JEY 지점
-	 * @param studentId 받은 학생. 연계 학원에서 같은 학생이 두 번 쓰는 것을 이 값으로 막는다
+	 * @param studentId 받은 학생. 연계 학원에서 같은 학생의 두 번째 사용을 가려낼 근거로 남긴다(그 확인은 연계 학원의 사용 처리에서 한다 — 아직 없다)
 	 * @param discountRate 발급 때의 할인율. 0보다 크고 1 이하, 소수 {@value #DISCOUNT_RATE_SCALE}자리까지
 	 * @throws IllegalArgumentException {@link #issue}의 경우와, 할인율이 비었거나 규칙 밖일 때
 	 */
@@ -236,7 +236,7 @@ public class Pass extends BaseEntity {
 	}
 
 	/**
-	 * 쓰지 않은 패스를 취소한다. 기간이 지난 패스도 취소할 수 있다. 결제 환불은 연계 학원이 따로 한다.
+	 * 쓰지 않은 패스를 취소한다. 기간이 지난 패스도 취소할 수 있다. 결제 환불은 발급한 쪽이 따로 한다.
 	 *
 	 * @throws PassStatusException 발급 상태가 아닐 때(사용됨, 이미 취소됨)
 	 */
@@ -257,6 +257,10 @@ public class Pass extends BaseEntity {
 	public Redemption redeem(long studentId, long campusId, Instant redeemedAt) {
 		if (id == null) {
 			throw new IllegalStateException("저장한 패스만 사용 처리할 수 있다");
+		}
+		// JEY 지점에서 쓴 기록은 연계 학원 발급분에만 생긴다. 부르는 쪽(데스크)이 먼저 409로 막는다 — 여기 닿으면 코드의 버그다.
+		if (direction != PassDirection.PARTNER_ISSUED) {
+			throw new IllegalStateException("JEY 발급 패스는 JEY 지점에서 사용 처리하지 않는다: passId=" + id);
 		}
 		requireIssued();
 		Redemption redemption = Redemption.of(id, studentId, campusId, redeemedAt);

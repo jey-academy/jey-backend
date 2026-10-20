@@ -21,9 +21,9 @@ class ConsentNoticeTest {
 
 	@Test
 	void 지금_버전인지_가린다() {
-		assertThat(ConsentNotice.isCurrent(ConsentNotice.CURRENT.version())).isTrue();
-		assertThat(ConsentNotice.isCurrent("2000-01-v0")).isFalse();
-		assertThat(ConsentNotice.isCurrent(null)).isFalse();
+		assertThat(ConsentNotice.isCurrent(PassDirection.PARTNER_ISSUED, ConsentNotice.CURRENT.version())).isTrue();
+		assertThat(ConsentNotice.isCurrent(PassDirection.PARTNER_ISSUED, "2000-01-v0")).isFalse();
+		assertThat(ConsentNotice.isCurrent(PassDirection.PARTNER_ISSUED, null)).isFalse();
 	}
 
 	// 연계 학원이 발급할 때와 JEY가 발급할 때는 받는 쪽이 달라 문구도 다르다. 동의 기록에는 버전만 남으므로 버전도 달라야 한다.

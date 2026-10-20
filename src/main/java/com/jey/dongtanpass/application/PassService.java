@@ -17,6 +17,7 @@ import com.jey.dongtanpass.domain.Consent;
 import com.jey.dongtanpass.domain.ConsentRepository;
 import com.jey.dongtanpass.domain.LinkToken;
 import com.jey.dongtanpass.domain.Pass;
+import com.jey.dongtanpass.domain.PassDirection;
 import com.jey.dongtanpass.domain.PassRepository;
 import com.jey.dongtanpass.domain.PassStatusException;
 import org.springframework.context.ApplicationEventPublisher;
@@ -141,7 +142,7 @@ public class PassService {
 		Pass pass = passes.saveAndFlush(Pass.issue(partnerId, passNumbers.next(), link.hash(),
 				input.studentName(), phoneIndex, now, clock.getZone(), input.paidOn(), input.paidAmount(),
 				input.paymentMethod()));
-		consents.save(Consent.thirdPartyProvision(pass.getId(), input.noticeVersion(), now));
+		consents.save(Consent.thirdPartyProvision(pass.getId(), PassDirection.PARTNER_ISSUED, input.noticeVersion(), now));
 		// 같은 트랜잭션에서 낸다. 발급이 커밋돼야 이벤트도 나간다.
 		events.publishEvent(new PassIssued(
 				EventMetadata.create(PassIssued.TYPE, PassIssued.VERSION, null, currentActor.get(), clock),
@@ -153,7 +154,7 @@ public class PassService {
 		if (!input.consentConfirmed()) {
 			throw new BusinessException(DongtanpassErrorCode.CONSENT_NOT_CONFIRMED);
 		}
-		if (!ConsentNotice.isCurrent(input.noticeVersion())) {
+		if (!ConsentNotice.isCurrent(PassDirection.PARTNER_ISSUED, input.noticeVersion())) {
 			throw new BusinessException(DongtanpassErrorCode.NOTICE_VERSION_MISMATCH);
 		}
 		PassIssuing.requirePayment(input.paidOn(), input.paidAmount(), clock);

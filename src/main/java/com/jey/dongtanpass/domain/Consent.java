@@ -54,16 +54,20 @@ public class Consent extends BaseEntity {
 	}
 
 	/**
-	 * 연계 학원이 고지하고 확인한 제3자 제공 동의.
+	 * 발급한 쪽이 고지하고 확인한 제3자 제공 동의. 연계 학원 발급이면 연계 학원이, JEY 발급이면 JEY 관리자가 확인한 것으로 남는다.
 	 *
-	 * @throws IllegalArgumentException 버전이나 시각이 비었을 때
+	 * @throws IllegalArgumentException 방향이나 버전이나 시각이 비었을 때
 	 */
-	public static Consent thirdPartyProvision(long passId, String noticeVersion, Instant agreedAt) {
-		if (noticeVersion == null || noticeVersion.isBlank() || agreedAt == null) {
-			throw new IllegalArgumentException("noticeVersion과 agreedAt은 비울 수 없다");
+	public static Consent thirdPartyProvision(long passId, PassDirection direction, String noticeVersion,
+			Instant agreedAt) {
+		if (direction == null || noticeVersion == null || noticeVersion.isBlank() || agreedAt == null) {
+			throw new IllegalArgumentException("direction, noticeVersion, agreedAt은 비울 수 없다");
 		}
-		return new Consent(passId, ConsentType.THIRD_PARTY_PROVISION, noticeVersion, ConsentChannel.PARTNER_CONFIRMED,
-				agreedAt);
+		ConsentChannel channel = switch (direction) {
+			case PARTNER_ISSUED -> ConsentChannel.PARTNER_CONFIRMED;
+			case CAMPUS_ISSUED -> ConsentChannel.ADMIN_CONFIRMED;
+		};
+		return new Consent(passId, ConsentType.THIRD_PARTY_PROVISION, noticeVersion, channel, agreedAt);
 	}
 
 	public Long getId() {

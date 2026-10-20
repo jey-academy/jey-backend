@@ -158,7 +158,7 @@ public class CampusPassService {
 		Pass pass = passes.saveAndFlush(Pass.issueAtCampus(campusId, student.studentId(), passNumbers.next(),
 				link.hash(), student.name(), phoneIndex, now, clock.getZone(), input.paidOn(), input.paidAmount(),
 				input.paymentMethod(), rate));
-		consents.save(Consent.thirdPartyProvision(pass.getId(), input.noticeVersion(), now));
+		consents.save(Consent.thirdPartyProvision(pass.getId(), PassDirection.CAMPUS_ISSUED, input.noticeVersion(), now));
 		// 같은 트랜잭션에서 낸다. 발급이 커밋돼야 이벤트도 나간다.
 		events.publishEvent(new CampusPassIssued(
 				EventMetadata.create(CampusPassIssued.TYPE, CampusPassIssued.VERSION, campusId, currentActor.get(),

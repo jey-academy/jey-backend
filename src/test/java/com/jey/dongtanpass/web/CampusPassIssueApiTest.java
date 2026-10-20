@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
@@ -15,8 +16,13 @@ import com.jey.core.member.domain.Grade;
 import com.jey.core.shared.PhoneNumber;
 import com.jey.core.shared.PhoneProtector;
 import com.jey.dongtanpass.application.ConsentNotice;
+import com.jey.dongtanpass.domain.LinkToken;
+import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -38,6 +44,7 @@ import static com.jey.core.member.MemberFixtures.uniqueName;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.matchesPattern;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -48,6 +55,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class CampusPassIssueApiTest {
 
 	private static final String PASSES = "/api/v1/dongtanpass/campus-passes";
@@ -86,13 +94,25 @@ class CampusPassIssueApiTest {
 		String name = uniqueName();
 		long student = students.register(registration(name, mother(phone))).id();
 
-		issue(student).andExpect(status().isCreated())
+		String response = issue(student).andExpect(status().isCreated())
 			.andExpect(jsonPath("$.passNo").value(matchesPattern("DT-[A-Z2-9]{6}")))
 			.andExpect(jsonPath("$.linkToken").isString())
 			.andExpect(jsonPath("$.expiresOn").value(LocalDate.now(clock).plusMonths(1).toString()))
-			.andExpect(jsonPath("$.discountRate").value(0.05));
+			.andExpect(jsonPath("$.discountRate").value(0.05))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
 
 		Map<String, Object> row = onlyPassOf(student);
+		// 응답의 토큰이 실제 학부모 링크다(해시가 저장된 값과 같고, 그 토큰으로 학부모 화면이 열린다).
+		String linkToken = JsonPath.read(response, "$.linkToken");
+		assertThat(row).containsEntry("pass_no", JsonPath.read(response, "$.passNo"))
+			.containsEntry("link_token_hash", LinkToken.hashOf(linkToken));
+		mockMvc.perform(post("/api/v1/dongtanpass/holder/view").with(csrfToken(mockMvc))
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"token\":\"" + linkToken + "\"}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.direction").value("CAMPUS_ISSUED"));
 		assertThat(row).containsEntry("direction", "CAMPUS_ISSUED")
 			.containsEntry("issuer_campus_id", PROVIDER)
 			.containsEntry("student_name", name)
@@ -100,9 +120,11 @@ class CampusPassIssueApiTest {
 			.containsEntry("payment_method", "CARD");
 		assertThat(row.get("partner_id")).isNull();
 		assertThat(row.get("discount_rate").toString()).isEqualTo("0.0500");
-		assertThat(jdbc.queryForObject("SELECT notice_version FROM dongtanpass_consent WHERE pass_id = ?",
-				String.class, row.get("id")))
-			.isEqualTo(ConsentNotice.CAMPUS_ISSUED.version());
+		// 동의는 JEY 관리자가 고지하고 확인한 것으로 남는다(연계 학원이 확인한 것과 가린다).
+		assertThat(jdbc.queryForMap("SELECT notice_version, channel FROM dongtanpass_consent WHERE pass_id = ?",
+				row.get("id")))
+			.containsEntry("notice_version", ConsentNotice.CAMPUS_ISSUED.version())
+			.containsEntry("channel", "ADMIN_CONFIRMED");
 	}
 
 	// 이벤트를 받은 감사 리스너가 남긴다(커밋 뒤라 기다린다). 봉투의 지점은 발급 지점이다.
@@ -232,6 +254,66 @@ class CampusPassIssueApiTest {
 	@WithJeyUser(role = UserRole.PARTNER, partnerId = 1)
 	void 연계_학원은_JEY_패스를_발급하지_못한다() throws Exception {
 		issue(1L).andExpect(status().isForbidden());
+	}
+
+	// 연락처가 없어 막힌 것은 고치면 같은 요청이 지나간다. 같은 멱등 키로 다시 보내도 막힌 응답을 돌려주지 않는다.
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 연락처를_더한_뒤_같은_키로_다시_보내면_발급된다() throws Exception {
+		long student = students.register(registration(uniqueName(), mother(randomPhone()))).id();
+		removeAllContacts(jdbc, student);
+		String key = UUID.randomUUID().toString();
+
+		sendWithKey(key, body(student, LocalDate.now(clock).toString(), "280000", true,
+				ConsentNotice.CAMPUS_ISSUED.version()))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_STUDENT_HAS_NO_CONTACT"));
+		students.addGuardian(student, mother(randomPhone()));
+
+		sendWithKey(key, body(student, LocalDate.now(clock).toString(), "280000", true,
+				ConsentNotice.CAMPUS_ISSUED.version()))
+			.andExpect(status().isCreated());
+	}
+
+	// 같은 학생에게 여러 장을 허용하므로, 두 번 눌러 두 장이 생기는 것을 막는 것은 멱등 키뿐이다.
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 같은_키로_다시_보내면_한_장만_생기고_처음_응답이_다시_나간다() throws Exception {
+		long student = students.register(registration(uniqueName(), mother(randomPhone()))).id();
+		String key = UUID.randomUUID().toString();
+		String json = body(student, LocalDate.now(clock).toString(), "280000", true,
+				ConsentNotice.CAMPUS_ISSUED.version());
+
+		String first = sendWithKey(key, json).andExpect(status().isCreated()).andReturn().getResponse()
+			.getContentAsString();
+		String second = sendWithKey(key, json).andExpect(status().isCreated()).andReturn().getResponse()
+			.getContentAsString();
+
+		assertThat(second).isEqualTo(first);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM dongtanpass_pass WHERE student_id = ?", Long.class,
+				student))
+			.isEqualTo(1);
+	}
+
+	// 링크 토큰 원문과 학생 이름은 로그에 남지 않는다(발급과 장부 조회 모두).
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 로그에_토큰_원문과_학생_이름이_없다(CapturedOutput output) throws Exception {
+		String name = uniqueName();
+		long student = students.register(registration(name, mother(randomPhone()))).id();
+
+		String token = JsonPath.read(issue(student).andExpect(status().isCreated()).andReturn().getResponse()
+			.getContentAsString(), "$.linkToken");
+		mockMvc.perform(get(PASSES).param("studentId", String.valueOf(student))).andExpect(status().isOk());
+
+		assertThat(output).doesNotContain(token).doesNotContain(name);
+	}
+
+	private ResultActions sendWithKey(String key, String json) throws Exception {
+		return mockMvc.perform(post(PASSES).with(csrfToken(mockMvc))
+			.header("Idempotency-Key", key)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(json));
 	}
 
 	private ResultActions issue(long studentId) throws Exception {

@@ -356,6 +356,16 @@ class PassTest {
 				"김하윤", "idx", ISSUED_AT, SEOUL, ISSUED_ON, Money.of(0), PaymentMethod.CARD, new BigDecimal("0.05")));
 	}
 
+	// 사용 기록(JEY 지점에서 쓴 기록)은 연계 학원 발급분에만 생긴다. 데스크가 막지만, 새 경로가 생겨도 여기서 막힌다.
+	@Test
+	void JEY_발급_패스로는_JEY_지점의_사용_기록을_만들지_않는다() {
+		Pass pass = issueAtCampus(new BigDecimal("0.05"));
+		ReflectionTestUtils.setField(pass, "id", 9L);
+
+		assertThatThrownBy(() -> pass.redeem(42L, 1L, ISSUED_AT)).isInstanceOf(IllegalStateException.class);
+		assertThat(pass.getStatus()).isEqualTo(PassStatus.ISSUED);
+	}
+
 	private static Pass issue(String name, LocalDate issuedOn) {
 		return Pass.issue(1L, "DT-ABC234", HASH, name, "idx", issuedOn.atTime(10, 0).atZone(SEOUL).toInstant(), SEOUL,
 				issuedOn, Money.of(150000), PaymentMethod.CARD);
