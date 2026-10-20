@@ -1079,6 +1079,40 @@
         "required" : [ "name" ],
         "type" : "object"
       },
+      "PartnerQuoteRequest" : {
+        "description" : "받을 금액 미리 보기",
+        "properties" : {
+          "originalFee" : {
+            "description" : "원래 수강료(원, 첫 달 한 달 치). 0보다 크고 1원 단위, 10,000,000원까지. 아니면 400(DONGTANPASS_INVALID_ORIGINAL_FEE)",
+            "type" : "number"
+          }
+        },
+        "required" : [ "originalFee" ],
+        "type" : "object"
+      },
+      "PartnerQuoteResponse" : {
+        "description" : "받을 금액. 받을 금액 = 원래 수강료 × (1 − 할인율)에서 1원 미만을 버린 값, 할인액 = 원래 수강료 − 받을 금액",
+        "properties" : {
+          "discountAmount" : {
+            "description" : "할인액(원)",
+            "type" : "number"
+          },
+          "discountRate" : {
+            "description" : "이 패스의 할인율(발급 때 값). 5%는 0.05",
+            "type" : "number"
+          },
+          "originalFee" : {
+            "description" : "원래 수강료(원)",
+            "type" : "number"
+          },
+          "payableAmount" : {
+            "description" : "받을 금액(원). 학원은 이 금액으로 결제받는다",
+            "type" : "number"
+          }
+        },
+        "required" : [ "discountAmount", "discountRate", "originalFee", "payableAmount" ],
+        "type" : "object"
+      },
       "PartnerResponse" : {
         "description" : "연계 학원 하나",
         "properties" : {
@@ -2893,6 +2927,84 @@
           }
         },
         "summary" : "연계 학원 패스 확인",
+        "tags" : [ "partner-redemption-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/partner-redemptions/{passId}/holder-check" : {
+      "post" : {
+        "description" : "학원이 등록 서류에 적은 학생 이름과 학부모 번호(1~4개)가 패스와 맞는지 따로 답한다. 바꾸는 자료가 없다. 이름은 띄어쓰기와 무관하고, 번호는 하나라도 패스의 번호와 같으면 맞다. 최종 판단은 사용 처리가 다시 한다. 없는 패스는 404, 연계 학원 발급 패스·이 학원에서 이미 할인받은 학생·쓸 수 없는 패스는 409(확인과 같은 코드). 계정마다 정해진 횟수(맞든 틀리든 센다)를 넘으면 429(DONGTANPASS_HOLDER_CHECK_LIMITED, Retry-After). 이름과 번호는 주소가 아니라 본문으로만 보낸다(쿼리 문자열이 있으면 400)",
+        "operationId" : "checkHolder_1",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "passId",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/HolderCheckRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/HolderCheckResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "연계 학원 본인 확인",
+        "tags" : [ "partner-redemption-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/partner-redemptions/{passId}/quote" : {
+      "post" : {
+        "description" : "원래 수강료(첫 달 한 달 치)를 넣으면 이 패스의 할인율로 할인액과 받을 금액을 준다. 기록을 남기지 않는다. 받을 금액은 1원 미만을 버리고, 할인액은 원래 수강료 − 받을 금액이다. 규칙 밖의 수강료는 그 칸의 400(COMMON_VALIDATION_FAILED). 없는 패스는 404, 연계 학원 발급 패스·이 학원에서 이미 할인받은 학생·쓸 수 없는 패스는 409",
+        "operationId" : "quote",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "passId",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PartnerQuoteRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PartnerQuoteResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "받을 금액 미리 보기",
         "tags" : [ "partner-redemption-controller" ]
       }
     },

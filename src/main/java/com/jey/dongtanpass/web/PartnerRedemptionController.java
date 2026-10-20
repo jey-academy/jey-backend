@@ -3,11 +3,17 @@ package com.jey.dongtanpass.web;
 import com.jey.core.auth.api.AllowedRoles;
 import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.UserRole;
+import com.jey.core.shared.BusinessException;
+import com.jey.core.shared.CommonErrorCode;
 import com.jey.core.shared.NotIdempotent;
 import com.jey.dongtanpass.application.PartnerPassService;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,6 +25,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/dongtanpass/partner-redemptions")
 class PartnerRedemptionController {
+
+	private static final Logger log = LoggerFactory.getLogger(PartnerRedemptionController.class);
 
 	private final PartnerPassService partnerPassService;
 
@@ -41,6 +49,44 @@ class PartnerRedemptionController {
 			return PartnerVerifiedPassResponse.from(partnerPassService.verifyQr(body.qrToken(), user));
 		}
 		return PartnerVerifiedPassResponse.from(partnerPassService.verifyPassNo(body.passNo(), user));
+	}
+
+	@Operation(summary = "연계 학원 본인 확인",
+			description = "학원이 등록 서류에 적은 학생 이름과 학부모 번호(1~4개)가 패스와 맞는지 따로 답한다. 바꾸는 자료가 없다. "
+					+ "이름은 띄어쓰기와 무관하고, 번호는 하나라도 패스의 번호와 같으면 맞다. 최종 판단은 사용 처리가 다시 한다. "
+					+ "없는 패스는 404, 연계 학원 발급 패스·이 학원에서 이미 할인받은 학생·쓸 수 없는 패스는 409(확인과 같은 코드). "
+					+ "계정마다 정해진 횟수(맞든 틀리든 센다)를 넘으면 429(DONGTANPASS_HOLDER_CHECK_LIMITED, Retry-After). "
+					+ "이름과 번호는 주소가 아니라 본문으로만 보낸다(쿼리 문자열이 있으면 400)")
+	@AllowedRoles(UserRole.PARTNER)
+	@NotIdempotent("바꾸는 자료가 없다. 같은 요청을 다시 보내도 결과가 같다")
+	@PostMapping("/{passId}/holder-check")
+	HolderCheckResponse checkHolder(@PathVariable long passId, @Valid @RequestBody HolderCheckRequest body,
+			@AuthenticationPrincipal AuthenticatedUser user, HttpServletRequest request) {
+		rejectQueryString(request);
+		return HolderCheckResponse
+			.from(partnerPassService.holderCheck(passId, body.studentNameKey(), body.guardianPhones(), user));
+	}
+
+	@Operation(summary = "받을 금액 미리 보기",
+			description = "원래 수강료(첫 달 한 달 치)를 넣으면 이 패스의 할인율로 할인액과 받을 금액을 준다. 기록을 남기지 않는다. "
+					+ "받을 금액은 1원 미만을 버리고, 할인액은 원래 수강료 − 받을 금액이다. 규칙 밖의 수강료는 그 칸의 400(COMMON_VALIDATION_FAILED). "
+					+ "없는 패스는 404, 연계 학원 발급 패스·이 학원에서 이미 할인받은 학생·쓸 수 없는 패스는 409")
+	@AllowedRoles(UserRole.PARTNER)
+	@NotIdempotent("바꾸는 자료가 없다. 같은 요청을 다시 보내도 결과가 같다")
+	@PostMapping("/{passId}/quote")
+	PartnerQuoteResponse quote(@PathVariable long passId, @Valid @RequestBody PartnerQuoteRequest body,
+			@AuthenticationPrincipal AuthenticatedUser user) {
+		return PartnerQuoteResponse.from(partnerPassService.quote(passId, body.originalFee(), user));
+	}
+
+	// 이름과 번호를 주소에 실어 보낸 요청이다. 읽지 않고 넘기면 주소에 실린 값이 앞단의 접근 로그에 남은 것을 아무도 모른다.
+	// 거부해서 드러나게 한다(ADR-0032). 이름이나 값은 로그에 남기지 않는다.
+	private static void rejectQueryString(HttpServletRequest request) {
+		if (!request.getParameterMap().isEmpty()) {
+			log.warn("연계 학원 요청에 쿼리 문자열이 실려 왔다. 이름과 번호는 본문으로만 받는다: 파라미터 {}개",
+					request.getParameterMap().size());
+			throw new BusinessException(CommonErrorCode.BAD_REQUEST, "이름과 번호는 주소가 아니라 본문으로 보내야 합니다.");
+		}
 	}
 
 }

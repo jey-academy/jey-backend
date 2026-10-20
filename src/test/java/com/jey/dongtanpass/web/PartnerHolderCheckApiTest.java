@@ -1,0 +1,146 @@
+package com.jey.dongtanpass.web;
+
+import java.math.BigDecimal;
+import java.time.Clock;
+
+import com.jey.TestcontainersConfiguration;
+import com.jey.core.auth.api.UserRole;
+import com.jey.core.shared.PhoneNumber;
+import com.jey.core.shared.PhoneProtector;
+import com.jey.dongtanpass.application.PassBenefits;
+import com.jey.dongtanpass.domain.Pass;
+import com.jey.dongtanpass.domain.PassRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+
+import static com.jey.TestCsrf.csrfToken;
+import static com.jey.core.member.MemberFixtures.randomPhone;
+import static com.jey.dongtanpass.DongtanpassFixtures.upsertPartner;
+import static com.jey.dongtanpass.web.PartnerPassFixtures.campusPass;
+import static com.jey.dongtanpass.web.PartnerPassFixtures.login;
+import static com.jey.dongtanpass.web.PartnerPassFixtures.newAccount;
+import static com.jey.dongtanpass.web.PartnerPassFixtures.newStudentId;
+import static com.jey.dongtanpass.web.PartnerPassFixtures.partner;
+import static com.jey.dongtanpass.web.PartnerPassFixtures.partnerPass;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.securityContext;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+// 연계 학원이 등록 서류에 적은 학생 이름과 학부모 번호가 패스와 맞는지 미리 본다(데스크의 본인 확인과 같은 비교).
+// 최종 판단은 사용 처리가 다시 한다.
+@Import(TestcontainersConfiguration.class)
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+class PartnerHolderCheckApiTest {
+
+	private static final long PARTNER = 902_101L;
+
+	// application.yaml의 holder-check 한도(HolderCheckPropertiesTest가 이 값을 본다).
+	private static final int HOLDER_CHECK_MAX = 30;
+
+	@Autowired
+	MockMvc mockMvc;
+
+	@Autowired
+	JdbcTemplate jdbc;
+
+	@Autowired
+	PassRepository passes;
+
+	@Autowired
+	PassBenefits passBenefits;
+
+	@Autowired
+	PhoneProtector phoneProtector;
+
+	@Autowired
+	Clock clock;
+
+	private PhoneNumber phone;
+
+	private Pass pass;
+
+	@BeforeEach
+	void setUp() {
+		upsertPartner(jdbc, PARTNER, true);
+		phone = randomPhone();
+		pass = passes.saveAndFlush(campusPass(passBenefits.current().campusId(), newStudentId(), "김하윤",
+				phoneProtector.fullIndex(phone), clock.instant(), new BigDecimal("0.05")));
+	}
+
+	@Test
+	void 이름과_번호가_맞으면_둘_다_참이다() throws Exception {
+		check(pass.getId(), body("김 하윤", "010-0000-0000", phone.value()), partner(PARTNER))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.nameMatches").value(true))
+			.andExpect(jsonPath("$.phoneMatches").value(true));
+	}
+
+	@Test
+	void 틀린_쪽을_따로_알려_준다() throws Exception {
+		check(pass.getId(), body("김하은", phone.value()), partner(PARTNER)).andExpect(jsonPath("$.nameMatches").value(false))
+			.andExpect(jsonPath("$.phoneMatches").value(true));
+		check(pass.getId(), body("김하윤", randomPhone().value()), partner(PARTNER))
+			.andExpect(jsonPath("$.nameMatches").value(true))
+			.andExpect(jsonPath("$.phoneMatches").value(false));
+	}
+
+	@Test
+	void 연계_학원이_발급한_패스와_쓸_수_없는_패스는_409다() throws Exception {
+		Pass partnerIssued = passes.saveAndFlush(partnerPass(PARTNER, "김하윤", "idx", clock.instant()));
+		check(partnerIssued.getId(), body("김하윤", phone.value()), partner(PARTNER)).andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_FOR_CAMPUS_USE"));
+
+		jdbc.update("UPDATE dongtanpass_pass SET status = 'CANCELED' WHERE id = ?", pass.getId());
+		check(pass.getId(), body("김하윤", phone.value()), partner(PARTNER)).andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_CANCELED"));
+	}
+
+	@Test
+	void 없는_패스는_404다() throws Exception {
+		check(Long.MAX_VALUE, body("김하윤", phone.value()), partner(PARTNER)).andExpect(status().isNotFound());
+	}
+
+	// 데스크와 같은 한도(계정마다, 맞든 틀리든). 번호를 넣어 보며 패스 주인을 알아내지 못하게 한다.
+	@Test
+	void 계정마다_정한_횟수를_넘으면_429다() throws Exception {
+		SecurityContext account = login(newAccount(), UserRole.PARTNER, null, PARTNER);
+		for (int i = 0; i < HOLDER_CHECK_MAX; i++) {
+			check(pass.getId(), body("김하윤", randomPhone().value()), account).andExpect(status().isOk());
+		}
+
+		check(pass.getId(), body("김하윤", phone.value()), account).andExpect(status().isTooManyRequests())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_HOLDER_CHECK_LIMITED"));
+	}
+
+	@Test
+	void 직원은_연계_학원의_본인_확인을_쓰지_못한다() throws Exception {
+		check(pass.getId(), body("김하윤", phone.value()), login(newAccount(), UserRole.STAFF, 1L, null))
+			.andExpect(status().isForbidden());
+	}
+
+	private ResultActions check(long passId, String body, SecurityContext login) throws Exception {
+		return mockMvc.perform(post("/api/v1/dongtanpass/partner-redemptions/{id}/holder-check", passId)
+			.with(securityContext(login))
+			.with(csrfToken(mockMvc))
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(body));
+	}
+
+	private static String body(String name, String... phones) {
+		return "{\"studentName\":\"" + name + "\",\"guardianPhones\":[\"" + String.join("\",\"", phones) + "\"]}";
+	}
+
+}

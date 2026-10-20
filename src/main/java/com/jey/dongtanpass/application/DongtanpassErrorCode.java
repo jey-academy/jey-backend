@@ -27,6 +27,9 @@ public enum DongtanpassErrorCode implements ErrorCode {
 
 	INVALID_PAID_AMOUNT(HttpStatus.BAD_REQUEST, "결제 금액은 0원보다 커야 하고 1원 단위여야 합니다."),
 
+	// 연계 학원이 넣은 원래 수강료(첫 달 한 달 치)가 규칙 밖이다. 상한은 입력 실수를 막는 값이다.
+	INVALID_ORIGINAL_FEE(HttpStatus.BAD_REQUEST, "원래 수강료는 0원보다 크고 1원 단위이며 10,000,000원을 넘을 수 없습니다."),
+
 	// 없는 패스이거나 부른 쪽이 발급하지 않은 패스다(다른 연계 학원의 패스, JEY 관리에서의 연계 학원 발급분). 있는지를 드러내지 않는다.
 	PASS_NOT_FOUND(HttpStatus.NOT_FOUND, "패스를 찾을 수 없습니다."),
 
