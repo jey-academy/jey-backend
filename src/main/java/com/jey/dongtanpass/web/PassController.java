@@ -55,7 +55,7 @@ class PassController {
 		this.passLedger = passLedger;
 	}
 
-	@Operation(summary = "고지 문구", description = "발급 화면에 보여 줄 지금 문구와 버전. 발급 요청에 이 버전을 함께 보낸다")
+	@Operation(summary = "고지 문구", description = "연계 학원 발급 화면에 보여 줄 지금 문구와 버전. 발급 요청에 이 버전을 함께 보낸다(JEY 발급의 문구와 다르다)")
 	@GetMapping("/consent-notice")
 	ConsentNoticeResponse consentNotice() {
 		return ConsentNoticeResponse.from(ConsentNotice.CURRENT);

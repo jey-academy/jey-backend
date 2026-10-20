@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 연계 학원의 발급 장부. 그 학원이 발급한 패스만 보인다.
+ * 발급 장부. 연계 학원 장부({@link #page}, CSV)는 그 학원이 발급한 패스만, JEY 장부({@link #campusPage})는 그 지점이 발급한 패스만 보인다.
  *
  * <p>기간은 발급일(한국 날짜)로 자르고 양끝을 포함한다. 상태는 오늘 기준으로 보이는 상태({@link PassState})로 거른다.
  */

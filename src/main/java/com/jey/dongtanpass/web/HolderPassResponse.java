@@ -11,7 +11,7 @@ import io.swagger.v3.oas.annotations.media.Schema.RequiredMode;
 
 @Schema(description = "학부모 화면의 패스. 학생 이름은 가린 것이고 학부모 번호는 없다")
 record HolderPassResponse(
-		@Schema(description = "패스 번호. QR이 안 될 때 데스크에 불러 준다", requiredMode = RequiredMode.REQUIRED) String passNo,
+		@Schema(description = "패스 번호. QR이 안 될 때 할인을 주는 곳(JEY 데스크 또는 연계 학원)에 불러 준다", requiredMode = RequiredMode.REQUIRED) String passNo,
 		@Schema(description = "패스의 방향. PARTNER_ISSUED 연계 학원이 발급해 JEY 지점에서 쓴다, CAMPUS_ISSUED JEY 지점이 발급해 연계 학원에서 쓴다",
 				requiredMode = RequiredMode.REQUIRED) PassDirection direction,
 		@Schema(description = "발급한 연계 학원. JEY 발급 패스(CAMPUS_ISSUED)는 null — 아무 연계 학원에서 쓴다",

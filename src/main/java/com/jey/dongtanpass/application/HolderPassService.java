@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 학부모가 링크 토큰으로 패스를 열고, 데스크에 보여 줄 서명 QR 토큰을 받는다. 학부모는 로그인하지 않는다. 링크 토큰이 열쇠다.
+ * 학부모가 링크 토큰으로 패스를 열고, 할인을 주는 곳에 보여 줄 서명 QR 토큰을 받는다. 두 방향의 패스를 같은 경로로 연다. 학부모는 로그인하지 않는다. 링크 토큰이 열쇠다.
  *
  * <p>없는 토큰, 모양이 틀린 토큰, 링크를 새로 만들어 막힌 토큰은 모두 같은 404다(어느 쪽인지 드러내지 않는다).
  * 학생 이름은 가려서 준다. 학원을 꺼도 발급된 패스는 열리고 QR도 받는다(ADR-0034). QR은 쓸 수 있는 패스에만 준다(ADR-0010).
@@ -106,7 +106,7 @@ public class HolderPassService {
 	}
 
 	/**
-	 * 데스크에 보여 줄 QR 토큰을 준다. 부를 때마다 새 토큰이다(수명 {@link PassQrCodes#TTL}).
+	 * 할인을 주는 곳에 보여 줄 QR 토큰을 준다(JEY 발급분을 확인하는 곳은 연계 학원의 사용 처리다). 부를 때마다 새 토큰이다(수명 {@link PassQrCodes#TTL}).
 	 *
 	 * @throws BusinessException 그 토큰의 패스가 없을 때(404), 기간이 지났거나 취소됐거나 사용된 패스일 때(409)
 	 */
@@ -126,7 +126,7 @@ public class HolderPassService {
 
 	// 모양을 먼저 본다. 해시는 ASCII가 아닌 글자를 ?로 바꾸므로 그 전에 걸러야 한다.
 	// 응답은 어느 경우든 같은 404다. 운영에서 "링크가 안 열린다"는 문의를 가리려고 이유만 로그에 남긴다(토큰과 해시는 남기지 않는다).
-	// 막힌 옛 링크(다시 받았거나 연계 학원이 새로 만든 것)는 not_found다. 해시만 저장하므로 없는 링크와 구별되지 않는다.
+	// 막힌 옛 링크(다시 받았거나 발급한 쪽 — 연계 학원·관리자 — 이 새로 만든 것)는 not_found다. 해시만 저장하므로 없는 링크와 구별되지 않는다.
 	private Pass passOf(String rawToken) {
 		if (!LinkToken.isWellFormed(rawToken)) {
 			log.info("학부모 링크로 패스를 찾지 못했다: reason=malformed");

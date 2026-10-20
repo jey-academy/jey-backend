@@ -20,7 +20,7 @@ final class DeskChecks {
 		}
 	}
 
-	/** 연계 학원이 발급한 패스가 아니면(JEY 발급분 — 연계 학원에서 쓴다) 409. 다른 확인보다 먼저 본다. */
+	/** 연계 학원이 발급한 패스가 아니면(JEY 발급분 — 연계 학원에서 쓴다) 409. 패스를 찾은 바로 뒤, 상태 확인(requireUsable)보다 먼저 본다. QR은 토큰을 쓴 것으로 적기 전에 본다. */
 	static void requirePartnerIssued(Pass pass) {
 		if (pass.getDirection() != PassDirection.PARTNER_ISSUED) {
 			throw new BusinessException(DongtanpassErrorCode.PASS_FOR_PARTNER_USE);

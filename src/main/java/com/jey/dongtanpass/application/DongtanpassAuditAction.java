@@ -47,7 +47,7 @@ enum DongtanpassAuditAction implements AuditAction {
 	/** 데스크의 사용 처리가 계정별 한도에 처음 막혔다(구간마다 한 번). 대상은 없다. 행위자가 그 계정이다. */
 	REDEEM_LIMITED("dongtanpass.redeem-limited", AuditOutcome.DENIED),
 
-	/** 쓰지 않은 패스를 취소했다. 대상은 그 패스다. 결제 환불은 연계 학원이 따로 한다. */
+	/** 쓰지 않은 패스를 취소했다. 대상은 그 패스다(두 방향 모두). 결제 환불은 발급한 쪽이 따로 한다. */
 	PASS_CANCELED("dongtanpass.pass-canceled", AuditOutcome.DONE),
 
 	/** 반대 방향 패스의 할인율을 바꿨다. 대상은 없고, 새 할인율을 덧붙인다(이미 발급한 패스는 발급 때 값 그대로다). */
