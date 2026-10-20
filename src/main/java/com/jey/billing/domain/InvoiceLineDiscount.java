@@ -43,6 +43,7 @@ public class InvoiceLineDiscount extends BaseEntity {
 		this.discountTypeCode = applied.code();
 		this.rate = applied.rate();
 		this.amount = applied.amount();
+		this.discountRef = applied.ref();
 		this.sortOrder = sortOrder;
 	}
 

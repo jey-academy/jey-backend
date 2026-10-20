@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.hibernate.annotations.BatchSize;
 
+import com.jey.billing.api.InvoiceRules;
 import com.jey.core.shared.BaseEntity;
 import com.jey.core.shared.Money;
 import jakarta.persistence.CascadeType;
@@ -26,7 +27,7 @@ import jakarta.persistence.Table;
 @Table(name = "billing_invoice_line")
 public class InvoiceLine extends BaseEntity {
 
-	public static final int MAX_DISCOUNTS = 4;
+	public static final int MAX_DISCOUNTS = InvoiceRules.MAX_DISCOUNTS;
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)

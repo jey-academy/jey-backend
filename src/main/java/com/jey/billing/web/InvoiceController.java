@@ -40,6 +40,7 @@ class InvoiceController {
 	static final int MAX_PAGE_SIZE = 100;
 
 	private static final String REJECTIONS = "학생이 없으면 404(BILLING_STUDENT_NOT_FOUND), 재원 중이 아니면 409(BILLING_STUDENT_NOT_ENROLLED). "
+			+ "할인 유형 코드는 대소문자를 가리지 않는다 — 같은 할인을 두 번 고르면 400(BILLING_DISCOUNT_DUPLICATED). "
 			+ "반이 없으면 404(BILLING_CLASS_NOT_FOUND), 꺼진 반 409(BILLING_CLASS_INACTIVE), 학생과 다른 지점의 반 409(BILLING_CLASS_NOT_AT_STUDENT_CAMPUS). "
 			+ "할인 유형이 없으면 404(BILLING_DISCOUNT_TYPE_NOT_FOUND), 꺼진 할인 409(BILLING_DISCOUNT_TYPE_INACTIVE). "
 			+ "할인을 하나만 받는 설정에 둘 이상이면 400(BILLING_TOO_MANY_DISCOUNTS), 할인율의 합이 100% 이상이면 400(BILLING_DISCOUNT_TOO_LARGE). "
@@ -60,7 +61,7 @@ class InvoiceController {
 	}
 
 	@Operation(operationId = "issueInvoice", summary = "청구 만들기", description = "학생의 그 달 청구를 만든다. 한 학생 한 달에 열린 청구는 하나다(있으면 409 BILLING_INVOICE_ALREADY_EXISTS). "
-			+ "금액은 미리 계산과 같다. " + REJECTIONS)
+			+ "금액은 미리 계산과 같다. 근거가 필요한 할인(동탄고 패스)은 고를 수 없다 — 400(BILLING_DISCOUNT_NEEDS_REFERENCE), 패스 사용 기록에서 청구를 만든다(미리 계산은 된다). " + REJECTIONS)
 	@Idempotent
 	@PostMapping("/invoices")
 	@ResponseStatus(HttpStatus.CREATED)
@@ -72,6 +73,15 @@ class InvoiceController {
 	@GetMapping("/invoices/{id}")
 	InvoiceResponse get(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable long id) {
 		return InvoiceResponse.from(invoices.get(id, user));
+	}
+
+	@Operation(operationId = "cancelInvoice", summary = "청구 취소",
+			description = "결제 전(ISSUED) 청구를 취소한다. 닫힌 청구가 되어 같은 달에 새 청구를 만들 수 있다. 결제한 청구나 이미 취소한 청구는 409(BILLING_INVOICE_NOT_CANCELABLE — 결제한 청구는 결제를 먼저 취소한다). "
+					+ "없으면 404(BILLING_INVOICE_NOT_FOUND), 다른 지점 403(AUTH_CAMPUS_NOT_ALLOWED)")
+	@Idempotent
+	@PostMapping("/invoices/{id}/cancel")
+	InvoiceResponse cancel(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable long id) {
+		return InvoiceResponse.from(invoices.cancel(id, user));
 	}
 
 	@Operation(operationId = "listInvoices", summary = "그 달의 청구", description = "학생 ID 순이다. 직원은 지점을 고르지 않으면 소속 지점이고, 다른 지점을 고르면 403(AUTH_CAMPUS_NOT_ALLOWED). 관리자는 고르지 않으면 전 지점이다")

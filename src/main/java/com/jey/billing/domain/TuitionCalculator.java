@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 
+import com.jey.billing.api.InvoiceRules;
 import com.jey.core.shared.Money;
 import com.jey.core.shared.RoundingPolicy;
 
@@ -18,9 +19,9 @@ import com.jey.core.shared.RoundingPolicy;
  */
 public final class TuitionCalculator {
 
-	public static final int MIN_LESSONS = 1;
+	public static final int MIN_LESSONS = InvoiceRules.MIN_LESSONS;
 
-	public static final int MAX_LESSONS = 31;
+	public static final int MAX_LESSONS = InvoiceRules.MAX_LESSONS;
 
 	private static final int BASE_LESSONS = 8;
 
@@ -67,7 +68,7 @@ public final class TuitionCalculator {
 					? remaining.multiply(BigDecimal.ONE.subtract(discount.rate()))
 					: remaining.subtract(discount.rate());
 			Money current = amountAt(baseFee8, remaining, lessonCount);
-			applied.add(new AppliedDiscount(discount.code(), discount.rate(), previous.minus(current)));
+			applied.add(new AppliedDiscount(discount.code(), discount.rate(), previous.minus(current), discount.ref()));
 			previous = current;
 		}
 		return new LineCharge(list, applied, previous);

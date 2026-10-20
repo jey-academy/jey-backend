@@ -28,10 +28,39 @@ public enum BillingErrorCode implements ErrorCode {
 	// 할인율을 더하면 100% 이상이다(0원 이하의 청구가 된다).
 	DISCOUNT_TOO_LARGE(HttpStatus.BAD_REQUEST, "할인율의 합이 100% 이상입니다."),
 
-	// 한 학생 한 달에 열린 청구는 하나다.
-	INVOICE_ALREADY_EXISTS(HttpStatus.CONFLICT, "이 학생의 그 달 청구가 이미 있습니다."),
+	// 근거(참조값)가 필요한 할인(예: 동탄고 패스)은 직원이 고르지 않는다. 그 할인을 주는 곳이 붙인다.
+	DISCOUNT_NEEDS_REFERENCE(HttpStatus.BAD_REQUEST, "이 할인은 직접 고를 수 없습니다. 그 할인을 주는 곳(예: 패스 사용 기록)에서 붙습니다."),
 
-	INVOICE_NOT_FOUND(HttpStatus.NOT_FOUND, "청구를 찾을 수 없습니다.");
+	// 같은 할인을 두 번 골랐다(대소문자만 다른 코드도 같은 할인이다).
+	DISCOUNT_DUPLICATED(HttpStatus.BAD_REQUEST, "같은 할인을 두 번 고를 수 없습니다."),
+
+	// 한 학생 한 달에 열린 청구는 하나다.
+	INVOICE_ALREADY_EXISTS(HttpStatus.CONFLICT, "이 학생의 그 달 청구가 이미 있습니다. 새로 만들려면 그 청구를 먼저 취소해 주세요."),
+
+	INVOICE_NOT_FOUND(HttpStatus.NOT_FOUND, "청구를 찾을 수 없습니다."),
+
+	// 결제 전(ISSUED) 청구에만 결제한다. 이미 결제했거나 취소한 청구다.
+	INVOICE_NOT_PAYABLE(HttpStatus.CONFLICT, "결제할 수 없는 청구입니다. 이미 결제했거나 취소한 청구입니다."),
+
+	// 결제 전(ISSUED) 청구만 취소한다. 결제한 청구(결제를 먼저 취소)나 이미 취소한 청구다.
+	INVOICE_NOT_CANCELABLE(HttpStatus.CONFLICT, "취소할 수 없는 청구입니다. 이미 취소했거나, 결제한 청구라면 결제를 먼저 취소해 주세요."),
+
+	// 교재비는 0원 이상 1원 단위이고 상한이 있다(입력 실수 방지).
+	INVALID_BOOK_FEE(HttpStatus.BAD_REQUEST, "교재비는 1원 단위이고 10,000,000원을 넘을 수 없습니다."),
+
+	// 수강료는 청구 합계 그대로 받는다(나눠 내기·일부 결제 없음).
+	PAYMENT_AMOUNT_MISMATCH(HttpStatus.CONFLICT, "받은 수강료가 청구 금액과 다릅니다."),
+
+	// 청구를 잠그고 상태를 보므로 보통은 INVOICE_NOT_PAYABLE이 먼저 나간다. 유니크 키가 막은 마지막 방어선이다.
+	PAYMENT_ALREADY_EXISTS(HttpStatus.CONFLICT, "이 청구의 결제가 이미 있습니다."),
+
+	PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "결제를 찾을 수 없습니다."),
+
+	PAYMENT_ALREADY_CANCELED(HttpStatus.CONFLICT, "이미 취소한 결제입니다."),
+
+	INVALID_PERIOD(HttpStatus.BAD_REQUEST, "기간이 올바르지 않습니다. 시작일은 종료일보다 뒤일 수 없고, 2000-01-01부터 2099-12-31 사이여야 합니다."),
+
+	PERIOD_TOO_LONG(HttpStatus.BAD_REQUEST, "기간은 1년까지 볼 수 있습니다.");
 
 	private final HttpStatus status;
 

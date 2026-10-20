@@ -5,12 +5,16 @@ import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
 
+import jakarta.persistence.LockModeType;
+
 /**
- * 사용 기록은 고치거나 지우지 않는다. 지우면 유니크 키가 풀려 같은 학생·패스를 다시 쓸 수 있으므로 지우는 메서드를 열지 않는다.
+ * 사용 기록은 지우지 않는다. 지우면 유니크 키가 풀려 같은 학생·패스를 다시 쓸 수 있으므로 지우는 메서드를 열지 않는다.
+ * 바뀌는 칸은 이 기록에서 만든 청구뿐이다({@link Redemption#attachInvoice}).
  */
 public interface RedemptionRepository extends Repository<Redemption, Long> {
 
@@ -18,6 +22,11 @@ public interface RedemptionRepository extends Repository<Redemption, Long> {
 	Redemption saveAndFlush(Redemption redemption);
 
 	Optional<Redemption> findById(Long id);
+
+	/** 사용 기록에서 청구를 만들 때 먼저 잠근다(같은 기록으로 동시에 둘을 만들지 않게). */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select r from Redemption r where r.id = :id")
+	Optional<Redemption> findByIdForUpdate(@Param("id") long id);
 
 	/** 패스 하나에 기록은 하나다(유니크). 학부모 화면의 사용일에 쓴다. */
 	Optional<Redemption> findByPassId(Long passId);

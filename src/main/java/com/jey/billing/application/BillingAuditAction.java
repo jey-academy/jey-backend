@@ -9,7 +9,10 @@ import com.jey.core.audit.api.AuditOutcome;
 enum BillingAuditAction implements AuditAction {
 
 	/** 청구를 만들었다. 대상은 그 학생, 덧붙이는 값은 청구 ID·대상 월·합계. */
-	INVOICE_CREATED("billing.invoice-created", AuditOutcome.DONE);
+	INVOICE_CREATED("billing.invoice-created", AuditOutcome.DONE),
+
+	/** 결제 전 청구를 취소했다. 대상은 그 학생, 덧붙이는 값은 청구 ID. 결제·결제 취소는 이벤트로 남는다. */
+	INVOICE_CANCELED("billing.invoice-canceled", AuditOutcome.DONE);
 
 	private final String code;
 

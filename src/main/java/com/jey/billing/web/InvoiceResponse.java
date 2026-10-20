@@ -18,17 +18,20 @@ record InvoiceResponse(
 		@Schema(description = "학생 ID", requiredMode = RequiredMode.REQUIRED) long studentId,
 		@Schema(description = "대상 월(YYYY-MM)", type = "string", example = "2026-11",
 				requiredMode = RequiredMode.REQUIRED) YearMonth targetMonth,
-		@Schema(description = "상태. ISSUED 만들었고 결제 전. 미리 계산이면 null", requiredMode = RequiredMode.REQUIRED,
+		@Schema(description = "상태. ISSUED 결제 전, PAID 결제함(결제를 취소하면 ISSUED로 돌아간다), CANCELED 취소함(같은 달에 새 청구를 만들 수 있다). 미리 계산이면 null", requiredMode = RequiredMode.REQUIRED,
 				nullable = true) InvoiceStatus status,
 		@Schema(description = "할인이 여러 개일 때의 계산 방식. ADDITIVE 할인율을 더해 한 번에, SEQUENTIAL 앞의 할인을 뺀 금액에서 다음 할인, SINGLE 하나만. 만든 청구는 만들 때의 방식이다",
 				requiredMode = RequiredMode.REQUIRED) DiscountPolicy discountPolicy,
 		@Schema(description = "청구 합계(원). 라인 청구액의 합", requiredMode = RequiredMode.REQUIRED) Money totalAmount,
-		@Schema(requiredMode = RequiredMode.REQUIRED) List<InvoiceLineResponse> lines) {
+		@Schema(requiredMode = RequiredMode.REQUIRED) List<InvoiceLineResponse> lines,
+		@Schema(description = "유효한 결제(COMPLETED). 청구가 PAID일 때만 있다(결제 전·취소한 청구, 미리 계산이면 null). 취소한 결제는 결제 목록에서 본다",
+				requiredMode = RequiredMode.REQUIRED, nullable = true) PaymentResponse payment) {
 
 	static InvoiceResponse from(InvoiceDetail detail) {
 		return new InvoiceResponse(detail.id(), detail.campusId(), detail.studentId(), detail.targetMonth(),
 				detail.status(), detail.discountPolicy(), detail.totalAmount(),
-				detail.lines().stream().map(InvoiceLineResponse::from).toList());
+				detail.lines().stream().map(InvoiceLineResponse::from).toList(),
+				detail.payment() == null ? null : PaymentResponse.from(detail.payment()));
 	}
 
 	@Schema(description = "청구 라인 하나(반 하나). 정가 = 청구액 + 할인 금액의 합")

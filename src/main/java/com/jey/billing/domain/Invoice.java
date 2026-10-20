@@ -7,6 +7,7 @@ import java.util.List;
 
 import org.hibernate.annotations.BatchSize;
 
+import com.jey.billing.api.InvoiceRules;
 import com.jey.core.shared.BaseEntity;
 import com.jey.core.shared.Money;
 import jakarta.persistence.CascadeType;
@@ -25,7 +26,8 @@ import jakarta.persistence.Table;
 
 /**
  * 수강료 청구. 학생 한 명의 한 달 수강료다. {@link #issue}로만 만든다.
- * 한 학생 한 달에 열린 청구는 하나다(유니크 키 {@value #OPEN_UNIQUE_KEY} — 열린 청구만 {@code open_key = 1}).
+ * 한 학생 한 달에 열린 청구(ISSUED, PAID)는 하나다(유니크 키 {@value #OPEN_UNIQUE_KEY} — 열린 청구만 {@code open_key = 1}).
+ * 상태는 {@link InvoiceStatus}의 전이만 허용한다.
  */
 @Entity
 @Table(name = "billing_invoice")
@@ -33,7 +35,7 @@ public class Invoice extends BaseEntity {
 
 	public static final String OPEN_UNIQUE_KEY = "uk_billing_invoice_open";
 
-	public static final int MAX_LINES = 4;
+	public static final int MAX_LINES = InvoiceRules.MAX_LINES;
 
 	private static final byte OPEN = 1;
 
@@ -110,6 +112,43 @@ public class Invoice extends BaseEntity {
 			throw new IllegalArgumentException("같은 반을 두 라인에 넣을 수 없다");
 		}
 		return new Invoice(campusId, studentId, targetMonth, policy, lines);
+	}
+
+	/**
+	 * 결제했다. 결제({@link Payment#record})가 부른다.
+	 *
+	 * @throws InvoiceStateException 결제 전(ISSUED)이 아닐 때
+	 */
+	void markPaid() {
+		requireStatus(InvoiceStatus.ISSUED);
+		status = InvoiceStatus.PAID;
+	}
+
+	/**
+	 * 결제를 취소해 다시 결제 전이다. 결제 취소({@link Payment#cancel})가 부른다. 열린 청구 그대로다.
+	 *
+	 * @throws InvoiceStateException 결제한 청구(PAID)가 아닐 때
+	 */
+	void reopen() {
+		requireStatus(InvoiceStatus.PAID);
+		status = InvoiceStatus.ISSUED;
+	}
+
+	/**
+	 * 결제 전 청구를 취소한다. 닫힌 청구가 되어 같은 달에 새 청구를 만들 수 있다.
+	 *
+	 * @throws InvoiceStateException 결제 전(ISSUED)이 아닐 때 — 결제한 청구는 결제를 먼저 취소한다
+	 */
+	public void cancel() {
+		requireStatus(InvoiceStatus.ISSUED);
+		status = InvoiceStatus.CANCELED;
+		openKey = null;
+	}
+
+	private void requireStatus(InvoiceStatus expected) {
+		if (status != expected) {
+			throw new InvoiceStateException(status);
+		}
 	}
 
 	public Long getId() {
