@@ -5,6 +5,7 @@ import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.CommonErrorCode;
+import com.jey.core.shared.Idempotent;
 import com.jey.core.shared.NotIdempotent;
 import com.jey.dongtanpass.application.PartnerPassService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -54,7 +55,7 @@ class PartnerRedemptionController {
 	@Operation(summary = "연계 학원 본인 확인",
 			description = "학원이 등록 서류에 적은 학생 이름과 학부모 번호(1~4개)가 패스와 맞는지 따로 답한다. 바꾸는 자료가 없다. "
 					+ "이름은 띄어쓰기와 무관하고, 번호는 하나라도 패스의 번호와 같으면 맞다. 최종 판단은 사용 처리가 다시 한다. "
-					+ "없는 패스는 404, 연계 학원 발급 패스·이 학원에서 이미 할인받은 학생·쓸 수 없는 패스는 409(확인과 같은 코드). "
+					+ "없는 패스는 404, 연계 학원 발급 패스·이 학원에서 이미 할인받은 학생·쓸 수 없는 패스는 409(확인과 같은 코드). 이 학원이 확인하지 않은(확인한 지 30분이 지난) 패스도 404. "
 					+ "계정마다 정해진 횟수(맞든 틀리든 센다)를 넘으면 429(DONGTANPASS_HOLDER_CHECK_LIMITED, Retry-After). "
 					+ "이름과 번호는 주소가 아니라 본문으로만 보낸다(쿼리 문자열이 있으면 400)")
 	@AllowedRoles(UserRole.PARTNER)
@@ -70,13 +71,32 @@ class PartnerRedemptionController {
 	@Operation(summary = "받을 금액 미리 보기",
 			description = "원래 수강료(첫 달 한 달 치)를 넣으면 이 패스의 할인율로 할인액과 받을 금액을 준다. 기록을 남기지 않는다. "
 					+ "받을 금액은 1원 미만을 버리고, 할인액은 원래 수강료 − 받을 금액이다. 규칙 밖의 수강료는 그 칸의 400(COMMON_VALIDATION_FAILED). "
-					+ "없는 패스는 404, 연계 학원 발급 패스·이 학원에서 이미 할인받은 학생·쓸 수 없는 패스는 409")
+					+ "없는 패스는 404, 연계 학원 발급 패스·이 학원에서 이미 할인받은 학생·쓸 수 없는 패스는 409. 이 학원이 확인하지 않은(확인한 지 30분이 지난) 패스도 404")
 	@AllowedRoles(UserRole.PARTNER)
 	@NotIdempotent("바꾸는 자료가 없다. 같은 요청을 다시 보내도 결과가 같다")
 	@PostMapping("/{passId}/quote")
 	PartnerQuoteResponse quote(@PathVariable long passId, @Valid @RequestBody PartnerQuoteRequest body,
 			@AuthenticationPrincipal AuthenticatedUser user) {
 		return PartnerQuoteResponse.from(partnerPassService.quote(passId, body.originalFee(), user));
+	}
+
+	@Operation(summary = "연계 학원 사용 처리",
+			description = "이 학원이 방금 확인한 JEY 발급 패스를 쓴다. 이름·학부모 번호를 서버가 다시 맞춰 보고, 받을 금액을 계산해 기록한다. "
+					+ "Idempotency-Key 필요(같은 키로 다시 보내면 처음의 응답). 원래 수강료가 규칙 밖이면 400(DONGTANPASS_INVALID_ORIGINAL_FEE). "
+					+ "이 학원이 확인하지 않은(확인한 지 30분이 지난) 패스는 404(DONGTANPASS_PASS_NOT_FOUND). "
+					+ "연계 학원 발급 패스 409(DONGTANPASS_PASS_FOR_CAMPUS_USE), 쓸 수 없는 패스 409(DONGTANPASS_PASS_EXPIRED, DONGTANPASS_PASS_CANCELED, DONGTANPASS_PASS_ALREADY_REDEEMED), "
+					+ "이름이 다름 409(DONGTANPASS_HOLDER_NAME_MISMATCH), 번호가 다름 409(DONGTANPASS_HOLDER_PHONE_MISMATCH), "
+					+ "이 학원에서 이미 할인받은 학생 409(DONGTANPASS_STUDENT_ALREADY_USED_AT_PARTNER). "
+					+ "계정마다 정해진 횟수(맞든 틀리든 센다)를 넘으면 429(DONGTANPASS_REDEEM_LIMITED, Retry-After). "
+					+ "이름과 번호는 주소가 아니라 본문으로만 보낸다(쿼리 문자열이 있으면 400)")
+	@AllowedRoles(UserRole.PARTNER)
+	@Idempotent
+	@PostMapping("/{passId}/redeem")
+	PartnerRedeemResponse redeem(@PathVariable long passId, @Valid @RequestBody PartnerRedeemRequest body,
+			@AuthenticationPrincipal AuthenticatedUser user, HttpServletRequest request) {
+		rejectQueryString(request);
+		return PartnerRedeemResponse.from(partnerPassService.redeem(passId, body.studentNameKey(),
+				body.guardianPhones(), body.originalFee(), user));
 	}
 
 	// 이름과 번호를 주소에 실어 보낸 요청이다. 읽지 않고 넘기면 주소에 실린 값이 앞단의 접근 로그에 남은 것을 아무도 모른다.

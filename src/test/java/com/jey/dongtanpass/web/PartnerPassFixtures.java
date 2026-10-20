@@ -19,6 +19,13 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+
+import static com.jey.TestCsrf.csrfToken;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.securityContext;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // 연계 학원 쪽 사용 처리 시험이 같이 쓰는 것. 학생 ID는 학생 자료와 잇지 않는 시험이라 겹치지 않게 크게 고른다(외래 키 없음).
 final class PartnerPassFixtures {
@@ -61,6 +68,15 @@ final class PartnerPassFixtures {
 
 	static SecurityContext partner(long partnerId) {
 		return login(newAccount(), UserRole.PARTNER, null, partnerId);
+	}
+
+	// 다음 단계(본인 확인, 금액, 사용 처리)는 그 학원이 확인한 패스에만 된다. 패스 번호로 확인해 둔다(새 계정이라 번호 확인 한도와 무관하다).
+	static void verifyAt(MockMvc mockMvc, Pass pass, long partnerId) throws Exception {
+		mockMvc.perform(post("/api/v1/dongtanpass/partner-redemptions/verify").with(securityContext(partner(partnerId)))
+			.with(csrfToken(mockMvc))
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"passNo\":\"" + pass.getPassNo() + "\"}"))
+			.andExpect(status().isOk());
 	}
 
 }

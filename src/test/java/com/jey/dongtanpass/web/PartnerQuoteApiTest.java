@@ -28,7 +28,7 @@ import static com.jey.dongtanpass.web.PartnerPassFixtures.login;
 import static com.jey.dongtanpass.web.PartnerPassFixtures.newAccount;
 import static com.jey.dongtanpass.web.PartnerPassFixtures.newStudentId;
 import static com.jey.dongtanpass.web.PartnerPassFixtures.partner;
-import static com.jey.dongtanpass.web.PartnerPassFixtures.partnerPass;
+import static com.jey.dongtanpass.web.PartnerPassFixtures.verifyAt;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.securityContext;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -112,15 +112,12 @@ class PartnerQuoteApiTest {
 	}
 
 	@Test
-	void 쓸_수_없거나_연계_학원이_발급한_패스는_409다() throws Exception {
+	void 확인한_뒤에_쓸_수_없게_된_패스는_409다() throws Exception {
 		Pass canceled = save(new BigDecimal("0.05"));
 		jdbc.update("UPDATE dongtanpass_pass SET status = 'CANCELED' WHERE id = ?", canceled.getId());
-		Pass partnerIssued = passes.saveAndFlush(partnerPass(PARTNER, "김하윤", "idx", clock.instant()));
 
 		quote(canceled.getId(), "280000", partner(PARTNER)).andExpect(status().isConflict())
 			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_CANCELED"));
-		quote(partnerIssued.getId(), "280000", partner(PARTNER)).andExpect(status().isConflict())
-			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_FOR_CAMPUS_USE"));
 	}
 
 	@Test
@@ -129,9 +126,21 @@ class PartnerQuoteApiTest {
 			.andExpect(status().isForbidden());
 	}
 
-	private Pass save(BigDecimal rate) {
-		return passes.saveAndFlush(campusPass(passBenefits.current().campusId(), newStudentId(), "김하윤", "idx",
+	private Pass save(BigDecimal rate) throws Exception {
+		Pass pass = passes.saveAndFlush(campusPass(passBenefits.current().campusId(), newStudentId(), "김하윤", "idx",
 				clock.instant(), rate));
+		verifyAt(mockMvc, pass, PARTNER);
+		return pass;
+	}
+
+	// 확인하지 않은 패스 ID로는 할인율·상태를 알아내지 못한다.
+	@Test
+	void 이_학원이_확인하지_않은_패스는_없는_패스와_같은_404다() throws Exception {
+		Pass notVerified = passes.saveAndFlush(campusPass(passBenefits.current().campusId(), newStudentId(), "김하윤",
+				"idx", clock.instant(), new BigDecimal("0.05")));
+
+		quote(notVerified.getId(), "280000", partner(PARTNER)).andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_FOUND"));
 	}
 
 	private ResultActions quote(long passId, String fee, SecurityContext login) throws Exception {

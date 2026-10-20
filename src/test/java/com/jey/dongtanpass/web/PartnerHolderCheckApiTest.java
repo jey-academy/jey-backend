@@ -31,7 +31,7 @@ import static com.jey.dongtanpass.web.PartnerPassFixtures.login;
 import static com.jey.dongtanpass.web.PartnerPassFixtures.newAccount;
 import static com.jey.dongtanpass.web.PartnerPassFixtures.newStudentId;
 import static com.jey.dongtanpass.web.PartnerPassFixtures.partner;
-import static com.jey.dongtanpass.web.PartnerPassFixtures.partnerPass;
+import static com.jey.dongtanpass.web.PartnerPassFixtures.verifyAt;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.securityContext;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -46,6 +46,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PartnerHolderCheckApiTest {
 
 	private static final long PARTNER = 902_101L;
+
+	private static final long OTHER_PARTNER = 902_102L;
 
 	// application.yaml의 holder-check 한도(HolderCheckPropertiesTest가 이 값을 본다).
 	private static final int HOLDER_CHECK_MAX = 30;
@@ -73,11 +75,24 @@ class PartnerHolderCheckApiTest {
 	private Pass pass;
 
 	@BeforeEach
-	void setUp() {
+	void setUp() throws Exception {
 		upsertPartner(jdbc, PARTNER, true);
 		phone = randomPhone();
 		pass = passes.saveAndFlush(campusPass(passBenefits.current().campusId(), newStudentId(), "김하윤",
 				phoneProtector.fullIndex(phone), clock.instant(), new BigDecimal("0.05")));
+		verifyAt(mockMvc, pass, PARTNER);
+	}
+
+	// 확인하지 않은 패스 ID로는 본인 확인을 할 수 없다(패스의 있음·주인을 알아내지 못하게). 다른 학원이 확인한 것도 같다.
+	@Test
+	void 이_학원이_확인하지_않은_패스는_없는_패스와_같은_404다() throws Exception {
+		Pass notVerified = passes.saveAndFlush(campusPass(passBenefits.current().campusId(), newStudentId(), "김하윤",
+				phoneProtector.fullIndex(phone), clock.instant(), new BigDecimal("0.05")));
+		upsertPartner(jdbc, OTHER_PARTNER, true);
+
+		check(notVerified.getId(), body("김하윤", phone.value()), partner(PARTNER)).andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_NOT_FOUND"));
+		check(pass.getId(), body("김하윤", phone.value()), partner(OTHER_PARTNER)).andExpect(status().isNotFound());
 	}
 
 	@Test
@@ -98,11 +113,7 @@ class PartnerHolderCheckApiTest {
 	}
 
 	@Test
-	void 연계_학원이_발급한_패스와_쓸_수_없는_패스는_409다() throws Exception {
-		Pass partnerIssued = passes.saveAndFlush(partnerPass(PARTNER, "김하윤", "idx", clock.instant()));
-		check(partnerIssued.getId(), body("김하윤", phone.value()), partner(PARTNER)).andExpect(status().isConflict())
-			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_FOR_CAMPUS_USE"));
-
+	void 확인한_뒤에_쓸_수_없게_된_패스는_409다() throws Exception {
 		jdbc.update("UPDATE dongtanpass_pass SET status = 'CANCELED' WHERE id = ?", pass.getId());
 		check(pass.getId(), body("김하윤", phone.value()), partner(PARTNER)).andExpect(status().isConflict())
 			.andExpect(jsonPath("$.code").value("DONGTANPASS_PASS_CANCELED"));

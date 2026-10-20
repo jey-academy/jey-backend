@@ -77,10 +77,10 @@ public enum DongtanpassErrorCode implements ErrorCode {
 	STUDENT_NOT_NEW(HttpStatus.CONFLICT, "새로 등록한 학생에게만 패스를 쓸 수 있습니다. 이미 패스를 썼거나, 등록한 지 오래됐거나, 재원 중이 아닌 학생입니다."),
 
 	// 학생 이름이 패스의 이름과 다르다(띄어쓰기는 무관). 이름과 번호가 모두 다르면 이것이 나간다.
-	HOLDER_NAME_MISMATCH(HttpStatus.CONFLICT, "학생 이름이 패스의 이름과 다릅니다. 연계 학원에 확인해 주세요."),
+	HOLDER_NAME_MISMATCH(HttpStatus.CONFLICT, "학생 이름이 패스의 이름과 다릅니다. 패스를 발급한 곳에 확인해 주세요."),
 
 	// 학생의 학부모 중 패스를 받을 때 적은 번호의 학부모가 없다.
-	HOLDER_PHONE_MISMATCH(HttpStatus.CONFLICT, "학생의 학부모 번호 중에 패스를 받을 때 적은 번호가 없습니다. 학부모 번호를 더하거나 연계 학원에 확인해 주세요."),
+	HOLDER_PHONE_MISMATCH(HttpStatus.CONFLICT, "학부모 번호 중에 패스에 등록된 번호가 없습니다. 학부모 번호를 확인하거나 패스를 발급한 곳에 확인해 주세요."),
 
 	// 학부모 링크 다시 받기에서 이름과 번호가 여러 번 맞지 않았다(ADR-0035). 어느 기준에 걸렸는지 드러내지 않는다.
 	HOLDER_RELINK_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "입력이 여러 번 맞지 않아 잠시 막았습니다. 잠시 뒤 다시 시도해 주세요."),
