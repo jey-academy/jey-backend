@@ -229,6 +229,17 @@ class LedgerSyncTest {
 		assertThat(sync.getCanceledOn()).isEqualTo(CANCELED_ON);
 	}
 
+	@Test
+	void 다른_결제가_같은_장부를_쓰는_중이면_횟수를_세지_않고_잠시_뒤로_미룬다() {
+		LedgerSync sync = claimed();
+
+		sync.postpone(NOW.plusSeconds(20));
+
+		assertThat(sync.getStatus()).isEqualTo(LedgerSyncStatus.PENDING);
+		assertThat(sync.getAttempts()).isZero();
+		assertThat(sync.getNextAttemptAt()).isEqualTo(NOW.plusSeconds(20));
+	}
+
 	private static LedgerSync newSync() {
 		return LedgerSync.pending(7L, 1L, 2L, YearMonth.of(2026, 11), NOW);
 	}

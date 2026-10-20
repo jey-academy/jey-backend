@@ -189,4 +189,13 @@ class LedgerLayoutTest {
 		assertThat(layout.noteAt(999)).isEmpty();
 	}
 
+	@Test
+	void 이_결제의_표시가_있는_줄을_찾는다() {
+		List<List<String>> values = with(dongtanOctober(), 27, NOTE_COLUMN, MARKER);
+		LedgerLayout layout = LedgerLayout.parse(values, OCTOBER);
+
+		assertThat(layout.rowOf(MARKER)).contains(28);
+		assertThat(layout.rowOf("앱:결제-999")).isEmpty();
+	}
+
 }

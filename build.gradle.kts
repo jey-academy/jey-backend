@@ -37,6 +37,8 @@ dependencies {
 	// 다른 스레드로 넘기는 작업에 로그 문맥(MDC)을 같이 넘긴다 (ADR-0028). Spring Modulith가 이미 들여오는 라이브러리이고 버전은 Spring Boot가 정한다.
 	implementation("io.micrometer:context-propagation")
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:${property("springdocVersion")}")
+	// 장부(구글 시트)에 쓸 때 서비스 계정 키로 인증 머리글을 만든다(ADR-0044). 시트 API는 RestClient로 직접 부른다.
+	implementation("com.google.auth:google-auth-library-oauth2-http:1.54.0")
 	implementation("org.springframework.modulith:spring-modulith-observability-api")
 	implementation("org.springframework.modulith:spring-modulith-starter-core")
 	implementation("org.springframework.modulith:spring-modulith-starter-jpa")
@@ -58,6 +60,8 @@ dependencies {
 	testImplementation("org.springframework.modulith:spring-modulith-starter-test")
 	testImplementation("org.testcontainers:testcontainers-junit-jupiter")
 	testImplementation("org.testcontainers:testcontainers-mysql")
+	// 외부 HTTP(구글 시트)의 응답과 장애(지연, 연결 끊김, 5xx, 429)를 흉내 낸다. Jetty 등을 감춘 standalone 판을 쓴다.
+	testImplementation("org.wiremock:wiremock-standalone:3.13.2")
 	testCompileOnly("org.projectlombok:lombok")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 	testAnnotationProcessor("org.projectlombok:lombok")

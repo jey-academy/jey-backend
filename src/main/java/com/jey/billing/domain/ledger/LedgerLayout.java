@@ -6,6 +6,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
 
@@ -99,10 +100,9 @@ public final class LedgerLayout {
 	 * @param marker 이 결제의 표시({@link LedgerFormats#marker})
 	 */
 	public LedgerTarget find(String classCode, String marker) {
-		for (int i = headerIndex + 1; i < values.size(); i++) {
-			if (LedgerFormats.isMarker(cell(i, columns.get(LedgerColumn.NOTE)).strip(), marker)) {
-				return new LedgerTarget.AlreadyWritten(i + 1);
-			}
+		Optional<Integer> written = rowOf(marker);
+		if (written.isPresent()) {
+			return new LedgerTarget.AlreadyWritten(written.get());
 		}
 		String code = classCode.strip();
 		int start = -1;
@@ -124,6 +124,16 @@ public final class LedgerLayout {
 			}
 		}
 		return new LedgerTarget.Missing(LedgerSyncReason.NO_EMPTY_ROW);
+	}
+
+	/** 탭 어디에서든 이 표시가 비고에 있는 줄(시트의 행 번호). 결제 취소 때 쓴 줄을 찾는다. */
+	public Optional<Integer> rowOf(String marker) {
+		for (int i = headerIndex + 1; i < values.size(); i++) {
+			if (LedgerFormats.isMarker(cell(i, columns.get(LedgerColumn.NOTE)).strip(), marker)) {
+				return Optional.of(i + 1);
+			}
+		}
+		return Optional.empty();
 	}
 
 	private static String blockName(String cell) {

@@ -164,6 +164,16 @@ public class LedgerSync extends BaseEntity {
 		this.nextAttemptAt = micros(now.plus(delay));
 	}
 
+	/**
+	 * 다른 결제가 같은 장부를 쓰는 중이라 이번에는 하지 못했다. 시도로 세지 않고 {@code until}에 다시 한다.
+	 */
+	public void postpone(Instant until) {
+		requireInProgress();
+		this.status = LedgerSyncStatus.PENDING;
+		this.attempts--;
+		this.nextAttemptAt = micros(until);
+	}
+
 	/** 사람이 장부나 설정을 고쳐야 하는 이유로 쓰지 못했다. 자동으로 다시 하지 않는다. */
 	public void unsynced(LedgerSyncReason reason) {
 		requireInProgress();
