@@ -189,6 +189,72 @@ class RedemptionInvoiceApiTest {
 				student)).isZero();
 	}
 
+	// 수납의 일반 경로로 그 달 청구를 먼저 만든 경우. 패스 경로는 바깥 트랜잭션 안에서 수납을 부르므로,
+	// 유니크 위반이 409로 끝나고 사용 기록도 그대로인지 본다(트랜잭션을 함께 쓰는 경로).
+	@Test
+	void 그_달_청구가_이미_있으면_409이고_사용_기록은_그대로다() throws Exception {
+		Redeemed redeemed = redeemed();
+		long student = studentOf(redeemed);
+		mockMvc.perform(post("/api/v1/billing/invoices").with(csrfToken(mockMvc)).with(idempotencyKey())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"studentId\": %d, \"targetMonth\": \"2026-11\", \"lines\": [{\"classId\": %d, \"lessonCount\": 8}]}"
+					.formatted(student, cls)))
+			.andExpect(status().isCreated());
+
+		issue(redeemed.redemptionId(), 8, "").andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("BILLING_INVOICE_ALREADY_EXISTS"));
+		assertThat(jdbc.queryForObject("SELECT invoice_id FROM dongtanpass_redemption WHERE id = ?", Long.class,
+				redeemed.redemptionId())).isNull();
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM billing_invoice WHERE student_id = ?", Long.class,
+				student)).isOne();
+	}
+
+	// 패스 할인은 서버가 붙인다. 직원이 추가 할인에 또 고르면(대소문자가 달라도) 400이고 청구는 없다.
+	@Test
+	void 추가_할인에_패스_할인을_또_고르면_400이다() throws Exception {
+		Redeemed redeemed = redeemed();
+
+		issue(redeemed.redemptionId(), 8, "\"DONGTAN_PASS\"").andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("BILLING_DISCOUNT_NEEDS_REFERENCE"));
+		issue(redeemed.redemptionId(), 8, "\"dongtan_pass\"").andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("BILLING_DISCOUNT_NEEDS_REFERENCE"));
+		assertThat(jdbc.queryForObject("SELECT invoice_id FROM dongtanpass_redemption WHERE id = ?", Long.class,
+				redeemed.redemptionId())).isNull();
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM billing_invoice WHERE student_id = ?", Long.class,
+				studentOf(redeemed))).isZero();
+	}
+
+	// 꺼진 패스 할인은 무엇이 꺼졌는지 알려 준다(데스크 사용 처리와 같은 코드).
+	@Test
+	void 패스_할인이_꺼졌으면_409다() throws Exception {
+		Redeemed redeemed = redeemed();
+		jdbc.update("UPDATE core_discount_type SET active = FALSE WHERE code = 'DONGTAN_PASS'");
+		try {
+			issue(redeemed.redemptionId(), 8, "").andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("DONGTANPASS_DISCOUNT_INACTIVE"));
+		}
+		finally {
+			jdbc.update("UPDATE core_discount_type SET active = TRUE WHERE code = 'DONGTAN_PASS'");
+		}
+	}
+
+	@Test
+	void 다른_달을_보내도_열린_청구가_있으면_409다() throws Exception {
+		Redeemed redeemed = redeemed();
+		issue(redeemed.redemptionId(), 8, "").andExpect(status().isCreated());
+
+		mockMvc.perform(post("/api/v1/dongtanpass/redemptions/" + redeemed.redemptionId() + "/invoice")
+				.with(csrfToken(mockMvc)).with(idempotencyKey()).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"targetMonth\": \"2026-12\", \"lines\": [{\"classId\": " + cls + ", \"lessonCount\": 8}]}"))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_REDEMPTION_ALREADY_INVOICED"));
+	}
+
+	private long studentOf(Redeemed redeemed) {
+		return jdbc.queryForObject("SELECT student_id FROM dongtanpass_redemption WHERE id = ?", Long.class,
+				redeemed.redemptionId());
+	}
+
 	@Test
 	void 모르는_칸은_400이다() throws Exception {
 		Redeemed redeemed = redeemed();

@@ -12,8 +12,12 @@ import com.jey.core.shared.BusinessException;
 public interface InvoiceIssuing {
 
 	/**
-	 * @throws BusinessException 학생·반·할인이 규칙 밖이거나, 그 학생의 그 달 청구가 이미 있을 때(일반 경로와 같은 코드)
-	 * @throws IllegalArgumentException 명령의 값이 규칙 밖일 때(반 개수, 횟수, 대상 월, 같은 할인 두 번 — 부르는 쪽의 버그)
+	 * 예외가 나면 부르는 쪽의 트랜잭션은 롤백으로 표시된다. 잡아서 계속 진행하지 않는다(커밋할 때 실패한다).
+	 *
+	 * @throws BusinessException 학생·반·할인이 규칙 밖이거나, 근거가 필요한 할인을 직원 선택 칸으로 보냈거나, 그 학생의 그 달 청구가
+	 *     이미 있을 때(일반 경로와 같은 코드)
+	 * @throws IllegalArgumentException 명령의 값이 {@link InvoiceRules} 밖이거나, 근거 할인 칸에 근거가 필요하지 않은 할인을 실었을 때
+	 *     (부르는 쪽의 버그)
 	 */
 	IssuedInvoice issue(IssueInvoiceCommand command);
 

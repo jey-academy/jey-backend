@@ -2,6 +2,8 @@ package com.jey.billing.domain;
 
 import java.math.BigDecimal;
 
+import com.jey.billing.api.InvoiceRules;
+
 /**
  * 계산에 넣는 할인 하나.
  *
@@ -11,7 +13,7 @@ import java.math.BigDecimal;
  */
 public record DiscountRate(String code, BigDecimal rate, String ref) {
 
-	private static final int MAX_SCALE = 4;
+	private static final int MAX_SCALE = InvoiceRules.MAX_RATE_SCALE;
 
 	public DiscountRate {
 		if (code == null || code.isBlank()) {

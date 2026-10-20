@@ -13,7 +13,7 @@ import java.math.BigDecimal;
  */
 public record InvoiceDiscount(String discountType, BigDecimal discountRate, String discountRef) {
 
-	public static final int MAX_TYPE_LENGTH = 30;
+	public static final int MAX_TYPE_LENGTH = InvoiceRules.MAX_DISCOUNT_CODE_LENGTH;
 
 	public static final int MAX_REF_LENGTH = 100;
 
@@ -22,7 +22,7 @@ public record InvoiceDiscount(String discountType, BigDecimal discountRate, Stri
 			throw new IllegalArgumentException("할인 유형 코드는 비울 수 없고 " + MAX_TYPE_LENGTH + "자까지다");
 		}
 		if (discountRate == null || discountRate.signum() <= 0 || discountRate.compareTo(BigDecimal.ONE) >= 0
-				|| discountRate.stripTrailingZeros().scale() > 4) {
+				|| discountRate.stripTrailingZeros().scale() > InvoiceRules.MAX_RATE_SCALE) {
 			throw new IllegalArgumentException("할인율은 0보다 크고 1보다 작으며 소수 넷째 자리까지다");
 		}
 		if (discountRef == null || discountRef.isBlank() || discountRef.length() > MAX_REF_LENGTH) {

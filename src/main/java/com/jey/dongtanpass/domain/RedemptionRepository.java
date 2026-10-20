@@ -13,7 +13,8 @@ import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
 
 /**
- * 사용 기록은 고치거나 지우지 않는다. 지우면 유니크 키가 풀려 같은 학생·패스를 다시 쓸 수 있으므로 지우는 메서드를 열지 않는다.
+ * 사용 기록은 지우지 않는다. 지우면 유니크 키가 풀려 같은 학생·패스를 다시 쓸 수 있으므로 지우는 메서드를 열지 않는다.
+ * 바뀌는 칸은 이 기록에서 만든 청구뿐이다({@link Redemption#attachInvoice}).
  */
 public interface RedemptionRepository extends Repository<Redemption, Long> {
 

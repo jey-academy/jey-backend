@@ -24,7 +24,7 @@ record InvoiceResponse(
 				requiredMode = RequiredMode.REQUIRED) DiscountPolicy discountPolicy,
 		@Schema(description = "청구 합계(원). 라인 청구액의 합", requiredMode = RequiredMode.REQUIRED) Money totalAmount,
 		@Schema(requiredMode = RequiredMode.REQUIRED) List<InvoiceLineResponse> lines,
-		@Schema(description = "유효한 결제(COMPLETED). 결제 전이거나 미리 계산이면 null. 취소한 결제는 결제 목록에서 본다",
+		@Schema(description = "유효한 결제(COMPLETED). 청구가 PAID일 때만 있다(결제 전·취소한 청구, 미리 계산이면 null). 취소한 결제는 결제 목록에서 본다",
 				requiredMode = RequiredMode.REQUIRED, nullable = true) PaymentResponse payment) {
 
 	static InvoiceResponse from(InvoiceDetail detail) {

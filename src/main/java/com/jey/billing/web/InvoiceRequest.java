@@ -4,10 +4,8 @@ import java.time.YearMonth;
 import java.util.HashSet;
 import java.util.List;
 
+import com.jey.billing.api.InvoiceRules;
 import com.jey.billing.application.InvoiceDraft;
-import com.jey.billing.domain.Invoice;
-import com.jey.billing.domain.InvoiceLine;
-import com.jey.billing.domain.TuitionCalculator;
 import com.jey.core.shared.RejectUnknownFields;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
@@ -23,9 +21,9 @@ import jakarta.validation.constraints.Size;
 record InvoiceRequest(@Schema(description = "학생 ID. 재원 중이어야 한다") @NotNull Long studentId,
 		@Schema(description = "대상 월(YYYY-MM). 2000-01~2099-12", type = "string", example = "2026-11") @NotNull YearMonth targetMonth,
 		@Schema(description = "반과 그 달의 수업 횟수. 1~4개, 같은 반은 한 번. 반 나눔이면 둘 이상") @NotNull @Size(min = 1,
-				max = Invoice.MAX_LINES) List<@Valid @NotNull InvoiceLineRequest> lines,
+				max = InvoiceRules.MAX_LINES) List<@Valid @NotNull InvoiceLineRequest> lines,
 		@Schema(description = "할인 유형 코드(예: SIBLING_5). 0~4개, 같은 할인은 한 번. 고른 순서대로 계산한다(순차 방식이면 금액이 달라진다). 없으면 비우거나 보내지 않는다") @Size(
-				max = InvoiceLine.MAX_DISCOUNTS) List<@NotBlank @Size(max = 30) String> discountCodes) {
+				max = InvoiceRules.MAX_DISCOUNTS) List<@NotBlank @Size(max = InvoiceRules.MAX_DISCOUNT_CODE_LENGTH) String> discountCodes) {
 
 	// 겹침은 요청을 읽을 때 본다(칸 하나의 값이 아니라 칸 사이의 규칙이라 애너테이션으로 적지 못한다).
 	InvoiceRequest {
@@ -36,8 +34,7 @@ record InvoiceRequest(@Schema(description = "학생 ID. 재원 중이어야 한�
 		if (discountCodes != null && new HashSet<>(discountCodes).size() != discountCodes.size()) {
 			throw new IllegalArgumentException("같은 할인을 두 번 고를 수 없다");
 		}
-		if (targetMonth != null && (targetMonth.isBefore(InvoiceDraft.MIN_MONTH)
-				|| targetMonth.isAfter(InvoiceDraft.MAX_MONTH))) {
+		if (targetMonth != null && !InvoiceRules.acceptsMonth(targetMonth)) {
 			throw new IllegalArgumentException("대상 월은 2000-01부터 2099-12까지다");
 		}
 	}
@@ -50,8 +47,8 @@ record InvoiceRequest(@Schema(description = "학생 ID. 재원 중이어야 한�
 
 	@Schema(description = "청구 라인 하나의 입력")
 	record InvoiceLineRequest(@Schema(description = "반 ID. 학생과 같은 지점의 켜진 반") @NotNull Long classId,
-			@Schema(description = "그 달의 수업 횟수. 1~31") @NotNull @Min(TuitionCalculator.MIN_LESSONS) @Max(
-					TuitionCalculator.MAX_LESSONS) Integer lessonCount) {
+			@Schema(description = "그 달의 수업 횟수. 1~31") @NotNull @Min(InvoiceRules.MIN_LESSONS) @Max(
+					InvoiceRules.MAX_LESSONS) Integer lessonCount) {
 	}
 
 }

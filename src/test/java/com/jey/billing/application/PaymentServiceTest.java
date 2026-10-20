@@ -208,6 +208,56 @@ class PaymentServiceTest {
 				"BILLING_PERIOD_TOO_LONG");
 	}
 
+	// 결제 목록은 일일 정산에 쓰인다. 결제일은 한국 날짜다: 한국 11/1 23:59:59.999999는 11/1, 한국 11/2 00:00은 11/2.
+	@Test
+	void 결제일은_한국_날짜로_자른다() {
+		InvoiceDetail late = newInvoice();
+		InvoiceDetail midnight = newInvoice();
+		InvoiceDetail early = newInvoice();
+		long lateId = insertPayment(late, "2026-11-01 23:59:59.999999");
+		long midnightId = insertPayment(midnight, "2026-11-02 00:00:00.000000");
+		long earlyId = insertPayment(early, "2026-11-01 00:00:00.000000");
+		CampusScope dongtan = new CampusScope.Only(MemberFixtures.DONGTAN);
+
+		assertThat(payments.list(dongtan, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 1), 0, 100).getContent())
+			.extracting(PaymentView::paymentId).contains(lateId, earlyId).doesNotContain(midnightId);
+		assertThat(payments.list(dongtan, LocalDate.of(2026, 11, 2), LocalDate.of(2026, 11, 2), 0, 100).getContent())
+			.extracting(PaymentView::paymentId).contains(midnightId).doesNotContain(lateId, earlyId);
+	}
+
+	// 청구를 잠그고 상태를 보므로 보통은 INVOICE_NOT_PAYABLE이 먼저다. 유니크 키가 막은 마지막 방어선도 409로 바뀌는지 본다
+	// (청구는 결제 전인데 유효한 결제가 이미 있는, 어긋난 자료를 직접 넣어 만든다).
+	@Test
+	void 유효한_결제가_이미_있으면_마지막_방어선이_409로_답하고_이벤트가_나가지_않는다() {
+		InvoiceDetail invoice = newInvoice();
+		insertPayment(invoice, "2026-11-01 01:00:00.000000");
+		jdbc.update("UPDATE billing_invoice SET status = 'ISSUED' WHERE id = ?", invoice.id());
+
+		assertRejected(() -> pay(invoice), "BILLING_PAYMENT_ALREADY_EXISTS");
+		assertThat(jdbc.queryForObject("SELECT status FROM billing_invoice WHERE id = ?", String.class, invoice.id()))
+			.isEqualTo("ISSUED");
+		assertThat(events.stream(PaymentCompleted.class)).isEmpty();
+	}
+
+	@Test
+	void 교재비가_규칙_밖이면_400이고_결제하지_않는다() {
+		InvoiceDetail invoice = newInvoice();
+
+		assertRejected(() -> payments.record(invoice.id(), PaymentMethod.CASH, invoice.totalAmount(),
+				Money.of(10_000_001), STAFF), "BILLING_INVALID_BOOK_FEE");
+		assertThat(paymentCount(invoice.id())).isZero();
+	}
+
+	// DB의 시각 칸은 한국 시각으로 저장한다(ADR-0017의 JPA 설정). 결제한 청구와 유효한 결제를 직접 넣는다.
+	private long insertPayment(InvoiceDetail invoice, String paidAtSeoul) {
+		jdbc.update("UPDATE billing_invoice SET status = 'PAID' WHERE id = ?", invoice.id());
+		jdbc.update("INSERT INTO billing_payment (invoice_id, campus_id, student_id, method, amount, book_fee, status, "
+				+ "open_key, paid_at, created_at, updated_at) VALUES (?, ?, ?, 'CASH', ?, 0, 'COMPLETED', 1, ?, "
+				+ "NOW(6), NOW(6))", invoice.id(), invoice.campusId(), invoice.studentId(),
+				invoice.totalAmount().amount(), paidAtSeoul);
+		return jdbc.queryForObject("SELECT id FROM billing_payment WHERE invoice_id = ?", Long.class, invoice.id());
+	}
+
 	private PaymentView pay(InvoiceDetail invoice) {
 		return payments.record(invoice.id(), PaymentMethod.CASH, invoice.totalAmount(), Money.ZERO, STAFF);
 	}

@@ -12,7 +12,7 @@ import io.swagger.v3.oas.annotations.media.Schema.RequiredMode;
 @Schema(description = "결제 하나. 금액은 원 단위 숫자")
 record PaymentResponse(@Schema(description = "결제 ID", requiredMode = RequiredMode.REQUIRED) long paymentId,
 		@Schema(description = "청구 ID", requiredMode = RequiredMode.REQUIRED) long invoiceId,
-		@Schema(description = "지점(청구의 지점)", requiredMode = RequiredMode.REQUIRED) long campusId,
+		@Schema(description = "지점(청구의 지점 — 청구를 만들 때 학생의 지점)", requiredMode = RequiredMode.REQUIRED) long campusId,
 		@Schema(description = "학생 ID", requiredMode = RequiredMode.REQUIRED) long studentId,
 		@Schema(description = "결제 수단. CARD_POS 포스기 카드, CASH 현금", requiredMode = RequiredMode.REQUIRED) PaymentMethod method,
 		@Schema(description = "받은 수강료(원)", requiredMode = RequiredMode.REQUIRED) Money amount,

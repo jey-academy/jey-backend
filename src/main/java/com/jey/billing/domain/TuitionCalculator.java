@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 
+import com.jey.billing.api.InvoiceRules;
 import com.jey.core.shared.Money;
 import com.jey.core.shared.RoundingPolicy;
 
@@ -18,9 +19,9 @@ import com.jey.core.shared.RoundingPolicy;
  */
 public final class TuitionCalculator {
 
-	public static final int MIN_LESSONS = 1;
+	public static final int MIN_LESSONS = InvoiceRules.MIN_LESSONS;
 
-	public static final int MAX_LESSONS = 31;
+	public static final int MAX_LESSONS = InvoiceRules.MAX_LESSONS;
 
 	private static final int BASE_LESSONS = 8;
 

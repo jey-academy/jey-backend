@@ -136,6 +136,19 @@ class PaymentApiTest {
 		assertThat(paymentCount(invoice)).isZero();
 	}
 
+	// 교재비 규칙 밖은 코드로 칸을 알린다(프론트가 교재비 칸에 안내를 띄운다).
+	@ParameterizedTest
+	@ValueSource(strings = { "10000001", "0.5" })
+	@WithJeyUser(role = UserRole.STAFF, campusId = MemberFixtures.DONGTAN)
+	void 교재비가_규칙_밖이면_BILLING_INVALID_BOOK_FEE다(String bookFee) throws Exception {
+		long invoice = newInvoice();
+
+		pay(invoice, "{\"method\": \"CASH\", \"amount\": 280000, \"bookFee\": " + bookFee + "}",
+				UUID.randomUUID().toString())
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("BILLING_INVALID_BOOK_FEE"));
+	}
+
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = MemberFixtures.DONGTAN)
 	void 결제를_취소하면_청구가_다시_결제_전이고_청구를_취소할_수_있다() throws Exception {

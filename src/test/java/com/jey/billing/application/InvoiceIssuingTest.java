@@ -124,6 +124,51 @@ class InvoiceIssuingTest {
 				student)).isZero();
 	}
 
+	// 할인 유형 코드는 DB에서 대소문자를 가리지 않고 찾는다. 보호도 찾은 코드로 본다(리뷰 지적: 소문자로 보내면 지나갔다).
+	@Test
+	void 근거가_필요한_할인을_소문자로_보내도_막는다() {
+		long student = newStudent();
+		long cls = newClass();
+
+		assertThatThrownBy(() -> invoices.issue(new InvoiceDraft(student, NOVEMBER,
+				List.of(new InvoiceDraft.LineDraft(cls, 8)), List.of("dongtan_pass")), STAFF))
+			.isInstanceOfSatisfying(BusinessException.class,
+					e -> assertThat(e.getErrorCode().code()).isEqualTo("BILLING_DISCOUNT_NEEDS_REFERENCE"));
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM billing_invoice WHERE student_id = ?", Long.class,
+				student)).isZero();
+	}
+
+	@Test
+	void 대소문자만_다른_같은_할인은_400이다() {
+		long student = newStudent();
+		long cls = newClass();
+		InvoiceDraft draft = new InvoiceDraft(student, NOVEMBER, List.of(new InvoiceDraft.LineDraft(cls, 8)),
+				List.of("SIBLING_5", "sibling_5"));
+
+		assertThatThrownBy(() -> invoices.quote(draft, STAFF)).isInstanceOfSatisfying(BusinessException.class,
+				e -> assertThat(e.getErrorCode().code()).isEqualTo("BILLING_DISCOUNT_DUPLICATED"));
+		// 근거 할인과 직원 할인이 같은 유형이어도 같다(패스 경로에서 패스 할인을 또 고른 경우는 위의 400이 먼저다).
+		assertThatThrownBy(() -> issuing.issue(command(student, cls, List.of(),
+				new InvoiceDiscount("DONGTAN_PASS", new BigDecimal("0.05"), "DT-1"),
+				new InvoiceDiscount("dongtan_pass", new BigDecimal("0.05"), "DT-2"))))
+			.isInstanceOfSatisfying(BusinessException.class,
+					e -> assertThat(e.getErrorCode().code()).isEqualTo("BILLING_DISCOUNT_DUPLICATED"));
+	}
+
+	// 근거 할인 경로는 할인율을 부르는 쪽 값으로 쓴다. 근거가 필요한 할인이 아니면 받지 않는다
+	// (다른 모듈의 버그 하나로 형제 할인이 30%로 청구되지 않게 — 리뷰 지적).
+	@Test
+	void 근거_할인_경로로_일반_할인을_넘기면_거부한다() {
+		long student = newStudent();
+		long cls = newClass();
+
+		assertThatThrownBy(() -> issuing.issue(command(student, cls, List.of(),
+				new InvoiceDiscount("SIBLING_5", new BigDecimal("0.3"), "X-1"))))
+			.isInstanceOf(IllegalArgumentException.class);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM billing_invoice WHERE student_id = ?", Long.class,
+				student)).isZero();
+	}
+
 	@Test
 	void 일반_경로와_같이_한_학생_한_달에_열린_청구는_하나다() {
 		long student = newStudent();

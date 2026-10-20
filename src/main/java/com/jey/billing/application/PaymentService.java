@@ -73,10 +73,14 @@ public class PaymentService {
 	 *
 	 * @param amount 받은 수강료. 청구 합계와 같아야 한다
 	 * @param bookFee 받은 교재비({@link Payment#MAX_BOOK_FEE}까지)
-	 * @throws BusinessException 없는 청구, 다룰 수 없는 지점, 결제 전이 아닌 청구, 수강료가 청구 합계와 다를 때
+	 * @throws BusinessException 교재비가 규칙 밖, 없는 청구, 다룰 수 없는 지점, 결제 전이 아닌 청구, 수강료가 청구 합계와 다를 때
+	 *     (확인 순서도 이대로다)
 	 */
 	public PaymentView record(long invoiceId, PaymentMethod method, Money amount, Money bookFee,
 			AuthenticatedUser user) {
+		if (!Payment.acceptsBookFee(bookFee)) {
+			throw new BusinessException(BillingErrorCode.INVALID_BOOK_FEE);
+		}
 		try {
 			return transaction.execute(status -> {
 				Invoice invoice = lockedInvoice(invoiceId, user);
@@ -114,16 +118,22 @@ public class PaymentService {
 	 */
 	public PaymentView cancel(long paymentId, AuthenticatedUser user) {
 		return transaction.execute(status -> {
-			// 청구를 잠근 뒤에 결제를 읽는다. 먼저 읽어 둔 결제는 잠금을 기다리는 사이 다른 요청이 취소해 낡을 수 있다.
+			// 청구를 잠근 뒤 결제도 잠가서 읽는다(잠그지 않는 읽기는 잠금 전의 스냅숏을 본다 — PaymentRepository#findByIdForUpdate).
 			long invoiceId = payments.findInvoiceIdById(paymentId)
 				.orElseThrow(() -> new BusinessException(BillingErrorCode.PAYMENT_NOT_FOUND));
 			Invoice invoice = lockedInvoice(invoiceId, user);
-			Payment payment = payments.findById(paymentId).orElseThrow();
+			Payment payment = payments.findByIdForUpdate(paymentId)
+				.orElseThrow(() -> new IllegalStateException("잠근 사이 결제가 없어졌다: paymentId=" + paymentId));
 			try {
 				payment.cancel(invoice, clock.instant());
 			}
 			catch (PaymentAlreadyCanceledException e) {
 				throw new BusinessException(BillingErrorCode.PAYMENT_ALREADY_CANCELED);
+			}
+			catch (InvoiceStateException e) {
+				// 유효한 결제인데 청구가 PAID가 아니다. 상태가 어긋난 자료라 500으로 둔다(원인을 찾을 수 있게 ID를 싣는다).
+				throw new IllegalStateException("결제와 청구의 상태가 어긋났다: paymentId=" + paymentId + ", invoiceId="
+						+ invoiceId + ", invoiceStatus=" + e.current(), e);
 			}
 			events.publishEvent(new PaymentCanceled(EventMetadata.create(PaymentCanceled.TYPE, PaymentCanceled.VERSION,
 					invoice.getCampusId(), currentActor.get(), clock), payment.getId(), invoice.getId(),

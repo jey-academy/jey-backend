@@ -4,7 +4,10 @@ import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.LongConsumer;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -48,10 +51,12 @@ import com.jey.core.shared.Money;
 import com.jey.core.shared.UniqueKeys;
 
 /**
- * 학생의 한 달 수강료를 계산하고(미리 계산) 청구로 남긴다. 데스크 직원과 관리자가 부른다(컨트롤러가 막는다).
+ * 학생의 한 달 수강료를 계산하고(미리 계산) 청구로 남기고, 결제 전 청구를 취소한다. 데스크 직원과 관리자가 부른다(컨트롤러가 막는다).
+ * 다른 모듈은 {@link InvoiceIssuing}으로 근거가 있는 할인을 실어 만든다(지점은 부르는 쪽이 본다).
  *
- * <p>청구는 학생의 지점에 속한다(직원은 소속 지점의 학생만). 학생은 재원 중이어야 하고, 반은 켜져 있고 학생과 같은 지점이어야 하며,
- * 할인 유형은 켜져 있어야 한다. 금액은 {@link TuitionCalculator}가 설정의 할인 방식({@link BillingProperties})으로 계산한다.
+ * <p>청구는 만들 때 학생의 지점에 속한다(직원은 소속 지점의 학생만). 학생은 재원 중이어야 하고, 반은 켜져 있고 학생과 같은 지점이어야 하며,
+ * 할인 유형은 켜져 있어야 한다. 할인 유형 코드는 대소문자를 가리지 않고 찾으므로, 근거가 필요한지·겹치는지는 찾은 코드로 본다.
+ * 금액은 {@link TuitionCalculator}가 설정의 할인 방식({@link BillingProperties})으로 계산한다.
  * 한 학생 한 달에 열린 청구는 하나다(유니크 키가 마지막에 막는다 — 동시 요청도).
  */
 @Service
@@ -71,6 +76,10 @@ public class InvoiceService implements InvoiceIssuing {
 	private final TransactionTemplate transaction;
 
 	private final PaymentRepository payments;
+
+	// 다른 모듈이 부른 경로: 누가 그 학생을 다룰 수 있는지는 부르는 쪽이 이미 보았다.
+	private static final LongConsumer CHECKED_BY_CALLER = campusId -> {
+	};
 
 	InvoiceService(InvoiceRepository invoices, CampusCatalog catalog, MemberDirectory members,
 			BillingProperties properties, AuditLog auditLog, TransactionTemplate transaction,
@@ -92,7 +101,8 @@ public class InvoiceService implements InvoiceIssuing {
 	@Transactional(readOnly = true)
 	public InvoiceDetail quote(InvoiceDraft draft, AuthenticatedUser user) {
 		Objects.requireNonNull(user, "user");
-		Prepared prepared = prepare(draft, user);
+		// 미리 계산은 저장하지 않으므로 근거가 필요한 할인도 넣어 볼 수 있다(패스 학생의 금액을 미리 보여 준다).
+		Prepared prepared = prepare(draft, user::requireCampus, true);
 		List<InvoiceDetail.LineDetail> lines = new ArrayList<>();
 		for (PreparedLine line : prepared.lines()) {
 			LineCharge charge = charge(line, prepared.discounts());
@@ -117,18 +127,16 @@ public class InvoiceService implements InvoiceIssuing {
 	 */
 	public InvoiceDetail issue(InvoiceDraft draft, AuthenticatedUser user) {
 		Objects.requireNonNull(user, "user");
-		requireNoReferencedCodes(draft.discountCodes());
-		return save(draft, user);
+		return save(draft, user::requireCampus);
 	}
 
 	@Override
 	public IssuedInvoice issue(IssueInvoiceCommand command) {
-		requireNoReferencedCodes(command.discountCodes());
 		InvoiceDraft draft = new InvoiceDraft(command.studentId(), command.targetMonth(),
 				command.lines().stream().map(line -> new InvoiceDraft.LineDraft(line.classId(), line.lessonCount()))
 					.toList(),
 				command.discountCodes(), command.referencedDiscounts());
-		InvoiceDetail saved = save(draft, null);
+		InvoiceDetail saved = save(draft, CHECKED_BY_CALLER);
 		return new IssuedInvoice(saved.id(), saved.totalAmount());
 	}
 
@@ -138,17 +146,12 @@ public class InvoiceService implements InvoiceIssuing {
 		return invoices.findById(invoiceId).map(invoice -> invoice.getStatus() != InvoiceStatus.CANCELED).orElse(false);
 	}
 
-	private void requireNoReferencedCodes(List<String> discountCodes) {
-		if (discountCodes.stream().anyMatch(properties::needsReference)) {
-			throw new BusinessException(BillingErrorCode.DISCOUNT_NEEDS_REFERENCE);
-		}
-	}
-
-	// user가 null이면 다른 모듈이 부른 것이다(지점은 부르는 쪽이 이미 보았다).
-	private InvoiceDetail save(InvoiceDraft draft, AuthenticatedUser user) {
+	// 부르는 쪽이 바깥 트랜잭션을 열었으면 그 안에서 돈다. 여기서 예외가 나면 바깥 트랜잭션은 롤백으로 표시된다
+	// (잡고 계속하면 커밋할 때 실패한다 — InvoiceIssuing의 문서).
+	private InvoiceDetail save(InvoiceDraft draft, LongConsumer campusCheck) {
 		try {
 			return transaction.execute(status -> {
-				Prepared prepared = prepare(draft, user);
+				Prepared prepared = prepare(draft, campusCheck, false);
 				List<InvoiceLine> lines = prepared.lines().stream()
 					.map(line -> InvoiceLine.of(line.fee().classId(), line.draft().lessonCount(), line.fee().baseFee8(),
 							charge(line, prepared.discounts())))
@@ -218,12 +221,14 @@ public class InvoiceService implements InvoiceIssuing {
 		return found.map(this::detail);
 	}
 
-	private Prepared prepare(InvoiceDraft draft, AuthenticatedUser user) {
+	/**
+	 * @param campusCheck 학생의 지점을 다룰 수 있는지 본다(직원·관리자는 {@code user::requireCampus}, 다른 모듈은 {@link #CHECKED_BY_CALLER})
+	 * @param referencedCodesAllowed 직원이 고른 할인에 근거가 필요한 할인이 있어도 되는지(미리 계산만)
+	 */
+	private Prepared prepare(InvoiceDraft draft, LongConsumer campusCheck, boolean referencedCodesAllowed) {
 		StudentInfo student = members.findStudent(draft.studentId())
 			.orElseThrow(() -> new BusinessException(BillingErrorCode.STUDENT_NOT_FOUND));
-		if (user != null) {
-			user.requireCampus(student.campusId());
-		}
+		campusCheck.accept(student.campusId());
 		if (!student.enrolled()) {
 			throw new BusinessException(BillingErrorCode.STUDENT_NOT_ENROLLED);
 		}
@@ -242,17 +247,34 @@ public class InvoiceService implements InvoiceIssuing {
 			lines.add(new PreparedLine(line, info, fee));
 		}
 		// 근거가 있는 할인을 먼저, 직원이 고른 할인을 나중에 계산한다(순차 방식에서 순서가 금액을 바꾼다).
+		// 코드는 찾은 할인 유형의 코드로 본다(DB는 대소문자를 가리지 않고 찾는다 — 소문자로 보내 보호를 지나가지 않게).
 		List<ChosenDiscount> discounts = new ArrayList<>();
+		Set<String> seen = new HashSet<>();
 		for (InvoiceDiscount referenced : draft.referencedDiscounts()) {
 			DiscountTypeInfo type = activeDiscountType(referenced.discountType());
+			if (!properties.needsReference(type.code())) {
+				// 할인율을 부르는 쪽 값으로 쓰는 길이라, 근거가 필요한 할인만 받는다(부르는 쪽의 버그).
+				throw new IllegalArgumentException("근거가 필요한 할인이 아니다: " + type.code());
+			}
+			requireFirst(seen, type.code());
 			discounts.add(new ChosenDiscount(type.code(), type.name(), referenced.discountRate(),
 					referenced.discountRef()));
 		}
 		for (String code : draft.discountCodes()) {
 			DiscountTypeInfo type = activeDiscountType(code);
+			if (!referencedCodesAllowed && properties.needsReference(type.code())) {
+				throw new BusinessException(BillingErrorCode.DISCOUNT_NEEDS_REFERENCE);
+			}
+			requireFirst(seen, type.code());
 			discounts.add(new ChosenDiscount(type.code(), type.name(), type.rate(), null));
 		}
 		return new Prepared(student, lines, discounts);
+	}
+
+	private static void requireFirst(Set<String> seen, String code) {
+		if (!seen.add(code)) {
+			throw new BusinessException(BillingErrorCode.DISCOUNT_DUPLICATED);
+		}
 	}
 
 	private DiscountTypeInfo activeDiscountType(String code) {

@@ -7,6 +7,7 @@ import java.util.List;
 
 import org.hibernate.annotations.BatchSize;
 
+import com.jey.billing.api.InvoiceRules;
 import com.jey.core.shared.BaseEntity;
 import com.jey.core.shared.Money;
 import jakarta.persistence.CascadeType;
@@ -34,7 +35,7 @@ public class Invoice extends BaseEntity {
 
 	public static final String OPEN_UNIQUE_KEY = "uk_billing_invoice_open";
 
-	public static final int MAX_LINES = 4;
+	public static final int MAX_LINES = InvoiceRules.MAX_LINES;
 
 	private static final byte OPEN = 1;
 

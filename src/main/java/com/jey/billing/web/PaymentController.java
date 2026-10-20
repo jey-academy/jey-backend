@@ -26,7 +26,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
 /**
- * 데스크가 받은 결제(포스기 카드, 현금)의 기록. 앱은 결제를 하지 않고 받은 결과를 적는다. 결제는 청구의 지점(학생의 지점)에 속한다.
+ * 데스크가 받은 결제(포스기 카드, 현금)의 기록. 앱은 결제를 하지 않고 받은 결과를 적는다. 결제는 청구의 지점(청구를 만들 때 학생의 지점)에 속한다.
  * 명세의 operationId는 직접 정한다({@link InvoiceController} 참고).
  */
 @RestController
@@ -43,9 +43,10 @@ class PaymentController {
 	}
 
 	@Operation(operationId = "recordPayment", summary = "결제 기록",
-			description = "결제 전 청구에 데스크가 받은 결제를 적는다. 청구는 PAID가 된다. 수강료가 청구 합계와 다르면 409(BILLING_PAYMENT_AMOUNT_MISMATCH), "
-					+ "결제 전 청구가 아니면 409(BILLING_INVOICE_NOT_PAYABLE — 이미 결제했거나 취소한 청구), 없는 청구 404(BILLING_INVOICE_NOT_FOUND), "
-					+ "다른 지점의 청구 403(AUTH_CAMPUS_NOT_ALLOWED). 칸의 값이 틀리면 400(COMMON_VALIDATION_FAILED), 모르는 칸이나 규칙 밖의 교재비는 400")
+			description = "결제 전 청구에 데스크가 받은 결제를 적는다. 청구는 PAID가 된다. 위에서부터 확인한다: 교재비가 규칙 밖이면 400(BILLING_INVALID_BOOK_FEE), "
+					+ "없는 청구 404(BILLING_INVOICE_NOT_FOUND), 다른 지점의 청구 403(AUTH_CAMPUS_NOT_ALLOWED), "
+					+ "결제 전 청구가 아니면 409(BILLING_INVOICE_NOT_PAYABLE — 이미 결제했거나 취소한 청구), 수강료가 청구 합계와 다르면 409(BILLING_PAYMENT_AMOUNT_MISMATCH). "
+					+ "드물게 동시 기록이 DB에서 막히면 409(BILLING_PAYMENT_ALREADY_EXISTS). 칸의 값을 읽지 못하면 400(COMMON_VALIDATION_FAILED), 모르는 칸은 400")
 	@Idempotent
 	@PostMapping("/invoices/{id}/payments")
 	@ResponseStatus(HttpStatus.CREATED)

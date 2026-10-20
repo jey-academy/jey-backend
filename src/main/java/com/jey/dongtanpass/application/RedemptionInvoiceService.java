@@ -12,6 +12,7 @@ import com.jey.billing.api.IssueInvoiceCommand;
 import com.jey.billing.api.IssuedInvoice;
 import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.member.api.MemberDirectory;
+import com.jey.core.member.api.StudentInfo;
 import com.jey.core.shared.BusinessException;
 import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PassRepository;
@@ -56,7 +57,8 @@ public class RedemptionInvoiceService {
 
 	/**
 	 * @param discountCodes 직원이 더 고른 할인 유형 코드(패스 할인은 넣지 않는다)
-	 * @throws BusinessException 없는 사용 기록, 다룰 수 없는 지점, 열린 청구가 이미 있을 때, 수납 모듈이 거부할 때(그 모듈의 코드)
+	 * @throws BusinessException 없는 사용 기록·학생, 다룰 수 없는 지점(사용 기록의 지점이나 학생의 지금 지점), 열린 청구가 이미 있을 때,
+	 *     패스 할인이 꺼졌을 때, 수납 모듈이 거부할 때(그 모듈의 코드 — 직원이 패스 할인을 또 고르면 BILLING_DISCOUNT_NEEDS_REFERENCE)
 	 */
 	public RedemptionInvoice issue(long redemptionId, YearMonth targetMonth, List<IssueInvoiceCommand.Line> lines,
 			List<String> discountCodes, AuthenticatedUser user) {
@@ -64,14 +66,20 @@ public class RedemptionInvoiceService {
 			Redemption redemption = redemptions.findByIdForUpdate(redemptionId)
 				.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.REDEMPTION_NOT_FOUND));
 			user.requireCampus(redemption.getCampusId());
-			// 청구가 실제로 속하는 곳(학생의 지금 지점)도 본다. 학생이 없으면 수납이 404로 답한다.
-			members.findStudent(redemption.getStudentId())
-				.ifPresent(student -> user.requireCampus(student.campusId()));
+			// 청구가 실제로 속하는 곳(학생의 지금 지점)도 본다.
+			StudentInfo student = members.findStudent(redemption.getStudentId())
+				.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.STUDENT_NOT_FOUND));
+			user.requireCampus(student.campusId());
 			if (redemption.getInvoiceId() != null && invoiceIssuing.isOpen(redemption.getInvoiceId())) {
 				throw new BusinessException(DongtanpassErrorCode.REDEMPTION_ALREADY_INVOICED);
 			}
-			Pass pass = passes.findById(redemption.getPassId()).orElseThrow();
+			Pass pass = passes.findById(redemption.getPassId())
+				.orElseThrow(() -> new IllegalStateException("사용 기록의 패스가 없다: passId=" + redemption.getPassId()));
 			PassBenefit benefit = passBenefits.current();
+			// 꺼진 패스 할인은 붙이지 않는다. 수납의 "쓰지 않는 할인 유형"보다 무엇이 꺼졌는지 알려 주는 답이다(데스크 사용 처리와 같은 코드).
+			if (!benefit.discountActive()) {
+				throw new BusinessException(DongtanpassErrorCode.DISCOUNT_INACTIVE);
+			}
 			IssuedInvoice issued = invoiceIssuing.issue(new IssueInvoiceCommand(redemption.getStudentId(),
 					targetMonth, lines, discountCodes,
 					List.of(new InvoiceDiscount(benefit.discountTypeCode(), benefit.discountRate(), pass.getPassNo()))));

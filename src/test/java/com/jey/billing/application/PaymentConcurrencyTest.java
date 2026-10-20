@@ -127,6 +127,69 @@ class PaymentConcurrencyTest {
 		}
 	}
 
+	// 두 직원이 같은 결제를 동시에 취소한다. 뒤의 요청은 잠금을 기다린 뒤의 최신 결제 상태를 봐야 한다
+	// (REPEATABLE READ에서는 잠그지 않는 읽기가 첫 읽기 때의 스냅숏을 본다 — 리뷰 지적). 하나는 취소, 하나는 409, 이벤트 하나.
+	@Test
+	void 같은_결제를_동시에_두_번_취소하면_하나만_되고_다른_쪽은_409다() throws Exception {
+		long cls = newClass();
+		ExecutorService pool = Executors.newFixedThreadPool(2);
+		try {
+			for (int round = 0; round < ROUNDS; round++) {
+				InvoiceDetail invoice = newInvoice(cls);
+				long paymentId = payments.record(invoice.id(), PaymentMethod.CASH, Money.of(280_000), Money.ZERO, ADMIN)
+					.paymentId();
+
+				List<String> outcomes = race(pool, () -> {
+					payments.cancel(paymentId, ADMIN);
+					return "canceled";
+				}, () -> {
+					payments.cancel(paymentId, ADMIN);
+					return "canceled";
+				});
+
+				assertThat(outcomes).containsExactlyInAnyOrder("canceled", "BILLING_PAYMENT_ALREADY_CANCELED");
+				assertThat(jdbc.queryForObject("SELECT status FROM billing_invoice WHERE id = ?", String.class,
+						invoice.id())).isEqualTo("ISSUED");
+			}
+		}
+		finally {
+			pool.shutdownNow();
+		}
+	}
+
+	// 결제 기록과 청구 취소가 겹친다. 어느 쪽이 먼저든 "취소한 청구에 유효한 결제"는 남지 않는다
+	// (결제와 청구 사이에는 테이블을 넘는 DB 제약이 없어 청구 행 잠금이 지킨다).
+	@Test
+	void 결제_기록과_청구_취소가_겹쳐도_취소한_청구에_유효한_결제가_남지_않는다() throws Exception {
+		long cls = newClass();
+		ExecutorService pool = Executors.newFixedThreadPool(2);
+		try {
+			for (int round = 0; round < ROUNDS; round++) {
+				InvoiceDetail invoice = newInvoice(cls);
+
+				List<String> outcomes = race(pool, () -> {
+					payments.record(invoice.id(), PaymentMethod.CASH, Money.of(280_000), Money.ZERO, ADMIN);
+					return "paid";
+				}, () -> {
+					invoices.cancel(invoice.id(), ADMIN);
+					return "invoice-canceled";
+				});
+
+				String status = jdbc.queryForObject("SELECT status FROM billing_invoice WHERE id = ?", String.class,
+						invoice.id());
+				long completed = jdbc.queryForObject(
+						"SELECT COUNT(*) FROM billing_payment WHERE invoice_id = ? AND status = 'COMPLETED'", Long.class,
+						invoice.id());
+				assertThat(outcomes).isIn(List.of("paid", "BILLING_INVOICE_NOT_CANCELABLE"),
+						List.of("BILLING_INVOICE_NOT_PAYABLE", "invoice-canceled"));
+				assertThat(status + "/" + completed).isIn("PAID/1", "CANCELED/0");
+			}
+		}
+		finally {
+			pool.shutdownNow();
+		}
+	}
+
 	private long newClass() {
 		return classes.create(1, "반-" + UUID.randomUUID().toString().substring(0, 8), Money.of(280_000), Money.ZERO)
 			.getId();

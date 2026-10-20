@@ -27,8 +27,13 @@ public class Payment extends BaseEntity {
 
 	public static final String OPEN_UNIQUE_KEY = "uk_billing_payment_open";
 
-	/** 교재비 상한. 입력 실수를 막는 값이다. */
+	/** 교재비 상한. 입력 실수를 막는 값이다. 바꾸면 결제 요청의 설명(PaymentRequest)도 함께 고친다. */
 	public static final Money MAX_BOOK_FEE = Money.of(10_000_000);
+
+	/** 교재비의 규칙: 0원 이상, 1원 단위, {@link #MAX_BOOK_FEE} 이하. 규칙은 여기 한 곳이다(서비스는 이것으로 먼저 보고 업무 오류로 답한다). */
+	public static boolean acceptsBookFee(Money bookFee) {
+		return bookFee != null && bookFee.isWholeWon() && bookFee.compareTo(MAX_BOOK_FEE) <= 0;
+	}
 
 	private static final byte OPEN = 1;
 
@@ -97,7 +102,7 @@ public class Payment extends BaseEntity {
 		if (invoice == null || method == null || amount == null || bookFee == null || paidAt == null) {
 			throw new IllegalArgumentException("invoice, method, amount, bookFee, paidAt은 비울 수 없다");
 		}
-		if (!bookFee.isWholeWon() || bookFee.compareTo(MAX_BOOK_FEE) > 0) {
+		if (!acceptsBookFee(bookFee)) {
 			throw new IllegalArgumentException("교재비는 1원 단위이고 " + MAX_BOOK_FEE.amount().toPlainString() + "원까지다");
 		}
 		if (invoice.getStatus() != InvoiceStatus.ISSUED) {

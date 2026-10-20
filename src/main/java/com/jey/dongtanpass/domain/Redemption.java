@@ -88,6 +88,9 @@ public class Redemption extends BaseEntity {
 
 	/** 이 기록에서 청구를 만들었다. 전의 청구가 취소돼 새로 만든 것이면 새 청구로 바꾼다(열려 있는지는 부르는 쪽이 본다). */
 	public void attachInvoice(long invoiceId) {
+		if (invoiceId <= 0) {
+			throw new IllegalArgumentException("청구 ID는 양수여야 한다: " + invoiceId);
+		}
 		this.invoiceId = invoiceId;
 	}
 
