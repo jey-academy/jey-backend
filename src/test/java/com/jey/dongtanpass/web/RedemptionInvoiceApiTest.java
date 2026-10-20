@@ -172,6 +172,23 @@ class RedemptionInvoiceApiTest {
 				redeemed.redemptionId())).isNull();
 	}
 
+	// 청구는 학생의 지금 지점에 속한다. 사용 처리 뒤 학생이 다른 지점으로 옮겼으면, 사용 기록의 지점 직원만으로는
+	// 그 지점의 청구를 만들지 못한다(보안 검사 지적: 확인한 지점과 쓰는 지점이 달랐다).
+	@Test
+	void 사용_뒤_학생의_지점이_바뀌었으면_사용_기록의_지점_직원은_만들지_못한다() throws Exception {
+		Redeemed redeemed = redeemed();
+		long student = jdbc.queryForObject("SELECT student_id FROM dongtanpass_redemption WHERE id = ?", Long.class,
+				redeemed.redemptionId());
+		jdbc.update("UPDATE core_student SET campus_id = 2 WHERE id = ?", student);
+
+		issue(redeemed.redemptionId(), 8, "").andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("AUTH_CAMPUS_NOT_ALLOWED"));
+		assertThat(jdbc.queryForObject("SELECT invoice_id FROM dongtanpass_redemption WHERE id = ?", Long.class,
+				redeemed.redemptionId())).isNull();
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM billing_invoice WHERE student_id = ?", Long.class,
+				student)).isZero();
+	}
+
 	@Test
 	void 모르는_칸은_400이다() throws Exception {
 		Redeemed redeemed = redeemed();
