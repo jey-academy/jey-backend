@@ -74,6 +74,15 @@ class InvoiceController {
 		return InvoiceResponse.from(invoices.get(id, user));
 	}
 
+	@Operation(operationId = "cancelInvoice", summary = "청구 취소",
+			description = "결제 전(ISSUED) 청구를 취소한다. 닫힌 청구가 되어 같은 달에 새 청구를 만들 수 있다. 결제한 청구는 409(BILLING_INVOICE_NOT_CANCELABLE — 결제를 먼저 취소한다), "
+					+ "이미 취소한 청구도 409. 없으면 404(BILLING_INVOICE_NOT_FOUND), 다른 지점 403(AUTH_CAMPUS_NOT_ALLOWED)")
+	@Idempotent
+	@PostMapping("/invoices/{id}/cancel")
+	InvoiceResponse cancel(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable long id) {
+		return InvoiceResponse.from(invoices.cancel(id, user));
+	}
+
 	@Operation(operationId = "listInvoices", summary = "그 달의 청구", description = "학생 ID 순이다. 직원은 지점을 고르지 않으면 소속 지점이고, 다른 지점을 고르면 403(AUTH_CAMPUS_NOT_ALLOWED). 관리자는 고르지 않으면 전 지점이다")
 	@GetMapping("/invoices")
 	InvoicePageResponse list(@AuthenticationPrincipal AuthenticatedUser user,

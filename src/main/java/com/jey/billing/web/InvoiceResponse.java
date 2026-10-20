@@ -23,12 +23,15 @@ record InvoiceResponse(
 		@Schema(description = "할인이 여러 개일 때의 계산 방식. ADDITIVE 할인율을 더해 한 번에, SEQUENTIAL 앞의 할인을 뺀 금액에서 다음 할인, SINGLE 하나만. 만든 청구는 만들 때의 방식이다",
 				requiredMode = RequiredMode.REQUIRED) DiscountPolicy discountPolicy,
 		@Schema(description = "청구 합계(원). 라인 청구액의 합", requiredMode = RequiredMode.REQUIRED) Money totalAmount,
-		@Schema(requiredMode = RequiredMode.REQUIRED) List<InvoiceLineResponse> lines) {
+		@Schema(requiredMode = RequiredMode.REQUIRED) List<InvoiceLineResponse> lines,
+		@Schema(description = "유효한 결제(COMPLETED). 결제 전이거나 미리 계산이면 null. 취소한 결제는 결제 목록에서 본다",
+				requiredMode = RequiredMode.REQUIRED, nullable = true) PaymentResponse payment) {
 
 	static InvoiceResponse from(InvoiceDetail detail) {
 		return new InvoiceResponse(detail.id(), detail.campusId(), detail.studentId(), detail.targetMonth(),
 				detail.status(), detail.discountPolicy(), detail.totalAmount(),
-				detail.lines().stream().map(InvoiceLineResponse::from).toList());
+				detail.lines().stream().map(InvoiceLineResponse::from).toList(),
+				detail.payment() == null ? null : PaymentResponse.from(detail.payment()));
 	}
 
 	@Schema(description = "청구 라인 하나(반 하나). 정가 = 청구액 + 할인 금액의 합")
