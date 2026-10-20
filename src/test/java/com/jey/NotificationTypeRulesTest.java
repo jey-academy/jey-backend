@@ -13,7 +13,6 @@ import com.jey.core.shared.EventMetadata;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
-import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,9 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // 람다로 만든 종류는 클래스 파일이 없어 여기서 보이지 않는다. 그것은 요청을 만들 때 막는다(NotificationRequest).
 class NotificationTypeRulesTest {
 
-	private static final JavaClasses MAIN = new ClassFileImporter()
-			.withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-			.importPackages("com.jey");
+	private static final JavaClasses MAIN = MainClasses.get();
 
 	// 규칙이 위반을 잡는지 보기 위한 본보기들(테스트 소스).
 	private static final JavaClasses SAMPLES = new ClassFileImporter()

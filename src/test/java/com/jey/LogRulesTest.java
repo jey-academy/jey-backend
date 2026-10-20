@@ -5,7 +5,6 @@ import java.util.function.Function;
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
-import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
@@ -45,11 +44,7 @@ class LogRulesTest {
 
 	@Test
 	void 운영_코드에서_쿼리_문자열을_통째로_읽는_곳은_한_곳뿐이다() {
-		var mainClasses = new ClassFileImporter()
-				.withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-				.importPackages("com.jey");
-
-		QUERY_STRING_READ_IN_ONE_PLACE.check(mainClasses);
+		QUERY_STRING_READ_IN_ONE_PLACE.check(MainClasses.get());
 	}
 
 	// 아래 셋은 규칙이 실제로 위반을 잡는지 확인한다.
