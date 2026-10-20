@@ -765,7 +765,7 @@
         "description" : "학부모 화면의 패스. 학생 이름은 가린 것이고 학부모 번호는 없다",
         "properties" : {
           "campusName" : {
-            "description" : "패스를 받는 지점",
+            "description" : "관련된 JEY 지점. 연계 학원 발급 패스는 패스를 받는 지점, JEY 발급 패스는 발급한 지점",
             "type" : "string"
           },
           "daysLeft" : {
@@ -773,8 +773,13 @@
             "format" : "int32",
             "type" : "integer"
           },
+          "direction" : {
+            "description" : "패스의 방향. PARTNER_ISSUED 연계 학원이 발급해 JEY 지점에서 쓴다, CAMPUS_ISSUED JEY 지점이 발급해 연계 학원에서 쓴다",
+            "enum" : [ "PARTNER_ISSUED", "CAMPUS_ISSUED" ],
+            "type" : "string"
+          },
           "discountRate" : {
-            "description" : "할인율. 5%는 0.05",
+            "description" : "할인율. 5%는 0.05. JEY 발급 패스는 발급 때의 값(설정이 바뀌어도 그대로), 연계 학원 발급 패스는 받는 지점 할인의 지금 값",
             "type" : "number"
           },
           "expiresOn" : {
@@ -792,12 +797,12 @@
             "type" : "string"
           },
           "noticeVersion" : {
-            "description" : "고지 문구의 버전",
+            "description" : "고지 문구의 버전(방향마다 다르다)",
             "type" : "string"
           },
           "partnerName" : {
-            "description" : "발급한 연계 학원",
-            "type" : "string"
+            "description" : "발급한 연계 학원. JEY 발급 패스(CAMPUS_ISSUED)는 null — 아무 연계 학원에서 쓴다",
+            "type" : [ "string", "null" ]
           },
           "passNo" : {
             "description" : "패스 번호. QR이 안 될 때 데스크에 불러 준다",
@@ -818,7 +823,7 @@
             "type" : "string"
           }
         },
-        "required" : [ "campusName", "daysLeft", "discountRate", "expiresOn", "issuedOn", "noticeText", "noticeVersion", "partnerName", "passNo", "redeemedOn", "state", "studentName" ],
+        "required" : [ "campusName", "daysLeft", "direction", "discountRate", "expiresOn", "issuedOn", "noticeText", "noticeVersion", "partnerName", "passNo", "redeemedOn", "state", "studentName" ],
         "type" : "object"
       },
       "HolderQrResponse" : {

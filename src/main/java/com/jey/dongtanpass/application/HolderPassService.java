@@ -1,9 +1,11 @@
 package com.jey.dongtanpass.application;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Optional;
 
+import com.jey.core.campus.api.CampusCatalog;
 import com.jey.core.shared.BusinessException;
 import com.jey.dongtanpass.domain.LinkToken;
 import com.jey.dongtanpass.domain.MaskedName;
@@ -41,10 +43,13 @@ public class HolderPassService {
 
 	private final RedemptionRepository redemptions;
 
+	private final CampusCatalog catalog;
+
 	private final Clock clock;
 
 	HolderPassService(PassRepository passes, PartnerRepository partners, PassBenefits passBenefits,
-			PassQrCodes passQrCodes, RedemptionRepository redemptions, Clock clock) {
+			PassQrCodes passQrCodes, RedemptionRepository redemptions, CampusCatalog catalog, Clock clock) {
+		this.catalog = catalog;
 		this.passes = passes;
 		this.redemptions = redemptions;
 		this.partners = partners;
@@ -58,15 +63,36 @@ public class HolderPassService {
 	 */
 	public HolderPassView view(String rawToken) {
 		Pass pass = passOf(rawToken);
-		Partner partner = partners.findById(pass.getPartnerId())
-			.orElseThrow(() -> new IllegalStateException("패스의 연계 학원이 없다: passId=" + pass.getId()));
-		PassBenefit benefit = passBenefits.current();
+		// 방향마다 다르다. 연계 학원 발급분: 발급한 연계 학원, 받는 지점과 그 지점 할인 유형의 지금 할인율.
+		// JEY 발급분: 연계 학원 없음(아무 연계 학원에서 쓴다), 발급한 지점, 패스에 남은 발급 때의 할인율.
+		String partnerName;
+		String campusName;
+		BigDecimal discountRate;
+		switch (pass.getDirection()) {
+			case PARTNER_ISSUED -> {
+				Partner partner = partners.findById(pass.getPartnerId())
+					.orElseThrow(() -> new IllegalStateException("패스의 연계 학원이 없다: passId=" + pass.getId()));
+				PassBenefit benefit = passBenefits.current();
+				partnerName = partner.getName();
+				campusName = benefit.campusName();
+				discountRate = benefit.discountRate();
+			}
+			case CAMPUS_ISSUED -> {
+				partnerName = null;
+				campusName = catalog.findCampus(pass.getIssuerCampusId())
+					.orElseThrow(() -> new IllegalStateException("패스를 발급한 지점이 없다: passId=" + pass.getId()))
+					.name();
+				discountRate = pass.getDiscountRate();
+			}
+			default -> throw new IllegalStateException("모르는 방향이다: " + pass.getDirection());
+		}
+		ConsentNotice notice = ConsentNotice.of(pass.getDirection());
 		// 상태와 남은 일수가 같은 날을 보게 오늘을 한 번만 읽는다.
 		LocalDate today = LocalDate.now(clock);
-		return new HolderPassView(pass.getPassNo(), partner.getName(), MaskedName.of(pass.getStudentName()),
-				pass.issuedOn(clock.getZone()), pass.getExpiresOn(), pass.stateOn(today), pass.daysLeftOn(today),
-				benefit.discountRate(), benefit.campusName(), ConsentNotice.CURRENT.version(),
-				ConsentNotice.CURRENT.text(), redeemedOn(pass));
+		return new HolderPassView(pass.getPassNo(), pass.getDirection(), partnerName,
+				MaskedName.of(pass.getStudentName()), pass.issuedOn(clock.getZone()), pass.getExpiresOn(),
+				pass.stateOn(today), pass.daysLeftOn(today), discountRate, campusName, notice.version(), notice.text(),
+				redeemedOn(pass));
 	}
 
 	// 사용 기록의 시각을 한국 날짜로 바꾼다. 쓰지 않은 패스에는 기록이 없다.

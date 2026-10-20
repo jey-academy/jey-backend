@@ -282,6 +282,26 @@ class HolderRelinkApiTest {
 		return "{\"studentName\":\"" + name + "\",\"guardianPhone\":\"" + guardianPhone + "\"}";
 	}
 
+	// JEY 발급 패스도 같은 방법(이름 + 패스에 남은 번호)으로 링크를 다시 받는다. 번호는 발급 때의 대표 연락처다.
+	@Test
+	void JEY_발급_패스도_이름과_번호로_링크를_다시_받는다() throws Exception {
+		LinkToken old = LinkToken.generate(RANDOM);
+		Pass pass = passes.saveAndFlush(Pass.issueAtCampus(1L,
+				ThreadLocalRandom.current().nextLong(1_000_000_000L, Long.MAX_VALUE / 2), PassNumber.generate(RANDOM),
+				old.hash(), NAME, phoneProtector.fullIndex(PhoneNumber.of(phone)), clock.instant(), SEOUL, today(),
+				Money.of(280000), PaymentMethod.CARD, new java.math.BigDecimal("0.05")));
+
+		String body = relink(NAME, phone, address).andExpect(status().isOk())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+
+		view(JsonPath.read(body, "$.linkToken")).andExpect(status().isOk())
+			.andExpect(jsonPath("$.passNo").value(pass.getPassNo()))
+			.andExpect(jsonPath("$.direction").value("CAMPUS_ISSUED"));
+		view(old.raw()).andExpect(status().isNotFound());
+	}
+
 	private Pass save(LinkToken link, String name) {
 		return passes.saveAndFlush(Pass.issue(PARTNER, PassNumber.generate(RANDOM), link.hash(), name,
 				phoneProtector.fullIndex(PhoneNumber.of(phone)), clock.instant(), SEOUL, today(), Money.of(150000),

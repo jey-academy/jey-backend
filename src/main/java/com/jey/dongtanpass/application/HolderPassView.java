@@ -1,5 +1,7 @@
 package com.jey.dongtanpass.application;
 
+import com.jey.dongtanpass.domain.PassDirection;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -17,7 +19,7 @@ import com.jey.dongtanpass.domain.PassState;
  * @param campusName 패스를 받는 지점
  * @param redeemedOn 사용일(한국 날짜). 쓰지 않은 패스는 {@code null}. 취소일은 싣지 않는다
  */
-public record HolderPassView(String passNo, String partnerName, String maskedStudentName, LocalDate issuedOn,
+public record HolderPassView(String passNo, PassDirection direction, String partnerName, String maskedStudentName, LocalDate issuedOn,
 		LocalDate expiresOn, PassState state, int daysLeft, BigDecimal discountRate, String campusName,
 		String noticeVersion, String noticeText, LocalDate redeemedOn) {
 
