@@ -1,10 +1,12 @@
 package com.jey.dongtanpass.web;
 
+import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Stream;
 
 import com.jey.TestcontainersConfiguration;
@@ -43,6 +45,7 @@ import static com.jey.dongtanpass.DongtanpassFixtures.upsertPartner;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -98,6 +101,7 @@ class HolderViewApiTest {
 
 		view(link.raw()).andExpect(status().isOk())
 			.andExpect(jsonPath("$.passNo").value(pass.getPassNo()))
+			.andExpect(jsonPath("$.direction").value("PARTNER_ISSUED"))
 			.andExpect(jsonPath("$.partnerName").value("테스트학원-" + PARTNER))
 			.andExpect(jsonPath("$.studentName").value("김*윤"))
 			.andExpect(jsonPath("$.issuedOn").value(today().toString()))
@@ -305,6 +309,46 @@ class HolderViewApiTest {
 	private ResultActions send(String body) throws Exception {
 		return mockMvc.perform(
 				post(VIEW).with(csrfToken(mockMvc)).contentType(MediaType.APPLICATION_JSON).content(body));
+	}
+
+	// JEY가 발급한 패스는 연계 학원에서 쓴다. 발급한 연계 학원이 없고(null), 지점 이름은 발급한 지점이다.
+	// 할인율은 패스에 남은 발급 때의 값이고 고지 문구는 JEY 발급의 문구다.
+	@Test
+	void JEY_발급_패스는_방향과_발급_지점과_발급_때_할인율과_JEY_문구를_준다() throws Exception {
+		LinkToken link = LinkToken.generate(RANDOM);
+		Pass pass = saveCampusPass(link, new BigDecimal("0.0725"));
+
+		view(link.raw()).andExpect(status().isOk())
+			.andExpect(jsonPath("$.passNo").value(pass.getPassNo()))
+			.andExpect(jsonPath("$.direction").value("CAMPUS_ISSUED"))
+			.andExpect(jsonPath("$.partnerName").value(nullValue()))
+			.andExpect(jsonPath("$.campusName").value(passBenefits.current().campusName()))
+			.andExpect(jsonPath("$.studentName").value("김*윤"))
+			.andExpect(jsonPath("$.state").value("ISSUED"))
+			.andExpect(jsonPath("$.discountRate").value(0.0725))
+			.andExpect(jsonPath("$.noticeVersion").value(ConsentNotice.CAMPUS_ISSUED.version()))
+			.andExpect(jsonPath("$.noticeText").value(ConsentNotice.CAMPUS_ISSUED.text()));
+	}
+
+	// 설정을 바꿔도 이미 발급한 패스가 학부모에게 약속한 할인율은 그대로다.
+	@Test
+	void 할인율_설정을_바꿔도_JEY_발급_패스의_할인율은_그대로다() throws Exception {
+		LinkToken link = LinkToken.generate(RANDOM);
+		saveCampusPass(link, new BigDecimal("0.05"));
+		jdbc.update("UPDATE dongtanpass_campus_benefit SET discount_rate = 0.0900");
+		try {
+			view(link.raw()).andExpect(status().isOk()).andExpect(jsonPath("$.discountRate").value(0.05));
+		}
+		finally {
+			jdbc.update("UPDATE dongtanpass_campus_benefit SET discount_rate = 0.0500");
+		}
+	}
+
+	private Pass saveCampusPass(LinkToken link, BigDecimal rate) {
+		return passes.saveAndFlush(Pass.issueAtCampus(passBenefits.current().campusId(),
+				ThreadLocalRandom.current().nextLong(1_000_000_000L, Long.MAX_VALUE / 2), PassNumber.generate(RANDOM),
+				link.hash(), "김하윤", "phone-index", clock.instant(), SEOUL, today(), Money.of(280000),
+				PaymentMethod.CARD, rate));
 	}
 
 	private Pass save(long partnerId, LinkToken link, String name) {

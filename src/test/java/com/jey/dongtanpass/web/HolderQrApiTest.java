@@ -192,6 +192,18 @@ class HolderQrApiTest {
 			.content("{\"token\":\"" + token + "\"}"));
 	}
 
+	// JEY 발급 패스도 학부모가 QR을 받는다(연계 학원에서 보여 준다).
+	@Test
+	void JEY_발급_패스도_QR을_받는다() throws Exception {
+		LinkToken link = LinkToken.generate(RANDOM);
+		passes.saveAndFlush(Pass.issueAtCampus(1L,
+				java.util.concurrent.ThreadLocalRandom.current().nextLong(1_000_000_000L, Long.MAX_VALUE / 2),
+				PassNumber.generate(RANDOM), link.hash(), "김하윤", "phone-index", clock.instant(), SEOUL, today(),
+				Money.of(280000), PaymentMethod.CARD, new java.math.BigDecimal("0.05")));
+
+		qr(link.raw()).andExpect(status().isOk()).andExpect(jsonPath("$.qrToken").isString());
+	}
+
 	private Pass save(long partnerId, LinkToken link) {
 		return passes.saveAndFlush(Pass.issue(partnerId, PassNumber.generate(RANDOM), link.hash(), "김하윤", "phone-index",
 				clock.instant(), SEOUL, today(), Money.of(150000), PaymentMethod.CARD));

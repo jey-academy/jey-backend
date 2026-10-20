@@ -11,19 +11,16 @@ import com.jey.core.auth.api.CurrentActor;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.EventMetadata;
 import com.jey.core.shared.PhoneProtector;
-import com.jey.core.shared.UniqueKeys;
 import com.jey.dongtanpass.api.PassIssued;
 import com.jey.dongtanpass.api.PassRefs;
 import com.jey.dongtanpass.domain.Consent;
 import com.jey.dongtanpass.domain.ConsentRepository;
 import com.jey.dongtanpass.domain.LinkToken;
 import com.jey.dongtanpass.domain.Pass;
+import com.jey.dongtanpass.domain.PassDirection;
 import com.jey.dongtanpass.domain.PassRepository;
 import com.jey.dongtanpass.domain.PassStatusException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -37,13 +34,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class PassService {
 
-	/** 패스 번호가 겹칠 때 발급을 몇 번까지 해 보는지. 32글자 여섯 자리라 실제로는 거의 겹치지 않는다. */
-	static final int MAX_PASS_NO_ATTEMPTS = 3;
-
-	// 마이그레이션에 적은 제약 이름. 저장이 어느 제약에 걸렸는지 이것으로 가린다.
-	private static final String PASS_NO_UNIQUE_KEY = "uk_dongtanpass_pass_no";
-
-	private static final Logger log = LoggerFactory.getLogger(PassService.class);
+	/** 패스 번호가 겹칠 때 발급을 몇 번까지 해 보는지({@link PassIssuing#MAX_PASS_NO_ATTEMPTS}). */
+	static final int MAX_PASS_NO_ATTEMPTS = PassIssuing.MAX_PASS_NO_ATTEMPTS;
 
 	private final PassRepository passes;
 
@@ -89,23 +81,8 @@ public class PassService {
 	public IssuedPass issue(long partnerId, NewPass input) {
 		validate(input);
 		String phoneIndex = phoneProtector.fullIndex(input.guardianPhone());
-		for (int attempt = 1;; attempt++) {
-			try {
-				return transaction.execute(status -> save(partnerId, input, phoneIndex));
-			}
-			catch (DataIntegrityViolationException ex) {
-				// 다른 제약에 걸린 것은 그대로 던진다(서버 오류로 드러나야 한다).
-				if (!UniqueKeys.isViolationOf(ex, PASS_NO_UNIQUE_KEY)) {
-					throw ex;
-				}
-				if (attempt == MAX_PASS_NO_ATTEMPTS) {
-					// 일반 저장 오류와 가려 볼 수 있게 남긴다. 계속 겹치면 번호 공간이나 생성기를 봐야 한다.
-					log.error("패스 번호가 {}번 연속 겹쳐 발급을 포기한다: partnerId={}", attempt, partnerId);
-					throw ex;
-				}
-				log.warn("패스 번호가 이미 있는 번호와 겹쳐 다시 발급한다: attempt={}, partnerId={}", attempt, partnerId);
-			}
-		}
+		return PassIssuing.withPassNoRetry(() -> transaction.execute(status -> save(partnerId, input, phoneIndex)),
+				"partnerId=" + partnerId);
 	}
 
 	/**
@@ -142,8 +119,8 @@ public class PassService {
 			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
 	}
 
-	// 지금 상태에서 할 수 없는 일이면 상태에 맞는 오류로 바꾼다.
-	private static void changeState(Runnable change) {
+	// 지금 상태에서 할 수 없는 일이면 상태에 맞는 오류로 바꾼다. JEY 발급의 링크·취소도 쓴다(CampusPassService).
+	static void changeState(Runnable change) {
 		try {
 			change.run();
 		}
@@ -165,7 +142,7 @@ public class PassService {
 		Pass pass = passes.saveAndFlush(Pass.issue(partnerId, passNumbers.next(), link.hash(),
 				input.studentName(), phoneIndex, now, clock.getZone(), input.paidOn(), input.paidAmount(),
 				input.paymentMethod()));
-		consents.save(Consent.thirdPartyProvision(pass.getId(), input.noticeVersion(), now));
+		consents.save(Consent.thirdPartyProvision(pass.getId(), PassDirection.PARTNER_ISSUED, input.noticeVersion(), now));
 		// 같은 트랜잭션에서 낸다. 발급이 커밋돼야 이벤트도 나간다.
 		events.publishEvent(new PassIssued(
 				EventMetadata.create(PassIssued.TYPE, PassIssued.VERSION, null, currentActor.get(), clock),
@@ -177,16 +154,10 @@ public class PassService {
 		if (!input.consentConfirmed()) {
 			throw new BusinessException(DongtanpassErrorCode.CONSENT_NOT_CONFIRMED);
 		}
-		if (!ConsentNotice.isCurrent(input.noticeVersion())) {
+		if (!ConsentNotice.isCurrent(PassDirection.PARTNER_ISSUED, input.noticeVersion())) {
 			throw new BusinessException(DongtanpassErrorCode.NOTICE_VERSION_MISMATCH);
 		}
-		if (input.paidOn().isAfter(LocalDate.now(clock))) {
-			throw new BusinessException(DongtanpassErrorCode.PAID_ON_IN_FUTURE);
-		}
-		// 반 수강료와 같은 규칙이다.
-		if (input.paidAmount().isZero() || !input.paidAmount().isWholeWon()) {
-			throw new BusinessException(DongtanpassErrorCode.INVALID_PAID_AMOUNT);
-		}
+		PassIssuing.requirePayment(input.paidOn(), input.paidAmount(), clock);
 	}
 
 }

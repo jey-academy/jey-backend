@@ -10,7 +10,7 @@ import com.jey.dongtanpass.domain.PassState;
 import com.jey.dongtanpass.domain.PaymentMethod;
 
 /**
- * 발급 장부의 한 줄. 학부모 번호는 없다(색인뿐이고 장부에 쓸 일이 없다).
+ * 연계 학원 발급 장부의 한 줄. 학부모 번호는 없다(색인뿐이고 장부에 쓸 일이 없다).
  *
  * @param issuedOn 발급일(한국 날짜)
  * @param state 오늘 기준으로 보이는 상태

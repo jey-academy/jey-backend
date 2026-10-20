@@ -33,6 +33,7 @@ import org.springframework.stereotype.Service;
  * <p>패스를 받는 지점의 직원과 관리자만 확인한다. 지점을 먼저 보므로 다른 지점 직원의 요청은 토큰을 쓰지 않는다.
  * QR 토큰은 한 번만 통과한다(토큰 ID를 남은 수명만큼 적는다, ADR-0010). 적지 못하면 예외 그대로 통과시키지 않는다.
  * 패스와 연계 학원을 먼저 읽고 토큰을 적는다. 읽다 실패하면(DB 장애, 패스 없음) 토큰을 쓰지 않아 같은 QR로 다시 할 수 있다.
+ * JEY 발급 패스도 토큰을 적기 전에 409({@code PASS_FOR_PARTNER_USE})로 거부한다(그 QR은 연계 학원에서 그대로 쓴다, ADR-0040).
  * 서명·만료·재사용 실패는 이유를 가리지 않고 400 하나다(이유는 로그에만). 확인에 성공한 토큰은 패스를 쓸 수 없어도 쓴 것이다.
  *
  * <p>패스 번호는 짧아 넣어 보며 찾을 수 있으므로 계정마다 횟수를 센다(맞든 틀리든, 찾기 전에). 미리 확인도 번호를 넣어 보며
@@ -99,6 +100,7 @@ public class DeskPassService {
 			log.warn("QR 토큰 확인 실패: reason=pass_missing passId={}", qr.passId());
 			return new BusinessException(DongtanpassErrorCode.QR_INVALID);
 		});
+		DeskChecks.requirePartnerIssued(pass);
 		Partner partner = partnerOf(pass);
 		// 두 번 통과하지 않게 막는 것은 이 한 곳이다(동시에 와도 하나만 참). 쓸 수 없는 패스여도 여기까지 왔으면 쓴 것이다.
 		if (!usedQrTokens.markUsed(qr, now)) {
@@ -119,6 +121,7 @@ public class DeskPassService {
 						() -> AuditEntry.of(DongtanpassAuditAction.PASS_NO_VERIFY_LIMITED), denial));
 		Pass pass = passes.findByPassNo(passNo)
 			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
+		DeskChecks.requirePartnerIssued(pass);
 		return usableView(pass, partnerOf(pass), benefit, todayAt(clock.instant()));
 	}
 
@@ -138,6 +141,7 @@ public class DeskPassService {
 						() -> AuditEntry.of(DongtanpassAuditAction.HOLDER_CHECK_LIMITED), denial));
 		Pass pass = passes.findById(passId)
 			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PASS_NOT_FOUND));
+		DeskChecks.requirePartnerIssued(pass);
 		DeskChecks.requireUsable(pass, todayAt(clock.instant()));
 		boolean phoneMatches = guardianPhones.stream()
 			.map(phoneProtector::fullIndex)

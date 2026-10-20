@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 연계 학원의 발급 장부. 그 학원이 발급한 패스만 보인다.
+ * 발급 장부. 연계 학원 장부({@link #page}, CSV)는 그 학원이 발급한 패스만, JEY 장부({@link #campusPage})는 그 지점이 발급한 패스만 보인다.
  *
  * <p>기간은 발급일(한국 날짜)로 자르고 양끝을 포함한다. 상태는 오늘 기준으로 보이는 상태({@link PassState})로 거른다.
  */
@@ -61,16 +61,39 @@ public class PassLedger {
 		return LedgerCsv.write(rows(partnerId, from, to, null, Pageable.unpaged(NEWEST_FIRST)).getContent());
 	}
 
+	/**
+	 * JEY 지점이 발급한 패스. 연계 학원 장부와 같은 기간·상태 조건에 학생을 더한다. 최신 발급 순이다.
+	 *
+	 * @param studentId 이 학생의 패스만. 없으면 모두
+	 * @throws BusinessException 시작일이 종료일보다 뒤이거나, 날짜가 {@link #MIN_DATE}~{@link #MAX_DATE} 밖일 때
+	 */
+	@Transactional(readOnly = true)
+	public Page<CampusLedgerRow> campusPage(long campusId, Long studentId, LocalDate from, LocalDate to,
+			PassState state, int page, int size) {
+		requirePeriod(from, to);
+		LocalDate today = LocalDate.now(clock);
+		Filter filter = Filter.of(state, today);
+		return passes
+			.campusLedger(campusId, studentId, startOf(from), startOf(to == null ? null : to.plusDays(1)),
+					filter.status(), filter.expiresOnOrAfter(), filter.expiresBefore(),
+					PageRequest.of(page, size, NEWEST_FIRST))
+			.map(pass -> CampusLedgerRow.of(pass, today, clock.getZone()));
+	}
+
 	private Page<LedgerRow> rows(long partnerId, LocalDate from, LocalDate to, PassState state, Pageable pageable) {
-		if (outOfRange(from) || outOfRange(to) || (from != null && to != null && from.isAfter(to))) {
-			throw new BusinessException(DongtanpassErrorCode.INVALID_PERIOD);
-		}
+		requirePeriod(from, to);
 		LocalDate today = LocalDate.now(clock);
 		Filter filter = Filter.of(state, today);
 		return passes
 			.ledger(partnerId, startOf(from), startOf(to == null ? null : to.plusDays(1)), filter.status(),
 					filter.expiresOnOrAfter(), filter.expiresBefore(), pageable)
 			.map(pass -> LedgerRow.of(pass, today, clock.getZone()));
+	}
+
+	private static void requirePeriod(LocalDate from, LocalDate to) {
+		if (outOfRange(from) || outOfRange(to) || (from != null && to != null && from.isAfter(to))) {
+			throw new BusinessException(DongtanpassErrorCode.INVALID_PERIOD);
+		}
 	}
 
 	private static boolean outOfRange(LocalDate date) {

@@ -11,8 +11,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 패스를 받는 지점과 그 지점이 주는 할인. 지금은 한 지점, 한 할인이다.
- * 지점 이름과 할인율은 기초 모듈에서 읽는다(할인율을 바꾸면 이미 발급한 패스에도 바로 보인다).
+ * 패스 제도에 참여하는 JEY 지점(연계 학원 발급분을 받고, JEY 발급분을 발급한다)과 그 지점이 주는 할인. 지금은 한 지점, 한 할인이다.
+ * 지점 이름과 할인율은 기초 모듈에서 읽는다(할인율을 바꾸면 이미 발급한 연계 학원 발급분에도 바로 보인다. JEY 발급분은 패스에 남은 값이다).
  */
 @Service
 @Transactional(readOnly = true)

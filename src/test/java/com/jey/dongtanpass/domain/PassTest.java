@@ -305,9 +305,75 @@ class PassTest {
 	}
 
 	// 발급일(서울) 오전 10시에 발급한 패스
+	@Test
+	void 연계_학원이_발급한_패스의_방향은_PARTNER_ISSUED이고_JEY_칸은_비어_있다() {
+		Pass pass = issue("김하윤", ISSUED_ON);
+
+		assertThat(pass.getDirection()).isEqualTo(PassDirection.PARTNER_ISSUED);
+		assertThat(pass.getPartnerId()).isEqualTo(1L);
+		assertThat(pass.getIssuerCampusId()).isNull();
+		assertThat(pass.getStudentId()).isNull();
+		assertThat(pass.getDiscountRate()).isNull();
+	}
+
+	// JEY 지점이 다니는 학생에게 발급한다. 발급 때의 할인율을 남긴다(나중에 설정을 바꿔도 이 패스는 그대로).
+	@Test
+	void JEY_발급_패스는_방향과_발급_지점과_학생과_할인율을_가진다() {
+		Pass pass = issueAtCampus(new BigDecimal("0.05"));
+
+		assertThat(pass.getDirection()).isEqualTo(PassDirection.CAMPUS_ISSUED);
+		assertThat(pass.getPartnerId()).isNull();
+		assertThat(pass.getIssuerCampusId()).isEqualTo(7L);
+		assertThat(pass.getStudentId()).isEqualTo(42L);
+		assertThat(pass.getDiscountRate()).isEqualByComparingTo("0.05");
+		assertThat(pass.getStatus()).isEqualTo(PassStatus.ISSUED);
+		assertThat(pass.getExpiresOn()).isEqualTo(LocalDate.of(2026, 11, 14));
+		assertThat(pass.getPaidAmount()).isEqualTo(Money.of(280000));
+	}
+
+	// core의 할인 유형과 같은 규칙: 0보다 크고 1 이하, 소수 넷째 자리까지(컬럼보다 긴 소수는 DB가 조용히 반올림한다).
+	@ParameterizedTest(name = "{0}")
+	@ValueSource(strings = { "0", "-0.01", "1.0001", "0.12345" })
+	void JEY_발급_할인율은_0보다_크고_1_이하_소수_넷째_자리까지(String rate) {
+		assertThatIllegalArgumentException().isThrownBy(() -> issueAtCampus(new BigDecimal(rate)));
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@ValueSource(strings = { "1", "0.0001", "0.05000" })
+	void JEY_발급_할인율의_경계는_받는다(String rate) {
+		assertThat(issueAtCampus(new BigDecimal(rate)).getDiscountRate()).isEqualByComparingTo(rate);
+	}
+
+	@Test
+	void JEY_발급_할인율은_비울_수_없다() {
+		assertThatIllegalArgumentException().isThrownBy(() -> issueAtCampus(null));
+	}
+
+	// 연계 학원 발급과 같은 검증을 거친다(대표로 금액 하나).
+	@Test
+	void JEY_발급도_0원_결제는_받지_않는다() {
+		assertThatIllegalArgumentException().isThrownBy(() -> Pass.issueAtCampus(7L, 42L, "DT-ABC234", HASH,
+				"김하윤", "idx", ISSUED_AT, SEOUL, ISSUED_ON, Money.of(0), PaymentMethod.CARD, new BigDecimal("0.05")));
+	}
+
+	// 사용 기록(JEY 지점에서 쓴 기록)은 연계 학원 발급분에만 생긴다. 데스크가 막지만, 새 경로가 생겨도 여기서 막힌다.
+	@Test
+	void JEY_발급_패스로는_JEY_지점의_사용_기록을_만들지_않는다() {
+		Pass pass = issueAtCampus(new BigDecimal("0.05"));
+		ReflectionTestUtils.setField(pass, "id", 9L);
+
+		assertThatThrownBy(() -> pass.redeem(42L, 1L, ISSUED_AT)).isInstanceOf(IllegalStateException.class);
+		assertThat(pass.getStatus()).isEqualTo(PassStatus.ISSUED);
+	}
+
 	private static Pass issue(String name, LocalDate issuedOn) {
 		return Pass.issue(1L, "DT-ABC234", HASH, name, "idx", issuedOn.atTime(10, 0).atZone(SEOUL).toInstant(), SEOUL,
 				issuedOn, Money.of(150000), PaymentMethod.CARD);
+	}
+
+	private static Pass issueAtCampus(BigDecimal rate) {
+		return Pass.issueAtCampus(7L, 42L, "DT-ABC234", HASH, "김하윤", "idx", ISSUED_AT, SEOUL, ISSUED_ON,
+				Money.of(280000), PaymentMethod.CARD, rate);
 	}
 
 }

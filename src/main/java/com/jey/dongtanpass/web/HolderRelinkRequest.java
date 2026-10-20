@@ -12,7 +12,7 @@ import jakarta.validation.constraints.NotNull;
 @Schema(description = "링크를 다시 받을 학생 이름과 학부모 번호")
 record HolderRelinkRequest(
 		@Schema(description = "학생 이름. 띄어쓰기는 달라도 된다") @NotBlank String studentName,
-		@Schema(description = "패스를 받을 때 적은 학부모 휴대전화 번호(전체). 하이픈이나 공백이 있어도 된다",
+		@Schema(description = "패스에 등록된 학부모 휴대전화 번호(전체. 연계 학원 발급분은 발급 때 적은 번호, JEY 발급분은 학생의 대표 연락처). 하이픈이나 공백이 있어도 된다",
 				example = "010-1234-5678") @NotNull PhoneNumber guardianPhone) {
 
 	// 이름과 번호가 로그에 찍히지 않게 한다.

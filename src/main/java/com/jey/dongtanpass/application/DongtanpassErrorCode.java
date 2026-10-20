@@ -27,7 +27,7 @@ public enum DongtanpassErrorCode implements ErrorCode {
 
 	INVALID_PAID_AMOUNT(HttpStatus.BAD_REQUEST, "결제 금액은 0원보다 커야 하고 1원 단위여야 합니다."),
 
-	// 없는 패스이거나 다른 연계 학원의 패스다. 있는지를 드러내지 않는다.
+	// 없는 패스이거나 부른 쪽이 발급하지 않은 패스다(다른 연계 학원의 패스, JEY 관리에서의 연계 학원 발급분). 있는지를 드러내지 않는다.
 	PASS_NOT_FOUND(HttpStatus.NOT_FOUND, "패스를 찾을 수 없습니다."),
 
 	PASS_CANCELED(HttpStatus.CONFLICT, "취소된 패스입니다."),
@@ -45,8 +45,21 @@ public enum DongtanpassErrorCode implements ErrorCode {
 	// 관리자가 다시 켜면 같은 요청이 지나가므로 잠시 막은 거부다(멱등 응답으로 보관하지 않는다).
 	DISCOUNT_INACTIVE(HttpStatus.CONFLICT, "패스 할인이 꺼져 있어 사용 처리할 수 없습니다. 관리자에게 문의해 주세요.", true),
 
-	// 사용 처리에 넘긴 학생 ID가 없다.
+	// 동탄관 데스크가 JEY 지점이 발급한 패스를 확인·본인 확인·사용 처리하려 했다. 그 패스는 연계 학원에서 쓴다.
+	PASS_FOR_PARTNER_USE(HttpStatus.CONFLICT, "JEY 어학원이 발급한 패스입니다. 연계 학원에서만 쓸 수 있습니다."),
+
+	// 사용 처리나 JEY 발급에 넘긴 학생 ID가 없다.
 	STUDENT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생을 찾을 수 없습니다."),
+
+	// JEY 발급: 퇴원한 학생이다. 다니는 학생의 월 결제에 발급한다.
+	STUDENT_NOT_ENROLLED(HttpStatus.CONFLICT, "재원 중인 학생에게만 발급할 수 있습니다."),
+
+	// JEY 발급: 학생의 지점이 패스를 발급하는 지점(패스 제도에 참여하는 지점)이 아니다.
+	STUDENT_NOT_AT_ISSUING_CAMPUS(HttpStatus.CONFLICT, "패스를 발급하는 지점의 학생이 아닙니다."),
+
+	// JEY 발급: 학부모 번호도 학생 본인 번호도 없다. 패스의 학부모 번호(링크 다시 받기와 연계 학원의 본인 확인에 쓴다)를 정할 수 없다.
+	// 연락처를 더하면 같은 요청이 지나가므로 잠시 막은 거부다(멱등 응답으로 보관하지 않는다 — 같은 키로 다시 보내도 처리된다).
+	STUDENT_HAS_NO_CONTACT(HttpStatus.CONFLICT, "학부모나 학생의 연락처가 없어 발급할 수 없습니다. 연락처를 먼저 더해 주세요.", true),
 
 	// 학생의 지점이 패스를 받는 지점이 아니다(관리자가 다른 지점 학생에게 쓰려 했거나, 등록 폼에서 지점을 잘못 골랐다).
 	STUDENT_NOT_AT_PROVIDING_CAMPUS(HttpStatus.CONFLICT, "패스를 받는 지점의 학생이 아닙니다. 학생의 지점을 확인해 주세요."),

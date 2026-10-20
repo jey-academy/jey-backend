@@ -4,14 +4,18 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import com.jey.dongtanpass.application.HolderPassView;
+import com.jey.dongtanpass.domain.PassDirection;
 import com.jey.dongtanpass.domain.PassState;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.media.Schema.RequiredMode;
 
 @Schema(description = "학부모 화면의 패스. 학생 이름은 가린 것이고 학부모 번호는 없다")
 record HolderPassResponse(
-		@Schema(description = "패스 번호. QR이 안 될 때 데스크에 불러 준다", requiredMode = RequiredMode.REQUIRED) String passNo,
-		@Schema(description = "발급한 연계 학원", requiredMode = RequiredMode.REQUIRED) String partnerName,
+		@Schema(description = "패스 번호. QR이 안 될 때 할인을 주는 곳(JEY 데스크 또는 연계 학원)에 불러 준다", requiredMode = RequiredMode.REQUIRED) String passNo,
+		@Schema(description = "패스의 방향. PARTNER_ISSUED 연계 학원이 발급해 JEY 지점에서 쓴다, CAMPUS_ISSUED JEY 지점이 발급해 연계 학원에서 쓴다",
+				requiredMode = RequiredMode.REQUIRED) PassDirection direction,
+		@Schema(description = "발급한 연계 학원. JEY 발급 패스(CAMPUS_ISSUED)는 null — 아무 연계 학원에서 쓴다",
+				requiredMode = RequiredMode.REQUIRED, nullable = true) String partnerName,
 		@Schema(description = "가린 학생 이름(첫 글자와 끝 글자만, 예: 김*윤)", requiredMode = RequiredMode.REQUIRED) String studentName,
 		@Schema(description = "발급일(한국 날짜). 남은 기간 막대의 시작", requiredMode = RequiredMode.REQUIRED) LocalDate issuedOn,
 		@Schema(description = "이날(한국 날짜)까지 쓸 수 있다", requiredMode = RequiredMode.REQUIRED) LocalDate expiresOn,
@@ -19,15 +23,17 @@ record HolderPassResponse(
 				requiredMode = RequiredMode.REQUIRED) PassState state,
 		@Schema(description = "오늘(서버 기준 한국 날짜)을 포함해 쓸 수 있는 날 수. 사용 기한 당일이면 1. 상태가 ISSUED가 아니면 0",
 				requiredMode = RequiredMode.REQUIRED) int daysLeft,
-		@Schema(description = "할인율. 5%는 0.05", requiredMode = RequiredMode.REQUIRED) BigDecimal discountRate,
-		@Schema(description = "패스를 받는 지점", requiredMode = RequiredMode.REQUIRED) String campusName,
-		@Schema(description = "고지 문구의 버전", requiredMode = RequiredMode.REQUIRED) String noticeVersion,
+		@Schema(description = "할인율. 5%는 0.05. JEY 발급 패스는 발급 때의 값(설정이 바뀌어도 그대로), 연계 학원 발급 패스는 받는 지점 할인의 지금 값",
+				requiredMode = RequiredMode.REQUIRED) BigDecimal discountRate,
+		@Schema(description = "관련된 JEY 지점. 연계 학원 발급 패스는 패스를 받는 지점, JEY 발급 패스는 발급한 지점",
+				requiredMode = RequiredMode.REQUIRED) String campusName,
+		@Schema(description = "고지 문구의 버전(방향마다 다르다)", requiredMode = RequiredMode.REQUIRED) String noticeVersion,
 		@Schema(description = "고지 문구. 여러 줄이다(줄바꿈 문자로 나뉜다)", requiredMode = RequiredMode.REQUIRED) String noticeText,
 		@Schema(description = "사용일(한국 날짜). 쓰지 않은 패스는 null. 취소한 패스도 null이다(취소일은 싣지 않는다)",
 				requiredMode = RequiredMode.REQUIRED, nullable = true) LocalDate redeemedOn) {
 
 	static HolderPassResponse from(HolderPassView view) {
-		return new HolderPassResponse(view.passNo(), view.partnerName(), view.maskedStudentName(), view.issuedOn(),
+		return new HolderPassResponse(view.passNo(), view.direction(), view.partnerName(), view.maskedStudentName(), view.issuedOn(),
 				view.expiresOn(), view.state(), view.daysLeft(), view.discountRate(), view.campusName(),
 				view.noticeVersion(), view.noticeText(), view.redeemedOn());
 	}
