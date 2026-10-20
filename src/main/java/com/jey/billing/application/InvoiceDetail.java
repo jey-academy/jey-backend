@@ -14,9 +14,10 @@ import com.jey.core.shared.Money;
  * @param id 미리 계산이면 {@code null}
  * @param status 미리 계산이면 {@code null}
  * @param totalAmount 라인 청구액의 합
+ * @param payment 유효한 결제(COMPLETED). 결제 전이거나 미리 계산이면 {@code null}
  */
 public record InvoiceDetail(Long id, long campusId, long studentId, YearMonth targetMonth, InvoiceStatus status,
-		DiscountPolicy discountPolicy, Money totalAmount, List<LineDetail> lines) {
+		DiscountPolicy discountPolicy, Money totalAmount, List<LineDetail> lines, PaymentView payment) {
 
 	public InvoiceDetail {
 		lines = List.copyOf(lines);

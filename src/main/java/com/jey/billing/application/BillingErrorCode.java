@@ -31,7 +31,27 @@ public enum BillingErrorCode implements ErrorCode {
 	// 한 학생 한 달에 열린 청구는 하나다.
 	INVOICE_ALREADY_EXISTS(HttpStatus.CONFLICT, "이 학생의 그 달 청구가 이미 있습니다."),
 
-	INVOICE_NOT_FOUND(HttpStatus.NOT_FOUND, "청구를 찾을 수 없습니다.");
+	INVOICE_NOT_FOUND(HttpStatus.NOT_FOUND, "청구를 찾을 수 없습니다."),
+
+	// 결제 전(ISSUED) 청구에만 결제한다. 이미 결제했거나 취소한 청구다.
+	INVOICE_NOT_PAYABLE(HttpStatus.CONFLICT, "결제할 수 없는 청구입니다. 이미 결제했거나 취소한 청구입니다."),
+
+	// 결제 전(ISSUED) 청구만 취소한다. 결제한 청구는 결제를 먼저 취소한다.
+	INVOICE_NOT_CANCELABLE(HttpStatus.CONFLICT, "취소할 수 없는 청구입니다. 결제한 청구는 결제를 먼저 취소해 주세요."),
+
+	// 수강료는 청구 합계 그대로 받는다(나눠 내기·일부 결제 없음).
+	PAYMENT_AMOUNT_MISMATCH(HttpStatus.CONFLICT, "받은 수강료가 청구 금액과 다릅니다."),
+
+	// 청구를 잠그고 상태를 보므로 보통은 INVOICE_NOT_PAYABLE이 먼저 나간다. 유니크 키가 막은 마지막 방어선이다.
+	PAYMENT_ALREADY_EXISTS(HttpStatus.CONFLICT, "이 청구의 결제가 이미 있습니다."),
+
+	PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "결제를 찾을 수 없습니다."),
+
+	PAYMENT_ALREADY_CANCELED(HttpStatus.CONFLICT, "이미 취소한 결제입니다."),
+
+	INVALID_PERIOD(HttpStatus.BAD_REQUEST, "기간이 올바르지 않습니다. 시작일은 종료일보다 뒤일 수 없고, 2000-01-01부터 2099-12-31 사이여야 합니다."),
+
+	PERIOD_TOO_LONG(HttpStatus.BAD_REQUEST, "기간은 1년까지 볼 수 있습니다.");
 
 	private final HttpStatus status;
 

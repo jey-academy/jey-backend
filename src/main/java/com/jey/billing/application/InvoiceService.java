@@ -19,6 +19,9 @@ import com.jey.billing.domain.Invoice;
 import com.jey.billing.domain.InvoiceLine;
 import com.jey.billing.domain.InvoiceLineDiscount;
 import com.jey.billing.domain.InvoiceRepository;
+import com.jey.billing.domain.InvoiceStateException;
+import com.jey.billing.domain.PaymentRepository;
+import com.jey.billing.domain.PaymentStatus;
 import com.jey.billing.domain.LineCharge;
 import com.jey.billing.domain.TooManyDiscountsException;
 import com.jey.billing.domain.TuitionCalculator;
@@ -60,9 +63,13 @@ public class InvoiceService {
 
 	private final TransactionTemplate transaction;
 
+	private final PaymentRepository payments;
+
 	InvoiceService(InvoiceRepository invoices, CampusCatalog catalog, MemberDirectory members,
-			BillingProperties properties, AuditLog auditLog, TransactionTemplate transaction) {
+			BillingProperties properties, AuditLog auditLog, TransactionTemplate transaction,
+			PaymentRepository payments) {
 		this.invoices = invoices;
+		this.payments = payments;
 		this.catalog = catalog;
 		this.members = members;
 		this.properties = properties;
@@ -90,7 +97,7 @@ public class InvoiceService {
 		}
 		return new InvoiceDetail(null, prepared.student().campusId(), draft.studentId(), draft.targetMonth(), null,
 				properties.discountPolicy(),
-				lines.stream().map(InvoiceDetail.LineDetail::chargeAmount).reduce(Money.ZERO, Money::plus), lines);
+				lines.stream().map(InvoiceDetail.LineDetail::chargeAmount).reduce(Money.ZERO, Money::plus), lines, null);
 	}
 
 	/**
@@ -134,6 +141,30 @@ public class InvoiceService {
 			.orElseThrow(() -> new BusinessException(BillingErrorCode.INVOICE_NOT_FOUND));
 		user.requireCampus(invoice.getCampusId());
 		return detail(invoice);
+	}
+
+	/**
+	 * 결제 전 청구를 취소한다. 닫힌 청구가 되어 같은 달에 새 청구를 만들 수 있다. 감사 로그({@code billing.invoice-canceled})가 남는다.
+	 *
+	 * @throws BusinessException 없는 청구, 다룰 수 없는 지점, 결제 전이 아닌 청구(결제한 청구는 결제를 먼저 취소한다)
+	 */
+	public InvoiceDetail cancel(long invoiceId, AuthenticatedUser user) {
+		return transaction.execute(status -> {
+			Invoice invoice = invoices.findByIdForUpdate(invoiceId)
+				.orElseThrow(() -> new BusinessException(BillingErrorCode.INVOICE_NOT_FOUND));
+			user.requireCampus(invoice.getCampusId());
+			try {
+				invoice.cancel();
+			}
+			catch (InvoiceStateException e) {
+				throw new BusinessException(BillingErrorCode.INVOICE_NOT_CANCELABLE);
+			}
+			auditLog.record(AuditEntry.of(BillingAuditAction.INVOICE_CANCELED)
+				.target(MemberRefs.student(invoice.getStudentId()))
+				.campus(invoice.getCampusId())
+				.with("invoiceId", invoice.getId()));
+			return detail(invoice);
+		});
 	}
 
 	/** 그 달의 청구. 학생 ID 순. */
@@ -205,7 +236,8 @@ public class InvoiceService {
 			.toList();
 		return new InvoiceDetail(invoice.getId(), invoice.getCampusId(), invoice.getStudentId(),
 				invoice.getTargetMonth(), invoice.getStatus(), invoice.getDiscountPolicy(), invoice.getTotalAmount(),
-				lines);
+				lines, payments.findByInvoiceIdAndStatus(invoice.getId(), PaymentStatus.COMPLETED).map(PaymentView::of)
+					.orElse(null));
 	}
 
 	private InvoiceDetail.DiscountDetail discountDetail(InvoiceLineDiscount discount) {

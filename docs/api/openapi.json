@@ -1054,8 +1054,8 @@
             "type" : "array"
           },
           "status" : {
-            "description" : "상태. ISSUED 만들었고 결제 전. 미리 계산이면 null",
-            "enum" : [ "ISSUED" ],
+            "description" : "상태. ISSUED 결제 전, PAID 결제함(결제를 취소하면 ISSUED로 돌아간다), CANCELED 취소함(같은 달에 새 청구를 만들 수 있다). 미리 계산이면 null",
+            "enum" : [ "ISSUED", "PAID", "CANCELED" ],
             "type" : [ "string", "null" ]
           },
           "studentId" : {

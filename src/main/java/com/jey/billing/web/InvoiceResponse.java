@@ -18,7 +18,7 @@ record InvoiceResponse(
 		@Schema(description = "학생 ID", requiredMode = RequiredMode.REQUIRED) long studentId,
 		@Schema(description = "대상 월(YYYY-MM)", type = "string", example = "2026-11",
 				requiredMode = RequiredMode.REQUIRED) YearMonth targetMonth,
-		@Schema(description = "상태. ISSUED 만들었고 결제 전. 미리 계산이면 null", requiredMode = RequiredMode.REQUIRED,
+		@Schema(description = "상태. ISSUED 결제 전, PAID 결제함(결제를 취소하면 ISSUED로 돌아간다), CANCELED 취소함(같은 달에 새 청구를 만들 수 있다). 미리 계산이면 null", requiredMode = RequiredMode.REQUIRED,
 				nullable = true) InvoiceStatus status,
 		@Schema(description = "할인이 여러 개일 때의 계산 방식. ADDITIVE 할인율을 더해 한 번에, SEQUENTIAL 앞의 할인을 뺀 금액에서 다음 할인, SINGLE 하나만. 만든 청구는 만들 때의 방식이다",
 				requiredMode = RequiredMode.REQUIRED) DiscountPolicy discountPolicy,
