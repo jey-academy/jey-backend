@@ -63,6 +63,9 @@ class PartnerRedeemConcurrencyTest {
 	PartnerPassService partnerPassService;
 
 	@Autowired
+	CampusPassService campusPassService;
+
+	@Autowired
 	PassRepository passes;
 
 	@Autowired
@@ -120,6 +123,28 @@ class PartnerRedeemConcurrencyTest {
 			assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM dongtanpass_partner_redemption WHERE pass_id = ?",
 					Integer.class, passId))
 				.isEqualTo(1);
+		}
+	}
+
+	// JEY 지점의 취소와 연계 학원의 사용 처리는 같은 패스 행을 잠그고 차례로 돈다. 먼저 끝난 쪽이 이기고 진 쪽은 409다
+	// (잠금이 빠지면 버전 충돌로 500이 나거나, 취소된 패스에 사용 기록이 남는다).
+	@Test
+	void JEY_지점의_취소와_연계_학원의_사용_처리가_겹치면_하나만_된다() throws Exception {
+		for (int round = 0; round < ROUNDS; round++) {
+			PhoneNumber phone = randomPhone();
+			long passId = save(ThreadLocalRandom.current().nextLong(1_000_000_000L, Long.MAX_VALUE / 2), phone);
+
+			List<String> outcomes = race(List.of(() -> redeem(passId, phone), () -> {
+				campusPassService.cancel(passId);
+				return "canceled";
+			}));
+
+			assertThat(outcomes).isIn(List.of("redeemed", "DONGTANPASS_PASS_ALREADY_REDEEMED"),
+					List.of("DONGTANPASS_PASS_CANCELED", "canceled"));
+			String status = jdbc.queryForObject("SELECT status FROM dongtanpass_pass WHERE id = ?", String.class, passId);
+			int records = jdbc.queryForObject("SELECT COUNT(*) FROM dongtanpass_partner_redemption WHERE pass_id = ?",
+					Integer.class, passId);
+			assertThat(status + "/" + records).isIn("REDEEMED/1", "CANCELED/0");
 		}
 	}
 
