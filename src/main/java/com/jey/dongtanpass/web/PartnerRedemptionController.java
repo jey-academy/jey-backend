@@ -1,5 +1,7 @@
 package com.jey.dongtanpass.web;
 
+import java.time.LocalDate;
+
 import com.jey.core.auth.api.AllowedRoles;
 import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.auth.api.UserRole;
@@ -7,17 +9,24 @@ import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.CommonErrorCode;
 import com.jey.core.shared.Idempotent;
 import com.jey.core.shared.NotIdempotent;
+import com.jey.core.shared.PageLimits;
 import com.jey.dongtanpass.application.PartnerPassService;
+import com.jey.dongtanpass.application.PartnerRedemptionLedger;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -31,8 +40,31 @@ class PartnerRedemptionController {
 
 	private final PartnerPassService partnerPassService;
 
-	PartnerRedemptionController(PartnerPassService partnerPassService) {
+	private final PartnerRedemptionLedger partnerRedemptionLedger;
+
+	PartnerRedemptionController(PartnerPassService partnerPassService,
+			PartnerRedemptionLedger partnerRedemptionLedger) {
 		this.partnerPassService = partnerPassService;
+		this.partnerRedemptionLedger = partnerRedemptionLedger;
+	}
+
+	@Operation(summary = "연계 학원 사용 내역",
+			description = "연계 학원이 쓴 JEY 발급 패스. 최신 사용 순이다. 연계 학원은 자기 학원 것만 본다(다른 학원을 고르면 403 DONGTANPASS_OTHER_PARTNER_NOT_ALLOWED). "
+					+ "관리자는 고르지 않으면 모든 학원이다. 기간은 사용일(한국 날짜)로 자르고 양끝을 포함하며 둘 다 필수다. "
+					+ "시작일이 종료일보다 뒤이거나 2000-01-01~2099-12-31 밖이면 400(DONGTANPASS_INVALID_PERIOD), 1년을 넘으면 400(DONGTANPASS_PERIOD_TOO_LONG). "
+					+ "동탄관 데스크의 사용 내역(/api/v1/dongtanpass/redemptions)과는 따로다")
+	@AllowedRoles({ UserRole.PARTNER, UserRole.ADMIN })
+	@GetMapping
+	PartnerRedemptionPageResponse list(@AuthenticationPrincipal AuthenticatedUser user,
+			@Parameter(description = "연계 학원. 연계 학원 계정은 안 주거나 자기 학원, 관리자는 안 주면 모든 학원") @RequestParam(
+					required = false) Long partnerId,
+			@Parameter(description = "이 사용일(한국 날짜)부터, 포함") @RequestParam LocalDate from,
+			@Parameter(description = "이 사용일(한국 날짜)까지, 포함. 시작일 + 1년까지") @RequestParam LocalDate to,
+			@Parameter(description = PageLimits.PAGE_DESCRIPTION) @RequestParam(defaultValue = "0") @Min(0) @Max(
+					PageLimits.MAX_PAGE) int page,
+			@RequestParam(defaultValue = "20") @Min(1) @Max(RedemptionController.MAX_PAGE_SIZE) int size) {
+		return PartnerRedemptionPageResponse
+			.from(partnerRedemptionLedger.page(user, partnerId, from, to, page, size));
 	}
 
 	@Operation(summary = "연계 학원 패스 확인",

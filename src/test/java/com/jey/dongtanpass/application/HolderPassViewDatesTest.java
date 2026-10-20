@@ -12,6 +12,7 @@ import com.jey.core.campus.api.CampusCatalog;
 import com.jey.core.shared.Money;
 import com.jey.dongtanpass.domain.LinkToken;
 import com.jey.dongtanpass.domain.Partner;
+import com.jey.dongtanpass.domain.PartnerRedemptionRepository;
 import com.jey.dongtanpass.domain.PartnerRepository;
 import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PassNumber;
@@ -56,7 +57,8 @@ class HolderPassViewDatesTest {
 		when(partners.findById(7L)).thenReturn(Optional.of(partner));
 		when(passBenefits.current()).thenReturn(new PassBenefit(1L, "테스트지점", "DONGTAN_PASS", new BigDecimal("0.05"), true));
 		HolderPassService service = new HolderPassService(passes, partners, passBenefits, mock(PassQrCodes.class),
-				mock(RedemptionRepository.class), mock(CampusCatalog.class), Clock.fixed(now, SEOUL));
+				mock(RedemptionRepository.class), mock(CampusCatalog.class), mock(PartnerRedemptionRepository.class),
+				Clock.fixed(now, SEOUL));
 
 		HolderPassView view = service.view(link.raw());
 

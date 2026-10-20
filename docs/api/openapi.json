@@ -1176,6 +1176,97 @@
         "required" : [ "discountAmount", "discountRate", "originalFee", "passId", "payableAmount", "redeemedAt", "redemptionId" ],
         "type" : "object"
       },
+      "PartnerRedemptionItemResponse" : {
+        "description" : "연계 학원이 쓴 JEY 발급 패스 하나. 학부모 번호는 없다",
+        "properties" : {
+          "discountAmount" : {
+            "description" : "할인액(원)",
+            "type" : "number"
+          },
+          "discountRate" : {
+            "description" : "할인율(발급 때 값). 5%는 0.05",
+            "type" : "number"
+          },
+          "id" : {
+            "description" : "사용 기록 ID",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "originalFee" : {
+            "description" : "원래 수강료(원)",
+            "type" : "number"
+          },
+          "partnerId" : {
+            "description" : "쓴 연계 학원",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "partnerName" : {
+            "description" : "쓴 연계 학원 이름",
+            "type" : "string"
+          },
+          "passId" : {
+            "description" : "패스 ID",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "passNo" : {
+            "description" : "패스 번호",
+            "type" : "string"
+          },
+          "payableAmount" : {
+            "description" : "받을 금액(원). 1원 미만을 버린 값",
+            "type" : "number"
+          },
+          "redeemedAt" : {
+            "description" : "사용 처리한 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "redeemedOn" : {
+            "description" : "사용일(한국 날짜). 기간 조건은 이 날짜로 자른다",
+            "format" : "date",
+            "type" : "string"
+          },
+          "studentName" : {
+            "description" : "학생 이름(패스의 이름)",
+            "type" : "string"
+          }
+        },
+        "required" : [ "discountAmount", "discountRate", "id", "originalFee", "partnerId", "partnerName", "passId", "passNo", "payableAmount", "redeemedAt", "redeemedOn", "studentName" ],
+        "type" : "object"
+      },
+      "PartnerRedemptionPageResponse" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PartnerRedemptionItemResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "description" : "지금 페이지. 0부터",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "size" : {
+            "description" : "한 페이지의 크기",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "totalElements" : {
+            "description" : "조건에 맞는 전체 건수",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalPages" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "items", "page", "size", "totalElements", "totalPages" ],
+        "type" : "object"
+      },
       "PartnerResponse" : {
         "description" : "연계 학원 하나",
         "properties" : {
@@ -2330,7 +2421,7 @@
     },
     "/api/v1/campuses" : {
       "get" : {
-        "operationId" : "list_2",
+        "operationId" : "list_3",
         "responses" : {
           "200" : {
             "content" : {
@@ -2961,6 +3052,77 @@
         },
         "summary" : "학부모 패스 열기",
         "tags" : [ "holder-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/partner-redemptions" : {
+      "get" : {
+        "description" : "연계 학원이 쓴 JEY 발급 패스. 최신 사용 순이다. 연계 학원은 자기 학원 것만 본다(다른 학원을 고르면 403 DONGTANPASS_OTHER_PARTNER_NOT_ALLOWED). 관리자는 고르지 않으면 모든 학원이다. 기간은 사용일(한국 날짜)로 자르고 양끝을 포함하며 둘 다 필수다. 시작일이 종료일보다 뒤이거나 2000-01-01~2099-12-31 밖이면 400(DONGTANPASS_INVALID_PERIOD), 1년을 넘으면 400(DONGTANPASS_PERIOD_TOO_LONG). 동탄관 데스크의 사용 내역(/api/v1/dongtanpass/redemptions)과는 따로다",
+        "operationId" : "list_2",
+        "parameters" : [ {
+          "description" : "연계 학원. 연계 학원 계정은 안 주거나 자기 학원, 관리자는 안 주면 모든 학원",
+          "in" : "query",
+          "name" : "partnerId",
+          "required" : false,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "이 사용일(한국 날짜)부터, 포함",
+          "in" : "query",
+          "name" : "from",
+          "required" : true,
+          "schema" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        }, {
+          "description" : "이 사용일(한국 날짜)까지, 포함. 시작일 + 1년까지",
+          "in" : "query",
+          "name" : "to",
+          "required" : true,
+          "schema" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        }, {
+          "description" : "0부터 10000까지",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "format" : "int32",
+            "maximum" : 10000,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PartnerRedemptionPageResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "연계 학원 사용 내역",
+        "tags" : [ "partner-redemption-controller" ]
       }
     },
     "/api/v1/dongtanpass/partner-redemptions/verify" : {
