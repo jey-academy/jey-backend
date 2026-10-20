@@ -48,6 +48,12 @@ public enum DongtanpassErrorCode implements ErrorCode {
 	// 동탄관 데스크가 JEY 지점이 발급한 패스를 확인·본인 확인·사용 처리하려 했다. 그 패스는 연계 학원에서 쓴다.
 	PASS_FOR_PARTNER_USE(HttpStatus.CONFLICT, "JEY 어학원이 발급한 패스입니다. 연계 학원에서만 쓸 수 있습니다."),
 
+	// 연계 학원이 연계 학원 발급 패스를 확인·사용 처리하려 했다. 그 패스는 JEY 지점의 데스크에서 쓴다.
+	PASS_FOR_CAMPUS_USE(HttpStatus.CONFLICT, "연계 학원이 발급한 패스입니다. JEY 어학원에서 쓰는 패스입니다."),
+
+	// 같은 학생이 이 연계 학원에서 JEY 패스 할인을 이미 받았다(할인은 그 학원에 새로 오는 학생에게만). 다른 연계 학원은 따로 센다.
+	STUDENT_ALREADY_USED_AT_PARTNER(HttpStatus.CONFLICT, "이 학생은 이 학원에서 JEY 패스 할인을 이미 받았습니다."),
+
 	// 사용 처리나 JEY 발급에 넘긴 학생 ID가 없다.
 	STUDENT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생을 찾을 수 없습니다."),
 

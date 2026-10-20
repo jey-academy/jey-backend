@@ -1108,6 +1108,43 @@
         "required" : [ "active", "createdAt", "id", "name", "type" ],
         "type" : "object"
       },
+      "PartnerVerifiedPassResponse" : {
+        "properties" : {
+          "campusName" : {
+            "description" : "패스를 발급한 JEY 지점",
+            "type" : "string"
+          },
+          "discountRate" : {
+            "description" : "이 패스의 할인율(발급 때 값). 5%는 0.05",
+            "type" : "number"
+          },
+          "expiresOn" : {
+            "description" : "이날(한국 날짜)까지 쓸 수 있다",
+            "format" : "date",
+            "type" : "string"
+          },
+          "issuedOn" : {
+            "description" : "발급일(한국 날짜)",
+            "format" : "date",
+            "type" : "string"
+          },
+          "passId" : {
+            "description" : "패스 ID. 본인 확인, 금액 미리 보기, 사용 처리에 쓴다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "passNo" : {
+            "description" : "패스 번호",
+            "type" : "string"
+          },
+          "studentName" : {
+            "description" : "가린 학생 이름(첫 글자와 끝 글자만, 예: 김*윤). 학원이 적은 이름은 본인 확인과 사용 처리에서 맞춰 본다",
+            "type" : "string"
+          }
+        },
+        "required" : [ "campusName", "discountRate", "expiresOn", "issuedOn", "passId", "passNo", "studentName" ],
+        "type" : "object"
+      },
       "PassCancelResponse" : {
         "description" : "취소한 패스",
         "properties" : {
@@ -2827,6 +2864,36 @@
         },
         "summary" : "학부모 패스 열기",
         "tags" : [ "holder-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/partner-redemptions/verify" : {
+      "post" : {
+        "description" : "학부모 화면의 QR에서 읽은 토큰(qrToken)이나 패스 번호(passNo) 중 하나로 JEY 발급 패스를 확인하고, 다음 단계에 쓸 패스 ID를 준다. 둘 다 보내거나 둘 다 없으면 400(COMMON_BAD_REQUEST). QR: 한 토큰은 한 번만 통과한다. 틀렸거나 만료됐거나 이미 쓴 토큰은 400(DONGTANPASS_QR_INVALID). 패스 번호: 없는 번호는 404(DONGTANPASS_PASS_NOT_FOUND), 계정마다 정해진 횟수를 넘으면 429(DONGTANPASS_PASS_NO_VERIFY_LIMITED, Retry-After). 연계 학원이 발급한 패스는 409(DONGTANPASS_PASS_FOR_CAMPUS_USE), 이 학원에서 이미 JEY 패스 할인을 받은 학생은 409(DONGTANPASS_STUDENT_ALREADY_USED_AT_PARTNER) — 이 둘은 토큰을 쓰지 않는다. 쓸 수 없는 패스는 409(DONGTANPASS_PASS_EXPIRED, DONGTANPASS_PASS_CANCELED, DONGTANPASS_PASS_ALREADY_REDEEMED)",
+        "operationId" : "verify",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PassVerifyRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PartnerVerifiedPassResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "연계 학원 패스 확인",
+        "tags" : [ "partner-redemption-controller" ]
       }
     },
     "/api/v1/dongtanpass/partners" : {
