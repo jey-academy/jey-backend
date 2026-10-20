@@ -1170,6 +1170,25 @@
         "required" : [ "items", "page", "size", "totalElements", "totalPages" ],
         "type" : "object"
       },
+      "LineRequest" : {
+        "description" : "청구 라인 하나의 입력",
+        "properties" : {
+          "classId" : {
+            "description" : "반 ID. 학생과 같은 지점의 켜진 반",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "lessonCount" : {
+            "description" : "그 달의 수업 횟수. 1~31",
+            "format" : "int32",
+            "maximum" : 31,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        },
+        "required" : [ "classId", "lessonCount" ],
+        "type" : "object"
+      },
       "LoginRequest" : {
         "properties" : {
           "loginId" : {
@@ -1843,6 +1862,59 @@
           }
         },
         "required" : [ "phone" ],
+        "type" : "object"
+      },
+      "RedemptionInvoiceRequest" : {
+        "description" : "패스 사용 기록에서 청구 만들기. 패스 할인은 서버가 붙인다(지금 할인율, 참조값 = 패스 번호). 반·횟수 규칙은 수납의 청구 만들기와 같다",
+        "properties" : {
+          "discountCodes" : {
+            "description" : "직원이 더 고르는 할인 유형 코드(예: SIBLING_5). 패스 할인 다음에 계산한다. 0~3개, 없으면 비우거나 보내지 않는다",
+            "items" : {
+              "maxLength" : 30,
+              "minLength" : 0,
+              "type" : "string"
+            },
+            "maxItems" : 3,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "lines" : {
+            "description" : "반과 그 달의 수업 횟수. 1~4개, 같은 반은 한 번",
+            "items" : {
+              "$ref" : "#/components/schemas/LineRequest"
+            },
+            "maxItems" : 4,
+            "minItems" : 1,
+            "type" : "array"
+          },
+          "targetMonth" : {
+            "description" : "대상 월(YYYY-MM). 2000-01~2099-12",
+            "example" : "2026-11",
+            "type" : "string"
+          }
+        },
+        "required" : [ "lines", "targetMonth" ],
+        "type" : "object"
+      },
+      "RedemptionInvoiceResponse" : {
+        "description" : "패스 사용 기록에서 만든 청구. 상세(라인·할인·결제)는 GET /api/v1/billing/invoices/{invoiceId}",
+        "properties" : {
+          "invoiceId" : {
+            "description" : "만든 청구 ID. 결제는 POST /api/v1/billing/invoices/{invoiceId}/payments",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "redemptionId" : {
+            "description" : "사용 기록 ID",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalAmount" : {
+            "description" : "청구 합계(원)",
+            "type" : "number"
+          }
+        },
+        "required" : [ "invoiceId", "redemptionId", "totalAmount" ],
         "type" : "object"
       },
       "RedemptionItemResponse" : {
@@ -2790,7 +2862,7 @@
         "tags" : [ "invoice-controller" ]
       },
       "post" : {
-        "description" : "학생의 그 달 청구를 만든다. 한 학생 한 달에 열린 청구는 하나다(있으면 409 BILLING_INVOICE_ALREADY_EXISTS). 금액은 미리 계산과 같다. 학생이 없으면 404(BILLING_STUDENT_NOT_FOUND), 재원 중이 아니면 409(BILLING_STUDENT_NOT_ENROLLED). 반이 없으면 404(BILLING_CLASS_NOT_FOUND), 꺼진 반 409(BILLING_CLASS_INACTIVE), 학생과 다른 지점의 반 409(BILLING_CLASS_NOT_AT_STUDENT_CAMPUS). 할인 유형이 없으면 404(BILLING_DISCOUNT_TYPE_NOT_FOUND), 꺼진 할인 409(BILLING_DISCOUNT_TYPE_INACTIVE). 할인을 하나만 받는 설정에 둘 이상이면 400(BILLING_TOO_MANY_DISCOUNTS), 할인율의 합이 100% 이상이면 400(BILLING_DISCOUNT_TOO_LARGE). 다른 지점의 학생이면 403(AUTH_CAMPUS_NOT_ALLOWED). 칸의 값이 틀리면 400(COMMON_VALIDATION_FAILED), 같은 반·같은 할인을 두 번 넣거나 모르는 칸이 있으면 400",
+        "description" : "학생의 그 달 청구를 만든다. 한 학생 한 달에 열린 청구는 하나다(있으면 409 BILLING_INVOICE_ALREADY_EXISTS). 금액은 미리 계산과 같다. 근거가 필요한 할인(동탄고 패스)은 고를 수 없다 — 400(BILLING_DISCOUNT_NEEDS_REFERENCE), 패스 사용 기록에서 청구를 만든다(미리 계산은 된다). 학생이 없으면 404(BILLING_STUDENT_NOT_FOUND), 재원 중이 아니면 409(BILLING_STUDENT_NOT_ENROLLED). 반이 없으면 404(BILLING_CLASS_NOT_FOUND), 꺼진 반 409(BILLING_CLASS_INACTIVE), 학생과 다른 지점의 반 409(BILLING_CLASS_NOT_AT_STUDENT_CAMPUS). 할인 유형이 없으면 404(BILLING_DISCOUNT_TYPE_NOT_FOUND), 꺼진 할인 409(BILLING_DISCOUNT_TYPE_INACTIVE). 할인을 하나만 받는 설정에 둘 이상이면 400(BILLING_TOO_MANY_DISCOUNTS), 할인율의 합이 100% 이상이면 400(BILLING_DISCOUNT_TOO_LARGE). 다른 지점의 학생이면 403(AUTH_CAMPUS_NOT_ALLOWED). 칸의 값이 틀리면 400(COMMON_VALIDATION_FAILED), 같은 반·같은 할인을 두 번 넣거나 모르는 칸이 있으면 400",
         "operationId" : "issueInvoice",
         "parameters" : [ {
           "description" : "이번 시도의 키(UUID). 같은 시도를 다시 보낼 때는 같은 키를, 값을 고쳐 새로 낼 때는 새 키를 쓴다. 같은 키의 같은 요청은 한 번만 실행되고 처음의 응답이 다시 온다(응답 헤더 Idempotency-Replayed: true). 없거나 형식이 틀리면 400(COMMON_IDEMPOTENCY_KEY_REQUIRED), 같은 키에 다른 내용이면 422(COMMON_IDEMPOTENCY_KEY_REUSED), 처음 요청이 처리 중이면 409(COMMON_IDEMPOTENCY_IN_PROGRESS). 409는 업무 규칙의 거부에도 쓰이므로 코드로 가른다. 다시 온 응답에는 상태와 본문만 있다",
@@ -4541,6 +4613,57 @@
           }
         },
         "summary" : "패스 사용 내역",
+        "tags" : [ "redemption-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/redemptions/{id}/invoice" : {
+      "post" : {
+        "description" : "패스를 쓴 학생의 그 달 청구를 만든다. 패스 할인은 서버가 붙인다(지금 할인율, 참조값 = 패스 번호, 직원이 더 고른 할인보다 먼저 계산). 패스 할인은 이 경로로만 청구에 붙는다(수납의 청구 만들기는 받지 않는다). 사용 기록 하나에 열린 청구 하나다: 있으면 409(DONGTANPASS_REDEMPTION_ALREADY_INVOICED), 그 청구를 취소하면 다시 만들 수 있다. 없는 사용 기록 404(DONGTANPASS_REDEMPTION_NOT_FOUND), 다른 지점 403(AUTH_CAMPUS_NOT_ALLOWED). 반·학생·할인·한 달 한 청구의 거부는 수납의 청구 만들기와 같은 코드다(BILLING_…)",
+        "operationId" : "issueRedemptionInvoice",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "이번 시도의 키(UUID). 같은 시도를 다시 보낼 때는 같은 키를, 값을 고쳐 새로 낼 때는 새 키를 쓴다. 같은 키의 같은 요청은 한 번만 실행되고 처음의 응답이 다시 온다(응답 헤더 Idempotency-Replayed: true). 없거나 형식이 틀리면 400(COMMON_IDEMPOTENCY_KEY_REQUIRED), 같은 키에 다른 내용이면 422(COMMON_IDEMPOTENCY_KEY_REUSED), 처음 요청이 처리 중이면 409(COMMON_IDEMPOTENCY_IN_PROGRESS). 409는 업무 규칙의 거부에도 쓰이므로 코드로 가른다. 다시 온 응답에는 상태와 본문만 있다",
+          "example" : "3f2b8c1e-5a7d-4e2f-9b1c-0d6a8e4f2c11",
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 128,
+            "minLength" : 8,
+            "pattern" : "^[A-Za-z0-9_-]{8,128}$",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RedemptionInvoiceRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RedemptionInvoiceResponse"
+                }
+              }
+            },
+            "description" : "Created"
+          }
+        },
+        "summary" : "사용 기록에서 청구 만들기",
         "tags" : [ "redemption-controller" ]
       }
     },

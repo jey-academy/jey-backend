@@ -118,6 +118,21 @@ class InvoiceApiTest {
 			.andExpect(jsonPath("$.code").value("BILLING_INVOICE_ALREADY_EXISTS"));
 	}
 
+	// 패스 할인은 패스 사용 기록에서만 붙는다(근거 = 패스 번호). 미리 계산은 된다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = MemberFixtures.DONGTAN)
+	void 패스_할인은_직접_골라_만들지_못하고_미리_계산만_된다() throws Exception {
+		Fixture fixture = fixture();
+		String body = body(fixture.student(), "2026-11", fixture.cls(), 8, "\"DONGTAN_PASS\"");
+
+		issue(body).andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("BILLING_DISCOUNT_NEEDS_REFERENCE"));
+		mockMvc.perform(post(QUOTE).with(csrfToken(mockMvc)).contentType(MediaType.APPLICATION_JSON).content(body))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.totalAmount").value(266000));
+		assertThat(invoiceCount(fixture.student())).isZero();
+	}
+
 	@Test
 	@WithJeyUser(role = UserRole.ADMIN)
 	void 단건은_관리자가_보고_없는_청구는_404다() throws Exception {

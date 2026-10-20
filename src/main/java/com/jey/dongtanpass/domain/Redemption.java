@@ -11,10 +11,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * 패스 사용 기록. 데스크가 등록된 학생에게 패스를 쓴 사실이다(ADR-0033). 고치거나 지우지 않는다(저장소에 지우는 메서드가 없다).
+ * 패스 사용 기록. 데스크가 등록된 학생에게 패스를 쓴 사실이다(ADR-0033). 지우지 않는다(저장소에 지우는 메서드가 없다).
  * {@link Pass#redeem}으로만 만든다(패스의 상태와 기록이 짝을 이룬다).
  * 패스 하나와 학생 한 명은 한 번만 쓰인다(DB의 유니크 키가 막는다). 처리한 직원은 {@code createdBy}다.
- * 금액과 청구는 다루지 않는다(수납 모듈과 이을 때 정한다).
+ * 바뀌는 칸은 이 기록에서 만든 청구({@link #attachInvoice})뿐이다. 금액은 수납 모듈의 청구에 있다.
  */
 @Entity
 @Table(name = "dongtanpass_redemption")
@@ -35,6 +35,10 @@ public class Redemption extends BaseEntity {
 
 	@Column(name = "redeemed_at", nullable = false, updatable = false)
 	private Instant redeemedAt;
+
+	// 이 기록에서 만든 수납 모듈의 청구. 청구를 취소하고 다시 만들면 새 청구로 바뀐다.
+	@Column(name = "invoice_id")
+	private Long invoiceId;
 
 	protected Redemption() {
 	}
@@ -75,6 +79,16 @@ public class Redemption extends BaseEntity {
 
 	public Instant getRedeemedAt() {
 		return redeemedAt;
+	}
+
+	/** 이 기록에서 만든 청구. 아직 없으면 {@code null}. */
+	public Long getInvoiceId() {
+		return invoiceId;
+	}
+
+	/** 이 기록에서 청구를 만들었다. 전의 청구가 취소돼 새로 만든 것이면 새 청구로 바꾼다(열려 있는지는 부르는 쪽이 본다). */
+	public void attachInvoice(long invoiceId) {
+		this.invoiceId = invoiceId;
 	}
 
 }

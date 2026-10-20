@@ -41,6 +41,11 @@ public enum DongtanpassErrorCode implements ErrorCode {
 
 	PASS_CANCELED(HttpStatus.CONFLICT, "취소된 패스입니다."),
 
+	REDEMPTION_NOT_FOUND(HttpStatus.NOT_FOUND, "패스 사용 기록을 찾을 수 없습니다."),
+
+	// 사용 기록 하나에 열린 청구 하나다. 전의 청구를 취소하면 다시 만들 수 있다.
+	REDEMPTION_ALREADY_INVOICED(HttpStatus.CONFLICT, "이 패스 사용 기록의 청구가 이미 있습니다. 다시 만들려면 그 청구를 먼저 취소해 주세요."),
+
 	// 쓰지 않은 채 만료일이 지났다. 학부모 QR을 주지 않는다.
 	PASS_EXPIRED(HttpStatus.CONFLICT, "기간이 지난 패스입니다."),
 

@@ -1,8 +1,10 @@
 package com.jey.billing.application;
 
+import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -13,6 +15,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.jey.billing.api.InvoiceDiscount;
+import com.jey.billing.api.InvoiceIssuing;
+import com.jey.billing.api.IssueInvoiceCommand;
+import com.jey.billing.api.IssuedInvoice;
 import com.jey.billing.domain.DiscountRate;
 import com.jey.billing.domain.DiscountTooLargeException;
 import com.jey.billing.domain.Invoice;
@@ -20,6 +26,7 @@ import com.jey.billing.domain.InvoiceLine;
 import com.jey.billing.domain.InvoiceLineDiscount;
 import com.jey.billing.domain.InvoiceRepository;
 import com.jey.billing.domain.InvoiceStateException;
+import com.jey.billing.domain.InvoiceStatus;
 import com.jey.billing.domain.PaymentRepository;
 import com.jey.billing.domain.PaymentStatus;
 import com.jey.billing.domain.LineCharge;
@@ -49,7 +56,7 @@ import com.jey.core.shared.UniqueKeys;
  */
 @Service
 @EnableConfigurationProperties(BillingProperties.class)
-public class InvoiceService {
+public class InvoiceService implements InvoiceIssuing {
 
 	private final InvoiceRepository invoices;
 
@@ -84,13 +91,14 @@ public class InvoiceService {
 	 */
 	@Transactional(readOnly = true)
 	public InvoiceDetail quote(InvoiceDraft draft, AuthenticatedUser user) {
+		Objects.requireNonNull(user, "user");
 		Prepared prepared = prepare(draft, user);
 		List<InvoiceDetail.LineDetail> lines = new ArrayList<>();
 		for (PreparedLine line : prepared.lines()) {
 			LineCharge charge = charge(line, prepared.discounts());
 			lines.add(lineDetail(line.info(), line.draft().lessonCount(), charge.listAmount(),
 					charge.discounts().stream()
-						.map(applied -> new InvoiceDetail.DiscountDetail(applied.code(), nameOf(prepared, applied.code()),
+						.map(applied -> new InvoiceDetail.DiscountDetail(applied.code(), prepared.nameOf(applied.code()),
 								applied.rate(), applied.amount()))
 						.toList(),
 					charge.chargeAmount()));
@@ -101,11 +109,43 @@ public class InvoiceService {
 	}
 
 	/**
-	 * 청구를 만든다. 감사 로그({@code billing.invoice-created})가 같은 트랜잭션에 남는다.
+	 * 직원이 청구를 만든다. 감사 로그({@code billing.invoice-created})가 같은 트랜잭션에 남는다.
+	 * 근거가 필요한 할인(설정 {@code jey.billing.referenced-discount-codes})은 고를 수 없다
+	 * (그 할인을 준 모듈이 {@link #issue(IssueInvoiceCommand)}로 붙인다).
 	 *
-	 * @throws BusinessException {@link #quote}의 거부에 더해, 그 학생의 그 달 청구가 이미 있을 때
+	 * @throws BusinessException {@link #quote}의 거부에 더해, 근거가 필요한 할인을 골랐거나 그 학생의 그 달 청구가 이미 있을 때
 	 */
 	public InvoiceDetail issue(InvoiceDraft draft, AuthenticatedUser user) {
+		Objects.requireNonNull(user, "user");
+		requireNoReferencedCodes(draft.discountCodes());
+		return save(draft, user);
+	}
+
+	@Override
+	public IssuedInvoice issue(IssueInvoiceCommand command) {
+		requireNoReferencedCodes(command.discountCodes());
+		InvoiceDraft draft = new InvoiceDraft(command.studentId(), command.targetMonth(),
+				command.lines().stream().map(line -> new InvoiceDraft.LineDraft(line.classId(), line.lessonCount()))
+					.toList(),
+				command.discountCodes(), command.referencedDiscounts());
+		InvoiceDetail saved = save(draft, null);
+		return new IssuedInvoice(saved.id(), saved.totalAmount());
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public boolean isOpen(long invoiceId) {
+		return invoices.findById(invoiceId).map(invoice -> invoice.getStatus() != InvoiceStatus.CANCELED).orElse(false);
+	}
+
+	private void requireNoReferencedCodes(List<String> discountCodes) {
+		if (discountCodes.stream().anyMatch(properties::needsReference)) {
+			throw new BusinessException(BillingErrorCode.DISCOUNT_NEEDS_REFERENCE);
+		}
+	}
+
+	// user가 null이면 다른 모듈이 부른 것이다(지점은 부르는 쪽이 이미 보았다).
+	private InvoiceDetail save(InvoiceDraft draft, AuthenticatedUser user) {
 		try {
 			return transaction.execute(status -> {
 				Prepared prepared = prepare(draft, user);
@@ -181,7 +221,9 @@ public class InvoiceService {
 	private Prepared prepare(InvoiceDraft draft, AuthenticatedUser user) {
 		StudentInfo student = members.findStudent(draft.studentId())
 			.orElseThrow(() -> new BusinessException(BillingErrorCode.STUDENT_NOT_FOUND));
-		user.requireCampus(student.campusId());
+		if (user != null) {
+			user.requireCampus(student.campusId());
+		}
 		if (!student.enrolled()) {
 			throw new BusinessException(BillingErrorCode.STUDENT_NOT_ENROLLED);
 		}
@@ -199,20 +241,33 @@ public class InvoiceService {
 			}
 			lines.add(new PreparedLine(line, info, fee));
 		}
-		List<DiscountTypeInfo> discounts = new ArrayList<>();
+		// 근거가 있는 할인을 먼저, 직원이 고른 할인을 나중에 계산한다(순차 방식에서 순서가 금액을 바꾼다).
+		List<ChosenDiscount> discounts = new ArrayList<>();
+		for (InvoiceDiscount referenced : draft.referencedDiscounts()) {
+			DiscountTypeInfo type = activeDiscountType(referenced.discountType());
+			discounts.add(new ChosenDiscount(type.code(), type.name(), referenced.discountRate(),
+					referenced.discountRef()));
+		}
 		for (String code : draft.discountCodes()) {
-			DiscountTypeInfo type = catalog.findDiscountType(code)
-				.orElseThrow(() -> new BusinessException(BillingErrorCode.DISCOUNT_TYPE_NOT_FOUND));
-			if (!type.active()) {
-				throw new BusinessException(BillingErrorCode.DISCOUNT_TYPE_INACTIVE);
-			}
-			discounts.add(type);
+			DiscountTypeInfo type = activeDiscountType(code);
+			discounts.add(new ChosenDiscount(type.code(), type.name(), type.rate(), null));
 		}
 		return new Prepared(student, lines, discounts);
 	}
 
-	private LineCharge charge(PreparedLine line, List<DiscountTypeInfo> discounts) {
-		List<DiscountRate> rates = discounts.stream().map(type -> new DiscountRate(type.code(), type.rate())).toList();
+	private DiscountTypeInfo activeDiscountType(String code) {
+		DiscountTypeInfo type = catalog.findDiscountType(code)
+			.orElseThrow(() -> new BusinessException(BillingErrorCode.DISCOUNT_TYPE_NOT_FOUND));
+		if (!type.active()) {
+			throw new BusinessException(BillingErrorCode.DISCOUNT_TYPE_INACTIVE);
+		}
+		return type;
+	}
+
+	private LineCharge charge(PreparedLine line, List<ChosenDiscount> discounts) {
+		List<DiscountRate> rates = discounts.stream()
+			.map(discount -> new DiscountRate(discount.code(), discount.rate(), discount.ref()))
+			.toList();
 		try {
 			return TuitionCalculator.charge(line.fee().baseFee8(), line.draft().lessonCount(), rates,
 					properties.discountPolicy());
@@ -255,11 +310,16 @@ public class InvoiceService {
 				chargeAmount);
 	}
 
-	private static String nameOf(Prepared prepared, String code) {
-		return prepared.discounts().stream().filter(type -> type.code().equals(code)).findFirst().orElseThrow().name();
+	private record Prepared(StudentInfo student, List<PreparedLine> lines, List<ChosenDiscount> discounts) {
+
+		String nameOf(String code) {
+			return discounts.stream().filter(discount -> discount.code().equals(code)).findFirst().orElseThrow().name();
+		}
+
 	}
 
-	private record Prepared(StudentInfo student, List<PreparedLine> lines, List<DiscountTypeInfo> discounts) {
+	// 이 청구에 붙일 할인 하나. 할인율은 근거가 있는 할인이면 넘겨받은 값, 직원이 고른 할인이면 할인 유형의 지금 값이다.
+	private record ChosenDiscount(String code, String name, BigDecimal rate, String ref) {
 	}
 
 	private record PreparedLine(InvoiceDraft.LineDraft draft, ClassInfo info, ClassFee fee) {

@@ -28,6 +28,9 @@ public enum BillingErrorCode implements ErrorCode {
 	// 할인율을 더하면 100% 이상이다(0원 이하의 청구가 된다).
 	DISCOUNT_TOO_LARGE(HttpStatus.BAD_REQUEST, "할인율의 합이 100% 이상입니다."),
 
+	// 근거(참조값)가 필요한 할인(예: 동탄고 패스)은 직원이 고르지 않는다. 그 할인을 준 곳(패스 사용 기록)에서 청구를 만든다.
+	DISCOUNT_NEEDS_REFERENCE(HttpStatus.BAD_REQUEST, "이 할인은 직접 고를 수 없습니다. 패스 사용 기록에서 청구를 만들어 주세요."),
+
 	// 한 학생 한 달에 열린 청구는 하나다.
 	INVOICE_ALREADY_EXISTS(HttpStatus.CONFLICT, "이 학생의 그 달 청구가 이미 있습니다."),
 

@@ -67,7 +67,7 @@ public final class TuitionCalculator {
 					? remaining.multiply(BigDecimal.ONE.subtract(discount.rate()))
 					: remaining.subtract(discount.rate());
 			Money current = amountAt(baseFee8, remaining, lessonCount);
-			applied.add(new AppliedDiscount(discount.code(), discount.rate(), previous.minus(current)));
+			applied.add(new AppliedDiscount(discount.code(), discount.rate(), previous.minus(current), discount.ref()));
 			previous = current;
 		}
 		return new LineCharge(list, applied, previous);
