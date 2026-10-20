@@ -268,6 +268,29 @@ public class Pass extends BaseEntity {
 		return redemption;
 	}
 
+	/**
+	 * JEY 발급 패스를 연계 학원에서 쓴 것으로 표시하고 그 사용 기록을 만든다. 연계 학원 사용 기록은 이 메서드로만 만든다.
+	 * 기간·본인·신규는 보지 않는다(부르는 쪽이 먼저 본다). 저장은 부르는 쪽이 한다(패스를 먼저, 기록을 나중에).
+	 *
+	 * @param partnerId 쓴 연계 학원
+	 * @param discount 이 패스의 할인율로 계산한 금액
+	 * @throws IllegalStateException 저장하지 않은 패스이거나 연계 학원이 발급한 패스일 때(부르는 쪽이 먼저 409로 막는다 — 코드의 버그)
+	 * @throws PassStatusException 발급 상태가 아닐 때(이미 사용됨, 취소됨)
+	 * @throws IllegalArgumentException 금액이나 사용 시각이 없을 때
+	 */
+	public PartnerRedemption redeemAtPartner(long partnerId, PartnerDiscount discount, Instant redeemedAt) {
+		if (id == null) {
+			throw new IllegalStateException("저장한 패스만 사용 처리할 수 있다");
+		}
+		if (direction != PassDirection.CAMPUS_ISSUED) {
+			throw new IllegalStateException("연계 학원이 발급한 패스는 연계 학원에서 사용 처리하지 않는다: passId=" + id);
+		}
+		requireIssued();
+		PartnerRedemption redemption = PartnerRedemption.of(id, partnerId, studentId, discount, redeemedAt);
+		this.status = PassStatus.REDEEMED;
+		return redemption;
+	}
+
 	private void requireIssued() {
 		if (status != PassStatus.ISSUED) {
 			throw new PassStatusException(status);
