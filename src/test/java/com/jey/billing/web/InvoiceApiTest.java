@@ -189,6 +189,18 @@ class InvoiceApiTest {
 			.andExpect(status().isBadRequest());
 	}
 
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = MemberFixtures.DONGTAN)
+	void 청구를_취소한_응답에도_학생_이름이_있다() throws Exception {
+		Fixture fixture = fixture();
+		long id = idOf(issue(body(fixture.student(), "2026-11", fixture.cls(), 8, "")).andReturn());
+
+		mockMvc.perform(post(INVOICES + "/" + id + "/cancel").with(csrfToken(mockMvc)).with(idempotencyKey()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("CANCELED"))
+			.andExpect(jsonPath("$.studentName").value(fixture.studentName()));
+	}
+
 	// 목록은 학생을 한 번에 조회해 이름을 붙인다. 학생을 찾지 못하는 줄(있어서는 안 되는 자료)은 이름만 비우고 목록은 그대로 준다.
 	@Test
 	@WithJeyUser(role = UserRole.ADMIN)
