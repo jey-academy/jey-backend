@@ -1071,6 +1071,10 @@
             "format" : "int64",
             "type" : "integer"
           },
+          "studentName" : {
+            "description" : "학생 이름. 학생을 찾지 못하면 null(있어서는 안 되는 자료)",
+            "type" : [ "string", "null" ]
+          },
           "targetMonth" : {
             "description" : "대상 월(YYYY-MM)",
             "example" : "2026-11",
@@ -1081,7 +1085,7 @@
             "type" : "number"
           }
         },
-        "required" : [ "campusId", "discountPolicy", "id", "lines", "payment", "status", "studentId", "targetMonth", "totalAmount" ],
+        "required" : [ "campusId", "discountPolicy", "id", "lines", "payment", "status", "studentId", "studentName", "targetMonth", "totalAmount" ],
         "type" : "object"
       },
       "LedgerItemResponse" : {
@@ -1945,9 +1949,13 @@
             "description" : "학생 ID",
             "format" : "int64",
             "type" : "integer"
+          },
+          "studentName" : {
+            "description" : "학생 이름. 학생을 찾지 못하면 null(있어서는 안 되는 자료)",
+            "type" : [ "string", "null" ]
           }
         },
-        "required" : [ "amount", "bookFee", "campusId", "canceledAt", "invoiceId", "method", "paidAt", "paymentId", "status", "studentId" ],
+        "required" : [ "amount", "bookFee", "campusId", "canceledAt", "invoiceId", "method", "paidAt", "paymentId", "status", "studentId", "studentName" ],
         "type" : "object"
       },
       "PhoneRevealResponse" : {

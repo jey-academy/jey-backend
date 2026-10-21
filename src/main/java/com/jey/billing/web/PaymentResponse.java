@@ -14,6 +14,8 @@ record PaymentResponse(@Schema(description = "결제 ID", requiredMode = Require
 		@Schema(description = "청구 ID", requiredMode = RequiredMode.REQUIRED) long invoiceId,
 		@Schema(description = "지점(청구의 지점 — 청구를 만들 때 학생의 지점)", requiredMode = RequiredMode.REQUIRED) long campusId,
 		@Schema(description = "학생 ID", requiredMode = RequiredMode.REQUIRED) long studentId,
+		@Schema(description = "학생 이름. 학생을 찾지 못하면 null(있어서는 안 되는 자료)", requiredMode = RequiredMode.REQUIRED,
+				nullable = true) String studentName,
 		@Schema(description = "결제 수단. CARD_POS 포스기 카드, CASH 현금", requiredMode = RequiredMode.REQUIRED) PaymentMethod method,
 		@Schema(description = "받은 수강료(원)", requiredMode = RequiredMode.REQUIRED) Money amount,
 		@Schema(description = "받은 교재비(원)", requiredMode = RequiredMode.REQUIRED) Money bookFee,
@@ -24,7 +26,7 @@ record PaymentResponse(@Schema(description = "결제 ID", requiredMode = Require
 
 	static PaymentResponse from(PaymentView payment) {
 		return new PaymentResponse(payment.paymentId(), payment.invoiceId(), payment.campusId(), payment.studentId(),
-				payment.method(), payment.amount(), payment.bookFee(), payment.status(), payment.paidAt(),
+				payment.studentName(), payment.method(), payment.amount(), payment.bookFee(), payment.status(), payment.paidAt(),
 				payment.canceledAt());
 	}
 

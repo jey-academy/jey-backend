@@ -7,7 +7,9 @@ import static com.jey.core.member.MemberFixtures.randomPhone;
 import static com.jey.core.member.MemberFixtures.registration;
 import static com.jey.core.member.MemberFixtures.uniqueName;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -70,6 +72,7 @@ class InvoiceApiTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.id").doesNotExist())
 			.andExpect(jsonPath("$.status").doesNotExist())
+			.andExpect(jsonPath("$.studentName").value(fixture.studentName()))
 			.andExpect(jsonPath("$.targetMonth").value("2026-11"))
 			.andExpect(jsonPath("$.discountPolicy").value("ADDITIVE"))
 			.andExpect(jsonPath("$.totalAmount").value(299250))
@@ -96,6 +99,7 @@ class InvoiceApiTest {
 				.contentType(MediaType.APPLICATION_JSON).content(body))
 			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.status").value("ISSUED"))
+			.andExpect(jsonPath("$.studentName").value(fixture.studentName()))
 			.andExpect(jsonPath("$.totalAmount").value(280000))
 			.andReturn().getResponse().getContentAsString();
 		String again = mockMvc.perform(post(INVOICES).with(csrfToken(mockMvc)).with(idempotencyKey(key))
@@ -139,7 +143,8 @@ class InvoiceApiTest {
 		Fixture fixture = fixture();
 		long id = idOf(issue(body(fixture.student(), "2026-11", fixture.cls(), 8, "")).andReturn());
 
-		mockMvc.perform(get(INVOICES + "/" + id)).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(id));
+		mockMvc.perform(get(INVOICES + "/" + id)).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(id))
+			.andExpect(jsonPath("$.studentName").value(fixture.studentName()));
 		mockMvc.perform(get(INVOICES + "/" + Long.MAX_VALUE)).andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("BILLING_INVOICE_NOT_FOUND"));
 	}
@@ -182,6 +187,29 @@ class InvoiceApiTest {
 		mockMvc.perform(get(INVOICES)).andExpect(status().isBadRequest());
 		mockMvc.perform(get(INVOICES).param("targetMonth", "2031-03").param("size", "101"))
 			.andExpect(status().isBadRequest());
+	}
+
+	// 목록은 학생을 한 번에 조회해 이름을 붙인다. 학생을 찾지 못하는 줄(있어서는 안 되는 자료)은 이름만 비우고 목록은 그대로 준다.
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 목록의_줄마다_학생_이름이_있고_학생을_찾지_못하면_이름만_비어_있다() throws Exception {
+		Fixture first = fixture();
+		Fixture second = fixture();
+		issue(body(first.student(), "2031-04", first.cls(), 8, "")).andExpect(status().isCreated());
+		issue(body(second.student(), "2031-04", second.cls(), 8, "")).andExpect(status().isCreated());
+		long missingStudent = 8_000_000_000_000L + System.nanoTime() % 1_000_000;
+		jdbc.update("INSERT INTO billing_invoice (campus_id, student_id, target_month, status, open_key, "
+				+ "discount_policy, total_amount, created_at, updated_at) "
+				+ "VALUES (1, ?, '2031-04', 'ISSUED', 1, 'ADDITIVE', 280000, NOW(6), NOW(6))", missingStudent);
+
+		mockMvc.perform(get(INVOICES).param("targetMonth", "2031-04").param("size", "100"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.items[?(@.studentId == " + first.student() + ")].studentName",
+					contains(first.studentName())))
+			.andExpect(jsonPath("$.items[?(@.studentId == " + second.student() + ")].studentName",
+					contains(second.studentName())))
+			.andExpect(jsonPath("$.items[?(@.studentId == " + missingStudent + ")].studentName",
+					contains(nullValue())));
 	}
 
 	@ParameterizedTest
@@ -247,10 +275,11 @@ class InvoiceApiTest {
 	}
 
 	private Fixture fixture() {
-		long student = students.register(registration(uniqueName(), mother(randomPhone()))).id();
+		String studentName = uniqueName();
+		long student = students.register(registration(studentName, mother(randomPhone()))).id();
 		String className = "반-" + UUID.randomUUID().toString().substring(0, 8);
 		long cls = classes.create(MemberFixtures.DONGTAN, className, Money.of(280_000), Money.ZERO).getId();
-		return new Fixture(student, cls, className);
+		return new Fixture(student, cls, className, studentName);
 	}
 
 	private long invoiceCount(long student) {
@@ -268,7 +297,7 @@ class InvoiceApiTest {
 				""".formatted(student, month, cls, lessons, discounts);
 	}
 
-	private record Fixture(long student, long cls, String className) {
+	private record Fixture(long student, long cls, String className, String studentName) {
 	}
 
 }

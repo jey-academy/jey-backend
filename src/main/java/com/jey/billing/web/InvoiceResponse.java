@@ -16,6 +16,8 @@ record InvoiceResponse(
 		@Schema(description = "청구 ID. 미리 계산이면 null", requiredMode = RequiredMode.REQUIRED, nullable = true) Long id,
 		@Schema(description = "청구가 속한 지점(학생의 지점)", requiredMode = RequiredMode.REQUIRED) long campusId,
 		@Schema(description = "학생 ID", requiredMode = RequiredMode.REQUIRED) long studentId,
+		@Schema(description = "학생 이름. 학생을 찾지 못하면 null(있어서는 안 되는 자료)", requiredMode = RequiredMode.REQUIRED,
+				nullable = true) String studentName,
 		@Schema(description = "대상 월(YYYY-MM)", type = "string", example = "2026-11",
 				requiredMode = RequiredMode.REQUIRED) YearMonth targetMonth,
 		@Schema(description = "상태. ISSUED 결제 전, PAID 결제함(결제를 취소하면 ISSUED로 돌아간다), CANCELED 취소함(같은 달에 새 청구를 만들 수 있다). 미리 계산이면 null", requiredMode = RequiredMode.REQUIRED,
@@ -28,7 +30,8 @@ record InvoiceResponse(
 				requiredMode = RequiredMode.REQUIRED, nullable = true) PaymentResponse payment) {
 
 	static InvoiceResponse from(InvoiceDetail detail) {
-		return new InvoiceResponse(detail.id(), detail.campusId(), detail.studentId(), detail.targetMonth(),
+		return new InvoiceResponse(detail.id(), detail.campusId(), detail.studentId(), detail.studentName(),
+				detail.targetMonth(),
 				detail.status(), detail.discountPolicy(), detail.totalAmount(),
 				detail.lines().stream().map(InvoiceLineResponse::from).toList(),
 				detail.payment() == null ? null : PaymentResponse.from(detail.payment()));

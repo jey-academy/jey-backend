@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -77,14 +78,17 @@ public class InvoiceService implements InvoiceIssuing {
 
 	private final PaymentRepository payments;
 
+	private final StudentNames studentNames;
+
 	// 다른 모듈이 부른 경로: 누가 그 학생을 다룰 수 있는지는 부르는 쪽이 이미 보았다.
 	private static final LongConsumer CHECKED_BY_CALLER = campusId -> {
 	};
 
 	InvoiceService(InvoiceRepository invoices, CampusCatalog catalog, MemberDirectory members,
 			BillingProperties properties, AuditLog auditLog, TransactionTemplate transaction,
-			PaymentRepository payments) {
+			PaymentRepository payments, StudentNames studentNames) {
 		this.invoices = invoices;
+		this.studentNames = studentNames;
 		this.payments = payments;
 		this.catalog = catalog;
 		this.members = members;
@@ -113,7 +117,8 @@ public class InvoiceService implements InvoiceIssuing {
 						.toList(),
 					charge.chargeAmount()));
 		}
-		return new InvoiceDetail(null, prepared.student().campusId(), draft.studentId(), draft.targetMonth(), null,
+		return new InvoiceDetail(null, prepared.student().campusId(), draft.studentId(), prepared.student().name(),
+				draft.targetMonth(), null,
 				properties.discountPolicy(),
 				lines.stream().map(InvoiceDetail.LineDetail::chargeAmount).reduce(Money.ZERO, Money::plus), lines, null);
 	}
@@ -164,7 +169,7 @@ public class InvoiceService implements InvoiceIssuing {
 					.with("invoiceId", saved.getId())
 					.with("targetMonth", saved.getTargetMonth().toString())
 					.with("totalAmount", saved.getTotalAmount().amount().longValueExact()));
-				return detail(saved);
+				return detail(saved, studentNames.nameOf(saved.getStudentId()));
 			});
 		}
 		catch (DataIntegrityViolationException e) {
@@ -183,7 +188,7 @@ public class InvoiceService implements InvoiceIssuing {
 		Invoice invoice = invoices.findById(invoiceId)
 			.orElseThrow(() -> new BusinessException(BillingErrorCode.INVOICE_NOT_FOUND));
 		user.requireCampus(invoice.getCampusId());
-		return detail(invoice);
+		return detail(invoice, studentNames.nameOf(invoice.getStudentId()));
 	}
 
 	/**
@@ -206,7 +211,7 @@ public class InvoiceService implements InvoiceIssuing {
 				.target(MemberRefs.student(invoice.getStudentId()))
 				.campus(invoice.getCampusId())
 				.with("invoiceId", invoice.getId()));
-			return detail(invoice);
+			return detail(invoice, studentNames.nameOf(invoice.getStudentId()));
 		});
 	}
 
@@ -218,7 +223,8 @@ public class InvoiceService implements InvoiceIssuing {
 			case CampusScope.All all -> invoices.findByTargetMonth(targetMonth, pageable);
 			case CampusScope.Only only -> invoices.findByCampusIdAndTargetMonth(only.campusId(), targetMonth, pageable);
 		};
-		return found.map(this::detail);
+		Map<Long, String> names = studentNames.namesOf(found.map(Invoice::getStudentId).getContent());
+		return found.map(invoice -> detail(invoice, names.get(invoice.getStudentId())));
 	}
 
 	/**
@@ -303,7 +309,7 @@ public class InvoiceService implements InvoiceIssuing {
 	}
 
 	// 저장한 청구에 반·할인의 지금 이름을 붙인다. 반과 할인 유형은 지우지 않으므로 없으면 자료가 깨진 것이다.
-	private InvoiceDetail detail(Invoice invoice) {
+	private InvoiceDetail detail(Invoice invoice, String studentName) {
 		List<InvoiceDetail.LineDetail> lines = invoice.getLines().stream()
 			.map(line -> lineDetail(
 					catalog.findClass(line.getClassId())
@@ -311,9 +317,9 @@ public class InvoiceService implements InvoiceIssuing {
 					line.getLessonCount(), line.getListAmount(),
 					line.getDiscounts().stream().map(this::discountDetail).toList(), line.getChargeAmount()))
 			.toList();
-		return new InvoiceDetail(invoice.getId(), invoice.getCampusId(), invoice.getStudentId(),
+		return new InvoiceDetail(invoice.getId(), invoice.getCampusId(), invoice.getStudentId(), studentName,
 				invoice.getTargetMonth(), invoice.getStatus(), invoice.getDiscountPolicy(), invoice.getTotalAmount(),
-				lines, payments.findByInvoiceIdAndStatus(invoice.getId(), PaymentStatus.COMPLETED).map(PaymentView::of)
+				lines, payments.findByInvoiceIdAndStatus(invoice.getId(), PaymentStatus.COMPLETED).map(payment -> PaymentView.of(payment, studentName))
 					.orElse(null));
 	}
 
