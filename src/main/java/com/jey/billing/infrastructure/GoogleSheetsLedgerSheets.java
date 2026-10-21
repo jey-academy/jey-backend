@@ -1,5 +1,6 @@
 package com.jey.billing.infrastructure;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -14,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -109,14 +111,31 @@ public class GoogleSheetsLedgerSheets implements LedgerSheets {
 		return "'" + tab.replace("'", "''") + "'!" + cells;
 	}
 
-	private static <T> T call(java.util.function.Supplier<T> request) {
+	// 시험에서 예외의 모양을 직접 넣어 보려고 패키지 안에 연다.
+	static <T> T call(java.util.function.Supplier<T> request) {
 		try {
 			return request.get();
 		} catch (RestClientResponseException e) {
 			throw translate(e);
 		} catch (ResourceAccessException e) {
 			throw new LedgerSheetsUnavailable("구글 시트에 닿지 못했다", null, e);
+		} catch (RestClientException e) {
+			// 응답 머리글은 받았는데 본문을 꺼내다 끊긴 경우(운영체제에 따라 이 모양으로 온다). 원인에 입출력 오류가 있으면 장애다.
+			// 그 밖(응답 모양이 기대와 다름)은 다시 해도 낫지 않으므로 그대로 던진다(앱 오류).
+			if (hasIoCause(e)) {
+				throw new LedgerSheetsUnavailable("구글 시트의 응답을 끝까지 읽지 못했다", null, e);
+			}
+			throw e;
 		}
+	}
+
+	private static boolean hasIoCause(Throwable error) {
+		for (Throwable cause = error.getCause(); cause != null; cause = cause.getCause()) {
+			if (cause instanceof IOException) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	// 응답 예외(e)는 원인으로 잇지 않는다 — 문구에 응답 본문이 실린다.

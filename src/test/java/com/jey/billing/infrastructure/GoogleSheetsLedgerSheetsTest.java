@@ -20,6 +20,8 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.client.RestClientException;
 
 import com.github.tomakehurst.wiremock.http.Fault;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
@@ -159,6 +161,29 @@ class GoogleSheetsLedgerSheetsTest {
 		google.stubFor(get(urlPathEqualTo(READ_PATH)).willReturn(aResponse().withFault(Fault.MALFORMED_RESPONSE_CHUNK)));
 
 		assertThatThrownBy(() -> sheets.read(SHEET_ID, "2026-11")).isInstanceOf(LedgerSheetsUnavailable.class);
+	}
+
+	// 본문을 읽다 끊긴 것이 어떤 예외로 오는지는 운영체제마다 다르다(Linux에서는 "응답을 꺼내지 못했다" 안에 I/O 오류가 든다).
+	// 위의 흉내 낸 서버 시험과 별도로 그 모양을 직접 넣어 본다.
+	@Test
+	void 응답을_꺼내다_난_오류의_원인에_입출력_오류가_있으면_장애다() {
+		RestClientException broken = new RestClientException("Error while extracting response",
+				new HttpMessageNotReadableException("I/O error", new java.io.IOException("chunked stream ended"),
+						null));
+
+		assertThatThrownBy(() -> GoogleSheetsLedgerSheets.call(() -> {
+			throw broken;
+		})).isInstanceOf(LedgerSheetsUnavailable.class);
+	}
+
+	@Test
+	void 응답을_꺼내다_난_오류가_입출력_오류가_아니면_그대로_던진다() {
+		RestClientException mapping = new RestClientException("Error while extracting response",
+				new IllegalStateException("모양이 다르다"));
+
+		assertThatThrownBy(() -> GoogleSheetsLedgerSheets.call(() -> {
+			throw mapping;
+		})).isSameAs(mapping);
 	}
 
 	@Test
