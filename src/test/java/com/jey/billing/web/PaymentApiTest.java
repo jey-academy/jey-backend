@@ -54,6 +54,9 @@ import com.jey.core.shared.Money;
 @ActiveProfiles("test")
 class PaymentApiTest {
 
+	// 시험이 줄을 섞지 않고 보려고 쓰는, 아무 자료도 없는 지점.
+	private static final long UNUSED_CAMPUS = 99L;
+
 	private static final AuthenticatedUser ADMIN = new AuthenticatedUser(900_901L, "admin", "관리자", UserRole.ADMIN,
 			null, null);
 
@@ -273,18 +276,23 @@ class PaymentApiTest {
 	@Test
 	@WithJeyUser(role = UserRole.ADMIN)
 	void 결제_목록에서_학생을_찾지_못하는_줄은_이름만_비어_있다() throws Exception {
+		// 다른 시험의 결제와 섞이지 않게 아무도 쓰지 않는 지점에 넣고 그 지점으로 본다. DB의 NOW(6)는 UTC라 한국 날짜와
+		// 하루 어긋날 수 있어 기간을 어제~내일로 잡는다.
 		long missingStudent = 8_100_000_000_000L + ThreadLocalRandom.current().nextInt(1_000_000_000);
 		jdbc.update("INSERT INTO billing_invoice (campus_id, student_id, target_month, status, open_key, "
 				+ "discount_policy, total_amount, created_at, updated_at) "
-				+ "VALUES (1, ?, '2026-11', 'PAID', 1, 'ADDITIVE', 280000, NOW(6), NOW(6))", missingStudent);
+				+ "VALUES (?, ?, '2026-11', 'PAID', 1, 'ADDITIVE', 280000, NOW(6), NOW(6))", UNUSED_CAMPUS,
+				missingStudent);
 		long invoice = jdbc.queryForObject("SELECT id FROM billing_invoice WHERE student_id = ?", Long.class,
 				missingStudent);
 		jdbc.update("INSERT INTO billing_payment (invoice_id, campus_id, student_id, method, amount, book_fee, status, "
-				+ "open_key, paid_at, created_at, updated_at) VALUES (?, 1, ?, 'CASH', 280000, 0, 'COMPLETED', 1, "
-				+ "NOW(6), NOW(6), NOW(6))", invoice, missingStudent);
+				+ "open_key, paid_at, created_at, updated_at) VALUES (?, ?, ?, 'CASH', 280000, 0, 'COMPLETED', 1, "
+				+ "NOW(6), NOW(6), NOW(6))", invoice, UNUSED_CAMPUS, missingStudent);
 		long payment = jdbc.queryForObject("SELECT id FROM billing_payment WHERE invoice_id = ?", Long.class, invoice);
+		LocalDate today = LocalDate.parse(today());
 
-		mockMvc.perform(get("/api/v1/billing/payments").param("from", today()).param("to", today()).param("size", "100"))
+		mockMvc.perform(get("/api/v1/billing/payments").param("campusId", String.valueOf(UNUSED_CAMPUS))
+				.param("from", today.minusDays(1).toString()).param("to", today.plusDays(1).toString()))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.items[?(@.paymentId == " + payment + ")].studentName", contains(nullValue())));
 	}

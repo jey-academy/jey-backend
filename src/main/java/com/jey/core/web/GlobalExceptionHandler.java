@@ -70,6 +70,8 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 			headers.set(HttpHeaders.RETRY_AFTER, String.valueOf(limited.retryAfterSeconds()));
 		}
 		ProblemDetail problem = problem(ex.getErrorCode(), ex.getMessage());
+		// 화면이 다음 행동에 쓸 ID(예: 이미 있는 청구). ID만 담을 수 있다(BusinessException#withId).
+		ex.ids().forEach(problem::setProperty);
 		return handleExceptionInternal(ex, problem, headers, ex.getErrorCode().status(), request);
 	}
 

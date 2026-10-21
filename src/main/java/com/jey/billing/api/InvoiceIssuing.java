@@ -1,6 +1,7 @@
 package com.jey.billing.api;
 
 import java.util.Collection;
+import java.util.OptionalLong;
 import java.util.Set;
 
 import com.jey.core.shared.BusinessException;
@@ -28,6 +29,12 @@ public interface InvoiceIssuing {
 
 	/** 열린 청구(결제 전이거나 결제함)인지. 취소했거나 없는 청구면 {@code false}. */
 	boolean isOpen(long invoiceId);
+
+	/**
+	 * 열린 청구(결제 전이거나 결제함)면 그 청구가 속한 지점(만들 때의 학생 지점). 취소했거나 없는 청구면 비어 있다.
+	 * 부르는 쪽이 확인한 지점과 같을 때만 그 청구를 화면에 알려 준다(볼 수 없는 청구로 보내지 않게).
+	 */
+	OptionalLong campusOfOpen(long invoiceId);
 
 	/**
 	 * 그 가운데 열린 청구(결제 전이거나 결제함)의 ID. 취소했거나 없는 청구는 빠지고, 같은 ID는 한 번으로 본다.

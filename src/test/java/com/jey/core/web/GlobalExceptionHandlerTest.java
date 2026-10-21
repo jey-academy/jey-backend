@@ -65,6 +65,16 @@ class GlobalExceptionHandlerTest {
 				.andExpect(jsonPath("$.code").value("COMMON_CONFLICT"));
 	}
 
+	// 업무 오류가 덧붙인 ID는 본문의 확장 칸(RFC 9457)으로 나간다. 화면이 "그 청구 열기"로 바로 이어 간다.
+	@Test
+	void 업무_오류가_덧붙인_ID는_본문의_확장_칸으로_나간다() throws Exception {
+		mockMvc.perform(get("/api/v1/test-errors/with-id").header("X-Request-Id", "req-with-id-1"))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("COMMON_CONFLICT"))
+				.andExpect(jsonPath("$.invoiceId").value(42))
+				.andExpect(jsonPath("$.requestId").value("req-with-id-1"));
+	}
+
 	// 상태에서 역으로 구한 공통 코드가 아니라 예외가 가진 코드가 그대로 나가야 한다.
 	@Test
 	void 모듈_에러코드는_COMMON으로_바뀌지_않고_그대로_응답한다() throws Exception {

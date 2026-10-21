@@ -113,13 +113,54 @@ class InvoiceApiTest {
 
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = MemberFixtures.DONGTAN)
-	void 같은_달_두_번째는_409다() throws Exception {
+	void 같은_달_두_번째는_409이고_이미_있는_청구의_ID를_준다() throws Exception {
 		Fixture fixture = fixture();
 		String body = body(fixture.student(), "2026-11", fixture.cls(), 8, "");
-		issue(body).andExpect(status().isCreated());
+		long first = idOf(issue(body).andExpect(status().isCreated()).andReturn());
+		String key = UUID.randomUUID().toString();
 
-		issue(body).andExpect(status().isConflict())
-			.andExpect(jsonPath("$.code").value("BILLING_INVOICE_ALREADY_EXISTS"));
+		String conflict = mockMvc.perform(post(INVOICES).with(csrfToken(mockMvc)).with(idempotencyKey(key))
+				.contentType(MediaType.APPLICATION_JSON).content(body))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("BILLING_INVOICE_ALREADY_EXISTS"))
+			.andExpect(jsonPath("$.invoiceId").value(first))
+			.andReturn().getResponse().getContentAsString();
+		// 같은 키로 다시 보내면 처음의 409가 그대로 나간다(본문의 청구 ID까지).
+		String again = mockMvc.perform(post(INVOICES).with(csrfToken(mockMvc)).with(idempotencyKey(key))
+				.contentType(MediaType.APPLICATION_JSON).content(body))
+			.andExpect(status().isConflict())
+			.andReturn().getResponse().getContentAsString();
+		assertThat(again).isEqualTo(conflict);
+	}
+
+	// 학생이 지점을 옮겼으면 그 달 청구는 옛 지점의 것이다. 확인한 것은 학생의 지금 지점이라, 옛 지점의 청구 ID는 싣지 않는다
+	// (화면이 열 수 없는 청구로 보내지 않게 — ID 없는 409는 "그 달 청구 목록에서 열기"로 안내한다).
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 학생이_지점을_옮긴_뒤의_409에는_옛_지점_청구의_ID를_싣지_않는다() throws Exception {
+		Fixture fixture = fixture();
+		issue(body(fixture.student(), "2026-11", fixture.cls(), 8, "")).andExpect(status().isCreated());
+		jdbc.update("UPDATE core_student SET campus_id = ?, class_id = NULL WHERE id = ?", MemberFixtures.NEUNGDONG,
+				fixture.student());
+		long neungdongClass = classes.create(MemberFixtures.NEUNGDONG, "반-" + UUID.randomUUID().toString().substring(0, 8),
+				Money.of(280_000), Money.ZERO).getId();
+
+		issue(body(fixture.student(), "2026-11", neungdongClass, 8, "")).andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("BILLING_INVOICE_ALREADY_EXISTS"))
+			.andExpect(jsonPath("$.invoiceId").doesNotExist());
+	}
+
+	// 취소한 청구만 있는 달은 막지 않는다(열린 청구만 본다).
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = MemberFixtures.DONGTAN)
+	void 취소한_청구만_있는_달에는_새로_만든다() throws Exception {
+		Fixture fixture = fixture();
+		String body = body(fixture.student(), "2026-11", fixture.cls(), 8, "");
+		long first = idOf(issue(body).andExpect(status().isCreated()).andReturn());
+		mockMvc.perform(post(INVOICES + "/" + first + "/cancel").with(csrfToken(mockMvc)).with(idempotencyKey()))
+			.andExpect(status().isOk());
+
+		issue(body).andExpect(status().isCreated());
 	}
 
 	// 패스 할인은 패스 사용 기록에서만 붙는다(근거 = 패스 번호). 미리 계산은 된다.
