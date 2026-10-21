@@ -51,6 +51,11 @@ class ErrorTestController {
 		throw new BusinessException(CommonErrorCode.CONFLICT, "이미 사용한 패스입니다.");
 	}
 
+	@GetMapping("/with-id")
+	void withId() {
+		throw new BusinessException(CommonErrorCode.CONFLICT).withId("invoiceId", 42L);
+	}
+
 	@GetMapping("/module-code")
 	void moduleCode() {
 		throw new BusinessException(TestErrorCode.TEST_PASS_EXPIRED);
