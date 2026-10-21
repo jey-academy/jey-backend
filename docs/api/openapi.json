@@ -1071,6 +1071,10 @@
             "format" : "int64",
             "type" : "integer"
           },
+          "studentName" : {
+            "description" : "학생 이름. 학생을 찾지 못하면 null(있어서는 안 되는 자료)",
+            "type" : [ "string", "null" ]
+          },
           "targetMonth" : {
             "description" : "대상 월(YYYY-MM)",
             "example" : "2026-11",
@@ -1081,7 +1085,7 @@
             "type" : "number"
           }
         },
-        "required" : [ "campusId", "discountPolicy", "id", "lines", "payment", "status", "studentId", "targetMonth", "totalAmount" ],
+        "required" : [ "campusId", "discountPolicy", "id", "lines", "payment", "status", "studentId", "studentName", "targetMonth", "totalAmount" ],
         "type" : "object"
       },
       "LedgerItemResponse" : {
@@ -1945,9 +1949,13 @@
             "description" : "학생 ID",
             "format" : "int64",
             "type" : "integer"
+          },
+          "studentName" : {
+            "description" : "학생 이름. 학생을 찾지 못하면 null(있어서는 안 되는 자료)",
+            "type" : [ "string", "null" ]
           }
         },
-        "required" : [ "amount", "bookFee", "campusId", "canceledAt", "invoiceId", "method", "paidAt", "paymentId", "status", "studentId" ],
+        "required" : [ "amount", "bookFee", "campusId", "canceledAt", "invoiceId", "method", "paidAt", "paymentId", "status", "studentId", "studentName" ],
         "type" : "object"
       },
       "PhoneRevealResponse" : {
@@ -1959,6 +1967,65 @@
           }
         },
         "required" : [ "phone" ],
+        "type" : "object"
+      },
+      "RedemptionDetailResponse" : {
+        "description" : "패스 사용 기록 하나. 청구 화면은 주소에 사용 기록만 두고 학생과 지점을 여기서 읽는다. 학부모 번호는 없다",
+        "properties" : {
+          "campusId" : {
+            "description" : "사용한 지점(누가 볼 수 있는지의 기준)",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "invoiceId" : {
+            "description" : "이 사용 기록에서 만든 열린 청구의 ID(결제 전이거나 결제한 청구). 만들지 않았거나 취소했으면 null",
+            "format" : "int64",
+            "type" : [ "integer", "null" ]
+          },
+          "partnerName" : {
+            "description" : "패스를 발급한 연계 학원",
+            "type" : "string"
+          },
+          "passId" : {
+            "description" : "패스 ID",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "passNo" : {
+            "description" : "패스 번호",
+            "type" : "string"
+          },
+          "redeemedAt" : {
+            "description" : "사용 처리한 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "redeemedOn" : {
+            "description" : "사용일(한국 날짜)",
+            "format" : "date",
+            "type" : "string"
+          },
+          "redemptionId" : {
+            "description" : "사용 기록 ID",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "studentCampusId" : {
+            "description" : "학생의 지금 지점. 반 목록과 청구는 이 지점 기준이다(사용 처리 뒤 지점을 옮겼으면 campusId와 다르다). 학생을 찾지 못하면 null",
+            "format" : "int64",
+            "type" : [ "integer", "null" ]
+          },
+          "studentId" : {
+            "description" : "학생 ID",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "studentName" : {
+            "description" : "학생 이름. 학생을 찾지 못하면 null(있어서는 안 되는 자료)",
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "campusId", "invoiceId", "partnerName", "passId", "passNo", "redeemedAt", "redeemedOn", "redemptionId", "studentCampusId", "studentId", "studentName" ],
         "type" : "object"
       },
       "RedemptionInvoiceRequest" : {
@@ -2022,6 +2089,11 @@
             "format" : "int64",
             "type" : "integer"
           },
+          "invoiceId" : {
+            "description" : "이 사용 기록에서 만든 열린 청구의 ID(결제 전이거나 결제한 청구). 만들지 않았거나 취소했으면 null",
+            "format" : "int64",
+            "type" : [ "integer", "null" ]
+          },
           "partnerName" : {
             "description" : "패스를 발급한 연계 학원",
             "type" : "string"
@@ -2065,7 +2137,7 @@
             "type" : [ "string", "null" ]
           }
         },
-        "required" : [ "campusId", "partnerName", "passId", "passNo", "redeemedAt", "redeemedOn", "redemptionId", "staffId", "studentId", "studentName" ],
+        "required" : [ "campusId", "invoiceId", "partnerName", "passId", "passNo", "redeemedAt", "redeemedOn", "redemptionId", "staffId", "studentId", "studentName" ],
         "type" : "object"
       },
       "RedemptionPageResponse" : {
@@ -4804,6 +4876,35 @@
           }
         },
         "summary" : "패스 사용 내역",
+        "tags" : [ "redemption-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/redemptions/{id}" : {
+      "get" : {
+        "description" : "청구 화면이 학생(이름, 지금 지점)과 이 사용 기록의 열린 청구를 읽는다. 사용한 지점을 다룰 수 없으면 403(AUTH_CAMPUS_NOT_ALLOWED), 없으면 404(DONGTANPASS_REDEMPTION_NOT_FOUND)",
+        "operationId" : "getRedemption",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RedemptionDetailResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "패스 사용 기록 하나",
         "tags" : [ "redemption-controller" ]
       }
     },

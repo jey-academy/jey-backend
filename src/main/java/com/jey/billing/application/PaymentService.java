@@ -3,6 +3,7 @@ package com.jey.billing.application;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Map;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -58,8 +59,11 @@ public class PaymentService {
 
 	private final Clock clock;
 
+	private final StudentNames studentNames;
+
 	PaymentService(InvoiceRepository invoices, PaymentRepository payments, TransactionTemplate transaction,
-			ApplicationEventPublisher events, CurrentActor currentActor, Clock clock) {
+			ApplicationEventPublisher events, CurrentActor currentActor, Clock clock, StudentNames studentNames) {
+		this.studentNames = studentNames;
 		this.invoices = invoices;
 		this.payments = payments;
 		this.transaction = transaction;
@@ -100,7 +104,7 @@ public class PaymentService {
 								currentActor.get(), clock),
 						saved.getId(), invoice.getId(), invoice.getStudentId(), invoice.getTargetMonth().toString(),
 						saved.getMethod(), saved.getAmount(), saved.getBookFee(), saved.getPaidAt()));
-				return PaymentView.of(saved);
+				return PaymentView.of(saved, studentNames.nameOf(saved.getStudentId()));
 			});
 		}
 		catch (DataIntegrityViolationException e) {
@@ -138,7 +142,7 @@ public class PaymentService {
 			events.publishEvent(new PaymentCanceled(EventMetadata.create(PaymentCanceled.TYPE, PaymentCanceled.VERSION,
 					invoice.getCampusId(), currentActor.get(), clock), payment.getId(), invoice.getId(),
 					invoice.getStudentId()));
-			return PaymentView.of(payment);
+			return PaymentView.of(payment, studentNames.nameOf(payment.getStudentId()));
 		});
 	}
 
@@ -163,7 +167,8 @@ public class PaymentService {
 			case CampusScope.Only only -> payments.findByCampusIdAndPaidAtGreaterThanEqualAndPaidAtLessThan(
 					only.campusId(), start, end, pageable);
 		};
-		return found.map(PaymentView::of);
+		Map<Long, String> names = studentNames.namesOf(found.map(Payment::getStudentId).getContent());
+		return found.map(payment -> PaymentView.of(payment, names.get(payment.getStudentId())));
 	}
 
 	private Invoice lockedInvoice(long invoiceId, AuthenticatedUser user) {

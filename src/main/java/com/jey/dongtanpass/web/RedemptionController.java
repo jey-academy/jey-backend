@@ -25,7 +25,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-// 데스크가 지점의 패스 사용 내역을 본다. 소속 지점으로 묶은 자료다(직원은 자기 지점, 관리자는 전 지점, ADR-0021).
+// 데스크가 지점의 패스 사용 내역과 사용 기록 하나를 보고, 사용 기록에서 청구를 만든다.
+// 소속 지점으로 묶은 자료다(직원은 자기 지점, 관리자는 전 지점, ADR-0021).
 @RestController
 @RequestMapping("/api/v1/dongtanpass/redemptions")
 @AllowedRoles({ UserRole.STAFF, UserRole.ADMIN })
@@ -56,6 +57,15 @@ class RedemptionController {
 			@Valid @RequestBody RedemptionInvoiceRequest body) {
 		return RedemptionInvoiceResponse.from(redemptionInvoices.issue(id, body.targetMonth(), body.commandLines(),
 				body.discountCodesOrEmpty(), user));
+	}
+
+	// operationId는 직접 정한다(메서드 이름이 다른 컨트롤러와 겹치면 기존 경로의 번호가 밀린다).
+	@Operation(operationId = "getRedemption", summary = "패스 사용 기록 하나",
+			description = "청구 화면이 학생(이름, 지금 지점)과 이 사용 기록의 열린 청구를 읽는다. 사용한 지점을 다룰 수 없으면 403(AUTH_CAMPUS_NOT_ALLOWED), "
+					+ "없으면 404(DONGTANPASS_REDEMPTION_NOT_FOUND)")
+	@GetMapping("/{id}")
+	RedemptionDetailResponse get(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable long id) {
+		return RedemptionDetailResponse.from(redemptionLedger.get(id, user));
 	}
 
 	@Operation(summary = "패스 사용 내역",

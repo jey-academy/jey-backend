@@ -4,10 +4,14 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.jey.core.auth.api.CampusScope;
+import com.jey.billing.api.InvoiceIssuing;
+import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.member.api.MemberDirectory;
 import com.jey.core.member.api.StudentInfo;
 import com.jey.core.shared.BusinessException;
@@ -23,10 +27,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 지점별 패스 사용 내역(데스크). 소속 지점으로 묶은 자료라 지점 범위는 부르는 쪽이 정해 넘긴다(ADR-0021).
+ * 지점별 패스 사용 내역과 사용 기록 하나(데스크). 소속 지점으로 묶은 자료다(ADR-0021): 목록은 부르는 쪽이 정한 지점 범위로 자르고,
+ * 단건은 사용한 지점을 여기서 확인한다.
  *
  * <p>기간은 사용일(한국 날짜)로 자르고 양끝을 포함한다. 시작일과 종료일은 모두 받아야 하고 1년까지다(아주 넓은 조회를 막는다).
- * 학생 이름은 한 페이지의 학생을 한 번에 조회해 붙인다.
+ * 학생 이름은 한 페이지의 학생을 한 번에 조회해 붙이고, 사용 기록에서 만든 청구는 열린 것(결제 전·결제함)만 싣는다
+ * (한 페이지를 billing에 한 번에 묻는다).
  */
 @Service
 public class RedemptionLedger {
@@ -43,11 +49,14 @@ public class RedemptionLedger {
 
 	private final MemberDirectory members;
 
+	private final InvoiceIssuing invoices;
+
 	private final Clock clock;
 
-	RedemptionLedger(RedemptionRepository redemptions, MemberDirectory members, Clock clock) {
+	RedemptionLedger(RedemptionRepository redemptions, MemberDirectory members, InvoiceIssuing invoices, Clock clock) {
 		this.redemptions = redemptions;
 		this.members = members;
+		this.invoices = invoices;
 		this.clock = clock;
 	}
 
@@ -76,11 +85,35 @@ public class RedemptionLedger {
 			.findStudents(entries.getContent().stream().map(RedemptionEntry::studentId).distinct().toList())
 			.stream()
 			.collect(Collectors.toMap(StudentInfo::studentId, Function.identity()));
-		return new PageImpl<>(entries.getContent().stream().map(entry -> rowOf(entry, students)).toList(),
+		// 사용 기록에 적힌 청구는 마지막으로 만든 것이다. 취소했을 수 있어 열린 것만 싣는다(한 페이지를 한 번에 묻는다).
+		Set<Long> openInvoices = invoices.openAmong(
+				entries.getContent().stream().map(RedemptionEntry::invoiceId).filter(Objects::nonNull).toList());
+		return new PageImpl<>(entries.getContent().stream().map(entry -> rowOf(entry, students, openInvoices)).toList(),
 				entries.getPageable(), entries.getTotalElements());
 	}
 
-	private RedemptionRow rowOf(RedemptionEntry entry, Map<Long, StudentInfo> students) {
+	/**
+	 * 사용 기록 하나. 사용한 지점을 다룰 수 있어야 본다(직원은 소속 지점, 관리자는 모두).
+	 *
+	 * @throws BusinessException 없으면 404, 사용한 지점을 다룰 수 없으면 403
+	 */
+	@Transactional(readOnly = true)
+	public RedemptionDetail get(long redemptionId, AuthenticatedUser user) {
+		RedemptionEntry entry = redemptions.findEntry(redemptionId)
+			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.REDEMPTION_NOT_FOUND));
+		user.requireCampus(entry.campusId());
+		StudentInfo student = members.findStudent(entry.studentId()).orElse(null);
+		if (student == null) {
+			log.warn("사용 기록의 학생을 찾지 못했다: redemptionId={} studentId={}", entry.redemptionId(), entry.studentId());
+		}
+		Long invoiceId = entry.invoiceId() != null && invoices.isOpen(entry.invoiceId()) ? entry.invoiceId() : null;
+		return new RedemptionDetail(entry.redemptionId(), entry.redeemedAt(),
+				LocalDate.ofInstant(entry.redeemedAt(), clock.getZone()), entry.campusId(), entry.passId(),
+				entry.passNo(), entry.partnerName(), entry.studentId(), student == null ? null : student.name(),
+				student == null ? null : student.campusId(), invoiceId);
+	}
+
+	private RedemptionRow rowOf(RedemptionEntry entry, Map<Long, StudentInfo> students, Set<Long> openInvoices) {
 		StudentInfo student = students.get(entry.studentId());
 		if (student == null) {
 			// 학생은 지우지 않는다. 생기면 자료를 봐야 한다. 한 줄 때문에 목록이 500이 되지 않게 이름만 비운다.
@@ -90,7 +123,12 @@ public class RedemptionLedger {
 		return new RedemptionRow(entry.redemptionId(), entry.redeemedAt(),
 				LocalDate.ofInstant(entry.redeemedAt(), clock.getZone()), entry.campusId(), entry.passId(),
 				entry.passNo(), entry.partnerName(), entry.studentId(), student == null ? null : student.name(),
-				entry.staffId());
+				entry.staffId(), isOpen(entry.invoiceId(), openInvoices) ? entry.invoiceId() : null);
+	}
+
+	// 불변 집합은 null을 물으면 예외를 던진다. 청구를 만들지 않은 기록은 먼저 거른다.
+	private static boolean isOpen(Long invoiceId, Set<Long> openInvoices) {
+		return invoiceId != null && openInvoices.contains(invoiceId);
 	}
 
 	private static boolean outOfRange(LocalDate date) {

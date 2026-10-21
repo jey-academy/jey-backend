@@ -167,6 +167,11 @@ public class Invoice extends BaseEntity {
 		return targetMonth;
 	}
 
+	/** 열린 청구인지(결제 전이거나 결제함). 취소한 청구만 닫혀 있다. 한 학생 한 달에 열린 청구는 하나다. 규칙은 여기 한 곳이다. */
+	public boolean isOpen() {
+		return status != InvoiceStatus.CANCELED;
+	}
+
 	public InvoiceStatus getStatus() {
 		return status;
 	}

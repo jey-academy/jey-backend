@@ -43,7 +43,7 @@ public interface RedemptionRepository extends Repository<Redemption, Long> {
 	 */
 	@Query(value = """
 			select new com.jey.dongtanpass.domain.RedemptionEntry(r.id, r.redeemedAt, r.campusId, p.id, p.passNo,
-			 pa.name, r.studentId, r.createdBy)
+			 pa.name, r.studentId, r.createdBy, r.invoiceId)
 			from Redemption r, Pass p, Partner pa
 			where p.id = r.passId and pa.id = p.partnerId
 			 and (:campusId is null or r.campusId = :campusId)
@@ -55,5 +55,14 @@ public interface RedemptionRepository extends Repository<Redemption, Long> {
 			""")
 	Page<RedemptionEntry> list(@Param("campusId") Long campusId, @Param("from") Instant from,
 			@Param("before") Instant before, Pageable pageable);
+
+	/** 사용 기록 하나(목록 한 줄과 같은 모양). */
+	@Query("""
+			select new com.jey.dongtanpass.domain.RedemptionEntry(r.id, r.redeemedAt, r.campusId, p.id, p.passNo,
+			 pa.name, r.studentId, r.createdBy, r.invoiceId)
+			from Redemption r, Pass p, Partner pa
+			where p.id = r.passId and pa.id = p.partnerId and r.id = :id
+			""")
+	Optional<RedemptionEntry> findEntry(@Param("id") long id);
 
 }

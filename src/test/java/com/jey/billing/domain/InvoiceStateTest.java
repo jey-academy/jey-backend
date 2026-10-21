@@ -57,6 +57,20 @@ class InvoiceStateTest {
 		assertRejected(invoice::cancel, InvoiceStatus.CANCELED);
 	}
 
+	// 열린 청구(결제 전·결제함)의 규칙은 여기 한 곳이다. 다른 모듈이 묻는 isOpen·openAmong도 이것을 쓴다.
+	@Test
+	void 결제_전과_결제한_청구는_열려_있고_취소한_청구는_닫혀_있다() {
+		Invoice invoice = issued();
+		assertThat(invoice.isOpen()).isTrue();
+
+		invoice.markPaid();
+		assertThat(invoice.isOpen()).isTrue();
+
+		invoice.reopen();
+		invoice.cancel();
+		assertThat(invoice.isOpen()).isFalse();
+	}
+
 	private static void assertRejected(Runnable transition, InvoiceStatus current) {
 		assertThatThrownBy(transition::run).isInstanceOfSatisfying(InvoiceStateException.class,
 				e -> assertThat(e.current()).isEqualTo(current));

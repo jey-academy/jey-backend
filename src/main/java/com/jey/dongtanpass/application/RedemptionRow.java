@@ -9,7 +9,8 @@ import java.time.LocalDate;
  * @param redeemedOn 사용일(한국 날짜). 기간 조건은 이 날짜로 자른다
  * @param studentName 학생 이름. 학생을 찾지 못했으면(있어서는 안 되는 자료) {@code null}
  * @param staffId 처리한 직원. 로그인 없이 넣은 기록이면 {@code null}
+ * @param invoiceId 이 기록에서 만든 열린 청구(결제 전이거나 결제함). 만들지 않았거나 취소했으면 {@code null}
  */
 public record RedemptionRow(long redemptionId, Instant redeemedAt, LocalDate redeemedOn, long campusId, long passId,
-		String passNo, String partnerName, long studentId, String studentName, Long staffId) {
+		String passNo, String partnerName, long studentId, String studentName, Long staffId, Long invoiceId) {
 }

@@ -12,11 +12,13 @@ import com.jey.core.shared.Money;
  * 계산했거나 만든 청구. 반·할인의 이름을 붙여 둔다. 8회 기준 수강료는 싣지 않는다(직원도 받는다).
  *
  * @param id 미리 계산이면 {@code null}
+ * @param studentName 학생 이름. 학생을 찾지 못하면 {@code null}(있어서는 안 되는 자료)
  * @param status 미리 계산이면 {@code null}
  * @param totalAmount 라인 청구액의 합
  * @param payment 유효한 결제(COMPLETED). 청구가 PAID일 때만 있다(결제 전·취소한 청구, 미리 계산이면 {@code null})
  */
-public record InvoiceDetail(Long id, long campusId, long studentId, YearMonth targetMonth, InvoiceStatus status,
+public record InvoiceDetail(Long id, long campusId, long studentId, String studentName, YearMonth targetMonth,
+		InvoiceStatus status,
 		DiscountPolicy discountPolicy, Money totalAmount, List<LineDetail> lines, PaymentView payment) {
 
 	public InvoiceDetail {
