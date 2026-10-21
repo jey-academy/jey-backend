@@ -23,10 +23,12 @@ import jakarta.persistence.Table;
  *
  * <p>한 번의 시도는 "맡기({@link #claim}) → 시트 읽고 쓰기(트랜잭션 밖) → 결과 적기"다. 맡기는 행을 잠가 읽은 뒤에 부른다
  * ({@code LedgerSyncRepository#findByIdForUpdate}) — 두 쪽이 같은 결제를 동시에 쓰지 않게.
- * 결과는 {@link #written}, {@link #retryLater}(구글 장애), {@link #unsynced}(사람이 고칠 이유), {@link #cancelDone} 중 하나다.
+ * 결과는 {@link #written}, {@link #retryLater}(구글 장애), {@link #postpone}(잠금을 못 잡음), {@link #unsynced}(사람이 고칠 이유),
+ * {@link #requeueForCancel}, {@link #cancelMarked}, {@link #cancelUnwritten} 중 하나다.
  *
  * <p>결제를 취소하면 {@link #requestCancel}로 다시 대기시키고, 다음 시도가 시트에서 이 결제의 표시를 찾아 취소 표시를 남긴다.
- * 쓰기 전이라도 시트를 본다 — 앞선 시도가 쓰고 응답을 잃었을 수 있다.
+ * 쓰기 전이라도 시트를 본다 — 앞선 시도가 쓰고 응답을 잃었을 수 있다. 쓴 줄이 있는데 표시를 하지 못하면 미반영으로 남긴다
+ * (취소됨으로 끝내면 장부에 납부한 줄이 남는데 아무도 모른다).
  */
 @Entity
 @Table(name = "billing_ledger_sync")
@@ -40,6 +42,12 @@ public class LedgerSync extends BaseEntity {
 	/** 구글 장애 뒤 다시 시도하기까지의 간격. n번째 시도가 실패하면 n번째 간격 뒤에 다시 한다. 다 쓰면 미반영. */
 	public static final List<Duration> RETRY_DELAYS = List.of(Duration.ofMinutes(1), Duration.ofMinutes(5),
 			Duration.ofMinutes(15), Duration.ofHours(1), Duration.ofHours(3));
+
+	/** 한 줄의 시도 한도(간격을 다 쓴 마지막 시도까지). 오래 멈춘 시도를 다시 맡는 것도 여기까지다. */
+	static final int MAX_ATTEMPTS = RETRY_DELAYS.size() + 1;
+
+	/** 구글이 알려 준 기다릴 시간({@code Retry-After})은 이것까지만 따른다(정한 간격의 가장 긴 값). */
+	static final Duration MAX_RETRY_AFTER = RETRY_DELAYS.getLast();
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -112,13 +120,18 @@ public class LedgerSync extends BaseEntity {
 
 	/**
 	 * 이번 시도를 맡는다. 대기 중이고 다음 시도 시각이 됐거나, 시도 중인 채로 {@link #STALE_AFTER}를 넘겼을 때만 맡는다.
-	 * 행을 잠가 읽은 뒤에 부른다.
+	 * 행을 잠가 읽은 뒤에 부른다. 오래 멈춘 시도가 시도 한도까지 거듭됐으면(결과를 적기 전에 거듭 멈춘다) 맡지 않고
+	 * {@link LedgerSyncReason#APP_ERROR}로 미반영한다.
 	 *
-	 * @return 맡았는지. 맡지 못했으면 아무것도 바꾸지 않는다
+	 * @return 맡았는지. 맡지 못했으면 위의 경우 말고는 아무것도 바꾸지 않는다
 	 */
 	public boolean claim(Instant now) {
 		boolean due = status == LedgerSyncStatus.PENDING && !nextAttemptAt.isAfter(now);
 		boolean stale = status == LedgerSyncStatus.IN_PROGRESS && lastAttemptAt.plus(STALE_AFTER).isBefore(now);
+		if (stale && attempts >= MAX_ATTEMPTS) {
+			unsynced(LedgerSyncReason.APP_ERROR);
+			return false;
+		}
 		if (!due && !stale) {
 			return false;
 		}
@@ -145,8 +158,8 @@ public class LedgerSync extends BaseEntity {
 	}
 
 	/**
-	 * 구글 장애(시간 초과, 연결 끊김, 5xx, 429). 시도 횟수에 맞는 간격 뒤에 다시 한다. 구글이 알려 준 기다릴 시간이 더 길면 그것을 따른다.
-	 * 간격을 다 썼으면 {@link LedgerSyncReason#GOOGLE_UNAVAILABLE}로 미반영.
+	 * 구글 장애(시간 초과, 연결 끊김, 408, 5xx, 429)나 잠금 저장소 장애. 시도 횟수에 맞는 간격 뒤에 다시 한다. 구글이 알려 준 기다릴 시간이
+	 * 더 길면 그것을 따른다({@link #MAX_RETRY_AFTER}까지). 간격을 다 썼으면 {@link LedgerSyncReason#GOOGLE_UNAVAILABLE}로 미반영.
 	 *
 	 * @param retryAfter 구글이 알려 준 기다릴 시간. 없으면 {@code null}
 	 */
@@ -158,7 +171,7 @@ public class LedgerSync extends BaseEntity {
 		}
 		Duration delay = RETRY_DELAYS.get(attempts - 1);
 		if (retryAfter != null && retryAfter.compareTo(delay) > 0) {
-			delay = retryAfter;
+			delay = retryAfter.compareTo(MAX_RETRY_AFTER) > 0 ? MAX_RETRY_AFTER : retryAfter;
 		}
 		this.status = LedgerSyncStatus.PENDING;
 		this.nextAttemptAt = micros(now.plus(delay));
@@ -198,7 +211,8 @@ public class LedgerSync extends BaseEntity {
 	}
 
 	/**
-	 * 결제를 취소했다. 시도 중이면 그 시도가 끝난 뒤({@link #written} 등) 다시 대기하고, 아니면 바로 다시 대기한다.
+	 * 결제를 취소했다. 시도 중이 아니면 바로 다시 대기한다. 시도 중이면 그 시도의 결과를 적을 때 처리한다: 썼거나({@link #written})
+	 * 쓰지 못하고 끝났으면({@link #requeueForCancel}) 바로 다시 대기하고, 취소 처리 중이었으면 그 결과를 따른다.
 	 * 이미 취소를 받았으면 아무것도 하지 않는다(같은 이벤트가 다시 와도 같다).
 	 *
 	 * @param canceledOn 취소한 날(한국 날짜). 취소 표시에 쓴다
@@ -217,18 +231,47 @@ public class LedgerSync extends BaseEntity {
 	}
 
 	/**
-	 * 취소 처리를 마쳤다.
-	 *
-	 * @param marked 장부에서 이 결제의 줄을 찾아 비고에 취소 표시를 했는지(쓴 줄이 없었으면 {@code false})
+	 * 쓰기 시도가 쓰지 못하고 끝났는데(장애, 미룸, 미반영) 그사이 결제가 취소됐다. 취소된 결제를 "장부를 고칠 결제"로 남기지 않고
+	 * 바로 취소 처리로 다시 대기한다(취소 처리는 앞선 시도가 썼을 수 있어 표시를 찾는다).
 	 */
-	public void cancelDone(boolean marked, Instant now) {
+	public void requeueForCancel(Instant now) {
 		requireInProgress();
-		if (canceledOn == null) {
-			throw new IllegalStateException("취소 요청이 없는 장부 반영이다");
+		requireCancelRequested();
+		waitFrom(now);
+	}
+
+	/** 장부에서 이 결제의 줄을 찾아 비고에 취소 표시를 했다. 앱이 몰랐던 줄(쓰고 응답을 잃은 줄)이면 그 줄을 이제 남긴다. */
+	public void cancelMarked(int row, Instant now) {
+		requireInProgress();
+		requireCancelRequested();
+		this.sheetTab = targetMonth.toString();
+		this.sheetRow = row;
+		finishCancel(true);
+	}
+
+	/**
+	 * 쓴 적이 없는 결제의 취소를 마쳤다(장부에 표시가 없다).
+	 *
+	 * @throws IllegalStateException 앱이 쓴 줄이 있을 때. 그 줄에 표시를 하지 못했으면 미반영으로 남긴다({@link #unsynced})
+	 */
+	public void cancelUnwritten(Instant now) {
+		requireInProgress();
+		requireCancelRequested();
+		if (sheetRow != null) {
+			throw new IllegalStateException("장부에 쓴 줄이 있는 결제를 표시 없이 취소로 끝낼 수 없다");
 		}
+		finishCancel(false);
+	}
+
+	private void finishCancel(boolean marked) {
 		this.status = LedgerSyncStatus.CANCELED;
 		this.cancelMarked = marked;
 		this.nextAttemptAt = null;
+	}
+
+	/** 앱이 장부에 쓴 줄을 알고 있는지(쓴 뒤이거나, 취소 표시를 한 줄). */
+	public boolean hasWrittenRow() {
+		return sheetRow != null;
 	}
 
 	public boolean isCancelRequested() {
@@ -240,6 +283,12 @@ public class LedgerSync extends BaseEntity {
 		this.reason = null;
 		this.attempts = 0;
 		this.nextAttemptAt = micros(now);
+	}
+
+	private void requireCancelRequested() {
+		if (canceledOn == null) {
+			throw new IllegalStateException("취소 요청이 없는 장부 반영이다");
+		}
 	}
 
 	private void requireInProgress() {

@@ -13,7 +13,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *
  * @param baseUrl 시트 API 주소. 시험에서 흉내 낸 서버로 바꾼다
  * @param spreadsheets 지점 ID → 스프레드시트 ID. 없는 지점은 장부 연결이 꺼진 것이다
- * @param connectTimeout 연결 시간 제한. 한 번의 시도가 이벤트 재전송 주기(1분)보다 훨씬 빨리 끝나야 하므로 5초까지
+ * @param connectTimeout 연결 시간 제한. 5초까지. 한 번의 시도(잠금 대기 5초 + 구글 요청 둘 × (연결 + 응답))가 이벤트 재전송 주기(1분)
+ *     안에 끝나야 하고, 장부 잠금의 유지 시간({@code RedisLedgerLock.TTL}, 45초)이 요청 둘보다 길어야 한다
  * @param readTimeout 응답 시간 제한. 같은 이유로 15초까지
  * @param serviceAccountKey 서비스 계정 키(JSON)의 base64. 비밀값이라 {@link #toString()}에 나오지 않는다
  * @param retryInterval 다시 시도할 줄을 찾는 간격. 10초 이상(단위를 빠뜨린 값을 막는다)

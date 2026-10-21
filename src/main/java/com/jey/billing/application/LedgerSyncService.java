@@ -57,6 +57,9 @@ public class LedgerSyncService {
 	/** 기다려도 잠금을 못 잡으면 이만큼 뒤로 미룬다(시도로 세지 않는다). 스케줄러가 집는다. */
 	static final Duration POSTPONE = Duration.ofSeconds(30);
 
+	/** 한 번 부를 때 이어서 하는 시도의 수(쓴 뒤 바로 취소 처리까지). */
+	private static final int MAX_ROUNDS = 2;
+
 	/** 스케줄러가 한 번에 집는 줄 수. 남은 줄은 다음 주기에 집는다. */
 	static final int DUE_BATCH = 50;
 
@@ -100,7 +103,10 @@ public class LedgerSyncService {
 		attempt(ensureRow(paymentId));
 	}
 
-	/** 결제를 취소했다. 장부에 쓴 줄이 있으면 비고에 취소 표시를 하고, 없으면 쓰지 않은 채 끝낸다. 다시 불러도 결과가 같다. */
+	/**
+	 * 결제를 취소했다. 장부에서 이 결제의 표시를 찾으면 비고에 취소 표시를 하고, 쓴 적이 없으면 쓰지 않은 채 끝낸다.
+	 * 앱이 쓴 줄이 있는데 표시를 하지 못하면(표시가 사라짐, 탭·머리글을 읽지 못함, 장부 연결이 꺼짐) 미반영으로 남긴다. 다시 불러도 결과가 같다.
+	 */
 	public void recordCancel(long paymentId) {
 		long id = ensureRow(paymentId);
 		transaction.executeWithoutResult(status -> {
@@ -115,8 +121,9 @@ public class LedgerSyncService {
 	}
 
 	/**
-	 * 관리자가 장부(탭, 반 블록, 빈 줄, 권한)를 고친 뒤 미반영 줄을 다시 반영한다. 바로 한 번 시도하고 그 뒤의 상태를 돌려준다
-	 * (구글 장애가 아직이면 대기 중으로 남아 정한 간격대로 다시 한다).
+	 * 관리자가 장부(탭, 반 블록, 빈 줄, 권한)를 고친 뒤 미반영 줄을 다시 반영한다. 바로 한 번 시도하고 그 뒤의 상태를 돌려준다:
+	 * 반영됨, 또 미반영, 대기 중(구글 장애나 다른 결제의 쓰기 때문에 잠시 뒤 다시 한다), 시도 중(그 순간 다른 쪽이 맡았다),
+	 * 취소됨(취소한 결제라 취소 처리를 마쳤다).
 	 *
 	 * @throws BusinessException 줄이 없을 때(404), 미반영이 아닐 때(409)
 	 */
@@ -156,18 +163,26 @@ public class LedgerSyncService {
 		return ids.size();
 	}
 
-	/** 한 번 시도한다. 다른 쪽이 맡고 있거나 때가 아니면 아무것도 하지 않는다. */
+	/**
+	 * 시도한다. 다른 쪽이 맡고 있거나 때가 아니면 아무것도 하지 않는다. 결과를 적은 뒤 바로 다시 할 일이 생겼으면(쓰는 사이 결제가 취소됐다)
+	 * 한 번 더 이어서 한다 — 취소 처리가 스케줄러를 기다리지 않게.
+	 */
 	void attempt(long id) {
-		Instant now = clock.instant();
-		Claimed claimed = transaction.execute(status -> {
-			LedgerSync sync = syncs.findByIdForUpdate(id).orElseThrow();
-			return sync.claim(now) ? Claimed.of(sync) : null;
-		});
-		if (claimed == null) {
-			return;
+		for (int round = 0; round < MAX_ROUNDS; round++) {
+			Instant now = clock.instant();
+			Claimed claimed = transaction.execute(status -> {
+				LedgerSync sync = syncs.findByIdForUpdate(id).orElseThrow();
+				return sync.claim(now) ? Claimed.of(sync) : null;
+			});
+			if (claimed == null) {
+				return;
+			}
+			Outcome outcome = process(claimed);
+			Boolean dueAgain = transaction.execute(status -> apply(claimed, outcome));
+			if (!Boolean.TRUE.equals(dueAgain)) {
+				return;
+			}
 		}
-		Outcome outcome = process(claimed);
-		transaction.executeWithoutResult(status -> apply(claimed, outcome));
 	}
 
 	private long ensureRow(long paymentId) {
@@ -194,11 +209,12 @@ public class LedgerSyncService {
 
 	// 트랜잭션 밖. 구글을 부르고 결과만 돌려준다(상태는 apply가 바꾼다).
 	private Outcome process(Claimed claimed) {
-		boolean cancel = claimed.canceledOn() != null;
+		boolean cancel = claimed.cancelAttempt();
 		try {
 			Optional<String> spreadsheet = properties.spreadsheetFor(claimed.campusId());
 			if (spreadsheet.isEmpty()) {
-				return cancel ? new CancelDone(false, null, null) : new Unsynced(LedgerSyncReason.NOT_CONFIGURED);
+				return cancel ? cannotMark(claimed, LedgerSyncReason.NOT_CONFIGURED)
+						: new Unsynced(LedgerSyncReason.NOT_CONFIGURED);
 			}
 			LedgerEntryAssembler.Assembled assembled = cancel ? null : assembler.assemble(claimed.paymentId());
 			if (assembled instanceof LedgerEntryAssembler.Assembled.Rejected rejected) {
@@ -208,73 +224,106 @@ public class LedgerSyncService {
 			if (held.isEmpty()) {
 				return new Postpone();
 			}
-			try (LedgerLock.Held ignored = held.get()) {
-				return cancel ? markCanceled(spreadsheet.get(), claimed)
-						: write(spreadsheet.get(), claimed, (LedgerEntryAssembler.Assembled.Ready) assembled);
+			try (LedgerLock.Held hold = held.get()) {
+				return cancel ? markCanceled(spreadsheet.get(), claimed, hold)
+						: write(spreadsheet.get(), claimed, (LedgerEntryAssembler.Assembled.Ready) assembled, hold);
 			}
 		} catch (LedgerSheetsUnavailable e) {
-			log.warn("구글 시트 장애로 장부 반영을 미룬다: 반영 {}, {}", claimed.id(), e.getMessage());
+			log.warn("구글 시트 장애로 장부 반영을 미룬다: 반영 {}, 시도 {}, {}", claimed.id(), claimed.attempts(), e.getMessage());
 			return new RetryLater(e.retryAfter());
+		} catch (LedgerLockUnavailable e) {
+			log.warn("장부 잠금 저장소 장애로 장부 반영을 미룬다: 반영 {}, 시도 {}", claimed.id(), claimed.attempts(), e);
+			return new RetryLater(null);
 		} catch (LedgerSheetsRejected e) {
-			return cancel && e.reason() == LedgerSyncReason.TAB_NOT_FOUND ? new CancelDone(false, null, null)
+			return cancel && e.reason() == LedgerSyncReason.TAB_NOT_FOUND ? cannotMark(claimed, e.reason())
 					: new Unsynced(e.reason());
 		} catch (LedgerLayoutException e) {
-			return cancel ? new CancelDone(false, null, null) : new Unsynced(e.reason());
+			return cancel ? cannotMark(claimed, e.reason()) : new Unsynced(e.reason());
 		} catch (RuntimeException e) {
 			log.error("장부 반영 중 예상하지 못한 오류: 반영 {}", claimed.id(), e);
 			return new Unsynced(LedgerSyncReason.APP_ERROR);
 		}
 	}
 
-	private Outcome write(String spreadsheet, Claimed claimed, LedgerEntryAssembler.Assembled.Ready ready) {
+	// 취소 표시를 할 수 없다. 앱이 쓴 줄이 없으면 쓰지 않은 채 끝내고, 있으면 미반영으로 남긴다(장부에 납부한 줄이 남는다).
+	private static Outcome cannotMark(Claimed claimed, LedgerSyncReason reason) {
+		return claimed.hasWrittenRow() ? new Unsynced(reason) : new CancelUnwritten();
+	}
+
+	private Outcome write(String spreadsheet, Claimed claimed, LedgerEntryAssembler.Assembled.Ready ready,
+			LedgerLock.Held hold) {
 		String tab = claimed.tab();
 		LedgerLayout layout = LedgerLayout.parse(sheets.read(spreadsheet, tab), claimed.targetMonth());
 		return switch (layout.find(ready.className(), LedgerFormats.marker(claimed.paymentId()))) {
 			case LedgerTarget.AlreadyWritten written -> new Written(tab, written.row());
 			case LedgerTarget.Missing missing -> new Unsynced(missing.reason());
 			case LedgerTarget.EmptyRow empty -> {
-				sheets.write(spreadsheet, tab, layout.cells(empty.row(), LedgerRow.of(ready.entry())));
+				writeCells(spreadsheet, tab, layout.cells(empty.row(), LedgerRow.of(ready.entry())), hold);
 				yield new Written(tab, empty.row());
 			}
 		};
 	}
 
 	// 쓰기 전이라도 표시를 찾는다 — 앞선 시도가 쓰고 응답을 잃었을 수 있다.
-	private Outcome markCanceled(String spreadsheet, Claimed claimed) {
+	private Outcome markCanceled(String spreadsheet, Claimed claimed, LedgerLock.Held hold) {
 		String tab = claimed.tab();
 		LedgerLayout layout = LedgerLayout.parse(sheets.read(spreadsheet, tab), claimed.targetMonth());
 		Optional<Integer> row = layout.rowOf(LedgerFormats.marker(claimed.paymentId()));
 		if (row.isEmpty()) {
-			return new CancelDone(false, null, null);
+			return cannotMark(claimed, LedgerSyncReason.MARKER_NOT_FOUND);
 		}
-		sheets.write(spreadsheet, tab, Map.of(layout.noteCell(row.get()),
-				LedgerFormats.canceledNote(claimed.paymentId(), claimed.canceledOn())));
-		return new CancelDone(true, tab, row.get());
+		writeCells(spreadsheet, tab, Map.of(layout.noteCell(row.get()),
+				LedgerFormats.canceledNote(claimed.paymentId(), claimed.canceledOn())), hold);
+		return new CancelMarked(tab, row.get());
+	}
+
+	// 쓰기의 결과를 모르면(시간 초과, 연결 끊김, 5xx) 잠금을 시간이 다할 때까지 남긴다. 구글이 늦게 반영할 수 있어서, 바로 풀면
+	// 다음 결제가 같은 빈 줄을 집고 늦게 들어온 이 쓰기에 덮인다.
+	private void writeCells(String spreadsheet, String tab, Map<String, Object> cells, LedgerLock.Held hold) {
+		try {
+			sheets.write(spreadsheet, tab, cells);
+		} catch (LedgerSheetsUnavailable e) {
+			hold.keepUntilExpiry();
+			throw e;
+		}
 	}
 
 	// 트랜잭션 안. 그사이 다른 쪽이 다시 맡았으면(이 시도가 5분을 넘겼다) 결과를 적지 않는다.
-	private void apply(Claimed claimed, Outcome outcome) {
+	// 돌려주는 값은 바로 다시 할 일이 생겼는지(쓰는 사이 결제가 취소됐다).
+	private boolean apply(Claimed claimed, Outcome outcome) {
 		LedgerSync sync = syncs.findByIdForUpdate(claimed.id()).orElseThrow();
 		if (sync.getStatus() != LedgerSyncStatus.IN_PROGRESS || !sync.getLastAttemptAt().equals(claimed.lastAttemptAt())) {
-			log.warn("장부 반영의 결과를 적지 않는다(다른 시도가 맡았다): 반영 {}", claimed.id());
-			return;
+			log.warn("장부 반영의 결과({})를 적지 않는다(다른 시도가 맡았다): 반영 {}", outcome.getClass().getSimpleName(),
+					claimed.id());
+			return false;
 		}
 		Instant now = clock.instant();
+		// 쓰기 시도가 쓰지 못하고 끝났는데 그사이 결제가 취소됐다. 취소된 결제를 "장부를 고칠 결제"로 남기지 않는다.
+		if (!claimed.cancelAttempt() && sync.isCancelRequested() && !(outcome instanceof Written)) {
+			sync.requeueForCancel(now);
+			return true;
+		}
 		switch (outcome) {
 			case Written written -> {
 				sync.written(written.tab(), written.row(), now);
 				audit(BillingAuditAction.LEDGER_WRITTEN, sync, written.tab(), written.row());
 			}
-			case CancelDone done -> {
-				sync.cancelDone(done.marked(), now);
-				if (done.marked()) {
-					audit(BillingAuditAction.LEDGER_CANCEL_MARKED, sync, done.tab(), done.row());
-				}
+			case CancelMarked marked -> {
+				sync.cancelMarked(marked.row(), now);
+				audit(BillingAuditAction.LEDGER_CANCEL_MARKED, sync, marked.tab(), marked.row());
 			}
+			case CancelUnwritten unwritten -> sync.cancelUnwritten(now);
 			case RetryLater retry -> sync.retryLater(now, retry.retryAfter());
-			case Unsynced unsynced -> sync.unsynced(unsynced.reason());
+			case Unsynced unsynced -> {
+				log.info("장부에 반영하지 못했다: 반영 {}, 이유 {}", claimed.id(), unsynced.reason());
+				sync.unsynced(unsynced.reason());
+			}
 			case Postpone postpone -> sync.postpone(now.plus(POSTPONE));
 		}
+		if (sync.getStatus() == LedgerSyncStatus.UNSYNCED && sync.getReason() == LedgerSyncReason.GOOGLE_UNAVAILABLE) {
+			log.warn("구글 장애가 이어져 다시 시도를 그만둔다(관리자가 다시 반영한다): 반영 {}", claimed.id());
+		}
+		return sync.getStatus() == LedgerSyncStatus.PENDING && !sync.getNextAttemptAt().isAfter(now);
 	}
 
 	private void audit(BillingAuditAction action, LedgerSync sync, String tab, int row) {
@@ -288,11 +337,16 @@ public class LedgerSyncService {
 
 	/** 맡은 순간의 값. 트랜잭션 밖에서 쓴다. */
 	private record Claimed(long id, long paymentId, long campusId, YearMonth targetMonth, LocalDate canceledOn,
-			Instant lastAttemptAt) {
+			boolean hasWrittenRow, int attempts, Instant lastAttemptAt) {
 
 		static Claimed of(LedgerSync sync) {
 			return new Claimed(sync.getId(), sync.getPaymentId(), sync.getCampusId(), sync.getTargetMonth(),
-					sync.getCanceledOn(), sync.getLastAttemptAt());
+					sync.getCanceledOn(), sync.hasWrittenRow(), sync.getAttempts(), sync.getLastAttemptAt());
+		}
+
+		/** 이번 시도가 취소 처리인지(맡을 때 취소 요청이 와 있었다). */
+		boolean cancelAttempt() {
+			return canceledOn != null;
 		}
 
 		/** 대상 월의 탭 이름({@code 2026-11}). */
@@ -308,7 +362,10 @@ public class LedgerSyncService {
 	private record Written(String tab, int row) implements Outcome {
 	}
 
-	private record CancelDone(boolean marked, String tab, Integer row) implements Outcome {
+	private record CancelMarked(String tab, int row) implements Outcome {
+	}
+
+	private record CancelUnwritten() implements Outcome {
 	}
 
 	private record RetryLater(Duration retryAfter) implements Outcome {

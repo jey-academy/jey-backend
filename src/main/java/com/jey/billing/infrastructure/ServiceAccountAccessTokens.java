@@ -11,7 +11,7 @@ import com.google.auth.oauth2.ServiceAccountCredentials;
 
 /**
  * 서비스 계정 키로 만든 인증 머리글. 토큰을 구글에서 받아 오지 않고 키로 직접 서명한다(스코프를 담은 JWT, 구글 인증 라이브러리의
- * {@code useJwtAccessWithScope}). 그래서 인증에는 네트워크 요청이 없고, 시트 요청의 시간 제한이 한 번의 시도 전체를 묶는다.
+ * {@code useJwtAccessWithScope}). 그래서 인증에는 네트워크 요청이 없고, 구글 쪽에서 기다리는 시간은 시트 요청의 시간 제한으로만 묶인다.
  * 서명한 토큰은 라이브러리가 만료 전까지 다시 쓴다.
  *
  * <p>키 원문과 base64는 어디에도(문자열, 예외 문구) 싣지 않는다.

@@ -197,22 +197,62 @@ class LedgerSyncTest {
 	}
 
 	@Test
-	void 취소_처리를_마치면_취소됨이고_표시했는지를_남긴다() {
+	void 쓴_줄에_취소_표시를_하면_취소됨이고_그_줄을_남긴다() {
 		LedgerSync sync = claimed();
 		sync.written("2026-11", 10, NOW);
 		sync.requestCancel(CANCELED_ON, NOW);
 		sync.claim(NOW);
 
-		sync.cancelDone(true, NOW);
+		sync.cancelMarked(10, NOW);
 
 		assertThat(sync.getStatus()).isEqualTo(LedgerSyncStatus.CANCELED);
 		assertThat(sync.isCancelMarked()).isTrue();
+		assertThat(sync.getSheetRow()).isEqualTo(10);
 		assertThat(sync.getNextAttemptAt()).isNull();
+	}
+
+	// 앞선 시도가 쓰고 응답을 잃어 앱은 줄을 모르는데, 취소 처리가 표시를 찾아 취소 표시를 했다. 그 줄을 이제 안다.
+	@Test
+	void 앱이_모르던_줄에서_표시를_찾아_취소_표시를_하면_그_줄을_남긴다() {
+		LedgerSync sync = claimed();
+		sync.retryLater(NOW, null);
+		sync.requestCancel(CANCELED_ON, NOW);
+		sync.claim(NOW);
+
+		sync.cancelMarked(7, NOW);
+
+		assertThat(sync.getSheetTab()).isEqualTo("2026-11");
+		assertThat(sync.getSheetRow()).isEqualTo(7);
+	}
+
+	@Test
+	void 쓴_적이_없는_결제의_취소는_표시_없이_취소됨이다() {
+		LedgerSync sync = claimed();
+		sync.unsynced(LedgerSyncReason.BLOCK_NOT_FOUND);
+		sync.requestCancel(CANCELED_ON, NOW);
+		sync.claim(NOW);
+
+		sync.cancelUnwritten(NOW);
+
+		assertThat(sync.getStatus()).isEqualTo(LedgerSyncStatus.CANCELED);
+		assertThat(sync.isCancelMarked()).isFalse();
+	}
+
+	// 장부에 쓴 줄을 표시 없이 취소됨으로 끝내면 장부에 "납부됨"이 남는데 아무도 모른다.
+	@Test
+	void 쓴_줄이_있으면_표시_없이_취소됨으로_끝낼_수_없다() {
+		LedgerSync sync = claimed();
+		sync.written("2026-11", 10, NOW);
+		sync.requestCancel(CANCELED_ON, NOW);
+		sync.claim(NOW);
+
+		assertThatThrownBy(() -> sync.cancelUnwritten(NOW)).isInstanceOf(IllegalStateException.class);
 	}
 
 	@Test
 	void 취소_요청이_없으면_취소_처리를_마칠_수_없다() {
-		assertThatThrownBy(() -> claimed().cancelDone(false, NOW)).isInstanceOf(IllegalStateException.class);
+		assertThatThrownBy(() -> claimed().cancelUnwritten(NOW)).isInstanceOf(IllegalStateException.class);
+		assertThatThrownBy(() -> claimed().cancelMarked(10, NOW)).isInstanceOf(IllegalStateException.class);
 	}
 
 	@Test
@@ -221,12 +261,56 @@ class LedgerSyncTest {
 		sync.written("2026-11", 10, NOW);
 		sync.requestCancel(CANCELED_ON, NOW);
 		sync.claim(NOW);
-		sync.cancelDone(false, NOW);
+		sync.cancelMarked(10, NOW);
 
 		sync.requestCancel(CANCELED_ON.plusDays(1), NOW.plusSeconds(60));
 
 		assertThat(sync.getStatus()).isEqualTo(LedgerSyncStatus.CANCELED);
 		assertThat(sync.getCanceledOn()).isEqualTo(CANCELED_ON);
+	}
+
+	// 쓰는 중에 취소가 왔는데 그 쓰기가 못 쓰고 끝났다. 취소된 결제를 "장부를 고칠 결제"로 남기지 않고 바로 취소 처리로 간다.
+	@Test
+	void 쓰는_중에_취소가_왔는데_쓰지_못하고_끝나면_취소_처리로_바로_다시_대기한다() {
+		LedgerSync sync = claimed();
+		sync.requestCancel(CANCELED_ON, NOW);
+
+		sync.requeueForCancel(NOW.plusSeconds(1));
+
+		assertThat(sync.getStatus()).isEqualTo(LedgerSyncStatus.PENDING);
+		assertThat(sync.getReason()).isNull();
+		assertThat(sync.getAttempts()).isZero();
+		assertThat(sync.getNextAttemptAt()).isEqualTo(NOW.plusSeconds(1));
+	}
+
+	@Test
+	void 취소_요청이_없으면_취소_처리로_다시_대기시킬_수_없다() {
+		assertThatThrownBy(() -> claimed().requeueForCancel(NOW)).isInstanceOf(IllegalStateException.class);
+	}
+
+	@Test
+	void 구글이_알려_준_기다릴_시간은_3시간까지만_따른다() {
+		LedgerSync sync = claimed();
+
+		sync.retryLater(NOW, Duration.ofDays(11));
+
+		assertThat(sync.getNextAttemptAt()).isEqualTo(NOW.plus(Duration.ofHours(3)));
+	}
+
+	// 결과를 적기 전에 서버가 거듭 죽으면(5분마다 다시 맡기만 한다) 끝없이 돌지 않고 미반영으로 드러난다.
+	@Test
+	void 오래_멈춘_시도를_다시_맡는_것은_시도_한도까지다() {
+		LedgerSync sync = newSync();
+		Instant at = NOW;
+		for (int i = 0; i < LedgerSync.RETRY_DELAYS.size() + 1; i++) {
+			assertThat(sync.claim(at)).isTrue();
+			at = at.plus(LedgerSync.STALE_AFTER).plusSeconds(1);
+		}
+
+		assertThat(sync.claim(at)).isFalse();
+
+		assertThat(sync.getStatus()).isEqualTo(LedgerSyncStatus.UNSYNCED);
+		assertThat(sync.getReason()).isEqualTo(LedgerSyncReason.APP_ERROR);
 	}
 
 	@Test

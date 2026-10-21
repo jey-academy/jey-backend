@@ -35,7 +35,7 @@ class LedgerSyncController {
 	}
 
 	@Operation(operationId = "listUnsyncedLedger", summary = "장부 미반영 목록",
-			description = "장부에 쓰지 못한 결제, 최근 결제부터. 구글 장애로 다시 시도하는 중인 결제는 여기 없다(정한 간격대로 다시 하고, 끝내 실패하면 GOOGLE_UNAVAILABLE로 들어온다)")
+			description = "장부에 쓰지 못한 결제, 최근에 생긴 반영 기록부터. 구글 장애로 다시 시도하는 중인 결제는 여기 없다(정한 간격대로 다시 하고, 끝내 실패하면 GOOGLE_UNAVAILABLE로 들어온다)")
 	@GetMapping("/unsynced")
 	LedgerSyncPageResponse listUnsynced(
 			@Parameter(description = "지점. 안 주면 전 지점") @RequestParam(required = false) Long campusId,
@@ -46,7 +46,7 @@ class LedgerSyncController {
 	}
 
 	@Operation(operationId = "retryLedgerSync", summary = "장부 다시 반영",
-			description = "장부(탭, 반 블록, 빈 줄, 권한)를 고친 뒤 부른다. 바로 한 번 써 보고 그 뒤의 상태를 준다(본문 없음). "
+			description = "장부(탭, 반 블록, 빈 줄, 권한)를 고친 뒤 부른다. 요청 본문은 없다. 바로 한 번 써 보고 그 뒤의 상태를 준다. "
 					+ "미반영이 아니면 409(BILLING_LEDGER_SYNC_NOT_RETRYABLE), 없으면 404(BILLING_LEDGER_SYNC_NOT_FOUND)")
 	@Idempotent
 	@PostMapping("/{id}/retry")

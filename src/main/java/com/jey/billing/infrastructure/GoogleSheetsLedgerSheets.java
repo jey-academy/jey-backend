@@ -29,7 +29,7 @@ import com.jey.billing.domain.LedgerSyncReason;
  * <ul>
  * <li>읽기: {@code GET values/'탭'!A:AZ} — 보이는 글자 그대로({@code FORMATTED_VALUE}), 줄 단위.
  * <li>쓰기: {@code POST values:batchUpdate} — 칸마다 범위 하나, {@code RAW}(입력한 그대로).
- * <li>장애: 시간 초과·연결 끊김·5xx·429 → {@link LedgerSheetsUnavailable}. 그 밖의 거절 → {@link LedgerSheetsRejected}.
+ * <li>장애: 시간 초과·연결 끊김·408·5xx·429 → {@link LedgerSheetsUnavailable}. 그 밖의 거절 → {@link LedgerSheetsRejected}.
  * </ul>
  *
  * <p>응답 본문에는 장부의 값(이름·번호)이 있을 수 있어 예외 문구와 로그에 싣지 않는다. 상태 코드만 싣는다.

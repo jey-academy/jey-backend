@@ -7,7 +7,7 @@ package com.jey.billing.domain;
  */
 public enum LedgerSyncReason {
 
-	/** 구글이 응답하지 않거나(시간 초과, 연결 끊김) 5xx·429로 답했고, 다시 시도한 횟수를 다 썼다. */
+	/** 구글이나 잠금 저장소가 응답하지 않거나(시간 초과, 연결 끊김) 408·5xx·429로 답했고, 다시 시도한 횟수를 다 썼다. */
 	GOOGLE_UNAVAILABLE,
 
 	/** 대상 월의 탭({@code YYYY-MM})이 없다. */
@@ -18,6 +18,12 @@ public enum LedgerSyncReason {
 
 	/** 반 블록에 빈 줄이 남아 있지 않다. */
 	NO_EMPTY_ROW,
+
+	/**
+	 * 장부에 쓴 결제를 취소했는데 그 탭에서 이 결제의 표시({@code 앱:결제-N})를 찾지 못했다(비고를 고쳤거나 줄을 옮겼다).
+	 * 취소 표시를 직접 하거나 표시를 되돌린 뒤 다시 반영한다.
+	 */
+	MARKER_NOT_FOUND,
 
 	/** 머리글 줄이나 앱이 쓰는 칸(대상 월 칸 포함)의 머리글이 없다. */
 	HEADER_NOT_FOUND,

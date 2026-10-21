@@ -19,7 +19,7 @@ import com.jey.billing.domain.LedgerSyncReason;
  * <li>머리글 줄은 위에서 몇 줄 안에 "성명" 칸이 있는 첫 줄이다. 칸은 머리글 이름으로 찾는다(공백·줄바꿈 무시).
  * <li>반 블록은 맨 앞 칸(A열)에 값이 있는 줄에서 시작해 다음 A열 값 전까지다. 블록 이름은 그 칸의 첫 줄을 다듬은 것
  * ({@code "EJ5\nBH/SH"} → {@code EJ5})이고 앱의 반 이름과 같다.
- * <li>빈 줄은 앱이 쓰는 칸이 모두 빈 줄이다(No만 적힌 줄). 사람이 무엇이든 적은 줄은 쓰지 않는다.
+ * <li>빈 줄은 앱이 쓰는 칸({@link LedgerColumn})이 모두 빈 줄이다(No만 적힌 줄). 그 칸에 사람이 하나라도 적은 줄은 쓰지 않는다 (앱이 쓰지 않는 칸 — No, 지난달 납부일, 다음달 선납 등 — 의 값은 보지 않는다).
  * </ul>
  *
  * <p>값은 구글 시트 값 API의 모양 그대로 받는다(A1부터, 줄 끝의 빈 칸과 끝의 빈 줄은 빠져 있다).
@@ -140,7 +140,7 @@ public final class LedgerLayout {
 		return cell.lines().findFirst().orElse("").strip();
 	}
 
-	/** 그 줄(시트의 행 번호)의 앱이 쓰는 칸이 모두 비었는지. 쓰기 직전에 다시 읽은 모양으로 확인한다. */
+	/** 그 줄(시트의 행 번호)의 앱이 쓰는 칸이 모두 비었는지. */
 	public boolean isEmptyRow(int row) {
 		return isEmptyIndex(row - 1);
 	}

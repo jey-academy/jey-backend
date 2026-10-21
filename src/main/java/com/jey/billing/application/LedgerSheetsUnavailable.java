@@ -2,7 +2,7 @@ package com.jey.billing.application;
 
 import java.time.Duration;
 
-/** 구글이 응답하지 않았다(시간 초과, 연결 끊김) 또는 5xx·429로 답했다. 간격을 두고 다시 시도한다. */
+/** 구글이 응답하지 않았다(시간 초과, 연결 끊김) 또는 408·5xx·429로 답했다. 간격을 두고 다시 시도한다. */
 public class LedgerSheetsUnavailable extends RuntimeException {
 
 	private final Duration retryAfter;

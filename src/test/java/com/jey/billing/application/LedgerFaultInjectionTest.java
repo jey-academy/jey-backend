@@ -334,7 +334,8 @@ class LedgerFaultInjectionTest extends LedgerSheetsTestSupport {
 		report(name, attempts, 1, doubleWrites());
 	}
 
-	// 대기 중인 줄의 다음 시도 시각을 지금으로 당겨 가며 끝날 때까지 시도한다. 마지막 시도 횟수를 돌려준다.
+	// 대기 중인 줄의 다음 시도 시각을 지금으로 당기고 장부 잠금도 풀린 것으로 하며(시간이 흐른 것처럼) 끝날 때까지 시도한다.
+	// 마지막 시도 횟수를 돌려준다.
 	private int drive(long paymentId) {
 		for (int round = 0; round < 20; round++) {
 			LedgerSync sync = sync(paymentId);
@@ -343,6 +344,7 @@ class LedgerFaultInjectionTest extends LedgerSheetsTestSupport {
 			}
 			jdbc.update("UPDATE billing_ledger_sync SET next_attempt_at = ? WHERE id = ?",
 					Timestamp.from(clock.instant().minusSeconds(1)), sync.getId());
+			expireLedgerLock();
 			ledger.attempt(sync.getId());
 		}
 		throw new AssertionError("끝나지 않았다");

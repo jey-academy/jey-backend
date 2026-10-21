@@ -12,6 +12,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
@@ -64,9 +66,21 @@ public abstract class LedgerSheetsTestSupport {
 		registry.add("jey.billing.ledger.read-timeout", () -> "1s");
 	}
 
+	/** 장부 잠금의 Redis 키(시험용 장부). */
+	protected static final String LOCK_KEY = "jey:billing:ledger-lock:" + SHEET_ID;
+
+	@Autowired
+	protected StringRedisTemplate redis;
+
 	@BeforeEach
 	void resetGoogle() {
 		google.resetAll();
+		expireLedgerLock();
+	}
+
+	/** 장부 잠금이 시간이 지나 풀린 것으로 한다(결과를 모르는 쓰기 뒤에는 잠금을 TTL까지 남겨 둔다). */
+	protected void expireLedgerLock() {
+		redis.delete(LOCK_KEY);
 	}
 
 	protected static String newClassName() {

@@ -8,7 +8,7 @@ import com.jey.billing.application.LedgerSyncView;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.media.Schema.RequiredMode;
 
-@Schema(description = "장부 미반영 목록의 한 페이지. 최근 결제부터")
+@Schema(description = "장부 미반영 목록의 한 페이지. 최근에 생긴 반영 기록부터")
 record LedgerSyncPageResponse(@Schema(requiredMode = RequiredMode.REQUIRED) List<LedgerSyncResponse> items,
 		@Schema(description = "지금 페이지. 0부터", requiredMode = RequiredMode.REQUIRED) int page,
 		@Schema(description = "한 페이지의 크기", requiredMode = RequiredMode.REQUIRED) int size,

@@ -153,6 +153,14 @@ class GoogleSheetsLedgerSheetsTest {
 		assertThatThrownBy(() -> sheets.read(SHEET_ID, "2026-11")).isInstanceOf(LedgerSheetsUnavailable.class);
 	}
 
+	// 응답 머리글은 받았는데 본문을 읽다 끊겼다. 다시 하면 나을 수 있는 장애다(앱 오류가 아니다).
+	@Test
+	void 응답_본문을_읽다_끊기면_장애다() {
+		google.stubFor(get(urlPathEqualTo(READ_PATH)).willReturn(aResponse().withFault(Fault.MALFORMED_RESPONSE_CHUNK)));
+
+		assertThatThrownBy(() -> sheets.read(SHEET_ID, "2026-11")).isInstanceOf(LedgerSheetsUnavailable.class);
+	}
+
 	@Test
 	void 연결할_수_없으면_장애다() {
 		GoogleSheetsLedgerSheets nowhere = new GoogleSheetsLedgerSheets("http://127.0.0.1:1", Duration.ofSeconds(1),
