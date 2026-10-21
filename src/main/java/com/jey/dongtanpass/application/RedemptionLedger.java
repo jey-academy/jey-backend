@@ -4,10 +4,13 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.jey.core.auth.api.CampusScope;
+import com.jey.billing.api.InvoiceIssuing;
 import com.jey.core.member.api.MemberDirectory;
 import com.jey.core.member.api.StudentInfo;
 import com.jey.core.shared.BusinessException;
@@ -43,11 +46,14 @@ public class RedemptionLedger {
 
 	private final MemberDirectory members;
 
+	private final InvoiceIssuing invoices;
+
 	private final Clock clock;
 
-	RedemptionLedger(RedemptionRepository redemptions, MemberDirectory members, Clock clock) {
+	RedemptionLedger(RedemptionRepository redemptions, MemberDirectory members, InvoiceIssuing invoices, Clock clock) {
 		this.redemptions = redemptions;
 		this.members = members;
+		this.invoices = invoices;
 		this.clock = clock;
 	}
 
@@ -76,11 +82,14 @@ public class RedemptionLedger {
 			.findStudents(entries.getContent().stream().map(RedemptionEntry::studentId).distinct().toList())
 			.stream()
 			.collect(Collectors.toMap(StudentInfo::studentId, Function.identity()));
-		return new PageImpl<>(entries.getContent().stream().map(entry -> rowOf(entry, students)).toList(),
+		// 사용 기록에 적힌 청구는 마지막으로 만든 것이다. 취소했을 수 있어 열린 것만 싣는다(한 페이지를 한 번에 묻는다).
+		Set<Long> openInvoices = invoices.openAmong(
+				entries.getContent().stream().map(RedemptionEntry::invoiceId).filter(Objects::nonNull).toList());
+		return new PageImpl<>(entries.getContent().stream().map(entry -> rowOf(entry, students, openInvoices)).toList(),
 				entries.getPageable(), entries.getTotalElements());
 	}
 
-	private RedemptionRow rowOf(RedemptionEntry entry, Map<Long, StudentInfo> students) {
+	private RedemptionRow rowOf(RedemptionEntry entry, Map<Long, StudentInfo> students, Set<Long> openInvoices) {
 		StudentInfo student = students.get(entry.studentId());
 		if (student == null) {
 			// 학생은 지우지 않는다. 생기면 자료를 봐야 한다. 한 줄 때문에 목록이 500이 되지 않게 이름만 비운다.
@@ -90,7 +99,12 @@ public class RedemptionLedger {
 		return new RedemptionRow(entry.redemptionId(), entry.redeemedAt(),
 				LocalDate.ofInstant(entry.redeemedAt(), clock.getZone()), entry.campusId(), entry.passId(),
 				entry.passNo(), entry.partnerName(), entry.studentId(), student == null ? null : student.name(),
-				entry.staffId());
+				entry.staffId(), isOpen(entry.invoiceId(), openInvoices) ? entry.invoiceId() : null);
+	}
+
+	// 불변 집합은 null을 물으면 예외를 던진다. 청구를 만들지 않은 기록은 먼저 거른다.
+	private static boolean isOpen(Long invoiceId, Set<Long> openInvoices) {
+		return invoiceId != null && openInvoices.contains(invoiceId);
 	}
 
 	private static boolean outOfRange(LocalDate date) {

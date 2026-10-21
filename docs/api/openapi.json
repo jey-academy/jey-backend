@@ -2030,6 +2030,11 @@
             "format" : "int64",
             "type" : "integer"
           },
+          "invoiceId" : {
+            "description" : "이 사용 기록에서 만든 열린 청구의 ID(결제 전이거나 결제한 청구). 만들지 않았거나 취소했으면 null",
+            "format" : "int64",
+            "type" : [ "integer", "null" ]
+          },
           "partnerName" : {
             "description" : "패스를 발급한 연계 학원",
             "type" : "string"
@@ -2073,7 +2078,7 @@
             "type" : [ "string", "null" ]
           }
         },
-        "required" : [ "campusId", "partnerName", "passId", "passNo", "redeemedAt", "redeemedOn", "redemptionId", "staffId", "studentId", "studentName" ],
+        "required" : [ "campusId", "invoiceId", "partnerName", "passId", "passNo", "redeemedAt", "redeemedOn", "redemptionId", "staffId", "studentId", "studentName" ],
         "type" : "object"
       },
       "RedemptionPageResponse" : {

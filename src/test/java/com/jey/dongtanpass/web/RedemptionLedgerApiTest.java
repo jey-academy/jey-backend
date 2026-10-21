@@ -120,6 +120,23 @@ class RedemptionLedgerApiTest {
 			.andExpect(jsonPath("$.items[0].staffId").value(STAFF));
 	}
 
+	// 사용 기록에서 만든 청구가 열려 있으면 그 ID, 만들지 않았거나 취소했으면 null(화면이 "청구 만들기"와 "청구 보기"를 가른다).
+	@Test
+	void 줄마다_그_사용_기록의_열린_청구_ID가_있다() throws Exception {
+		long open = insert(DONGTAN, "2031-06-10 10:00:00");
+		long canceled = insert(DONGTAN, "2031-06-10 11:00:00");
+		long none = insert(DONGTAN, "2031-06-10 12:00:00");
+		long openInvoice = invoice("ISSUED");
+		long canceledInvoice = invoice("CANCELED");
+		jdbc.update("UPDATE dongtanpass_redemption SET invoice_id = ? WHERE id = ?", openInvoice, open);
+		jdbc.update("UPDATE dongtanpass_redemption SET invoice_id = ? WHERE id = ?", canceledInvoice, canceled);
+
+		list(UserRole.STAFF, DONGTAN, "from=2031-06-10&to=2031-06-10").andExpect(status().isOk())
+			.andExpect(jsonPath("$.items[?(@.redemptionId == " + open + ")].invoiceId", contains((int) openInvoice)))
+			.andExpect(jsonPath("$.items[?(@.redemptionId == " + canceled + ")].invoiceId", contains(nullValue())))
+			.andExpect(jsonPath("$.items[?(@.redemptionId == " + none + ")].invoiceId", contains(nullValue())));
+	}
+
 	// 같은 시각이면 나중에 넣은 기록(ID가 큰 것)이 먼저다.
 	@Test
 	void 최신_사용_순이고_페이지로_나눈다() throws Exception {
@@ -217,6 +234,15 @@ class RedemptionLedgerApiTest {
 				VALUES (?, ?, ?, ?, NOW(6), NOW(6), ?)
 				""", pass.getId(), studentId, campusId, seoulTime, STAFF);
 		return jdbc.queryForObject("SELECT id FROM dongtanpass_redemption WHERE pass_id = ?", Long.class, pass.getId());
+	}
+
+	// 수납 모듈의 청구를 직접 넣는다(학생은 겹치지 않는 큰 번호). 취소한 청구는 open_key가 없다.
+	private long invoice(String status) {
+		long student = 9_029_000_000L + ThreadLocalRandom.current().nextInt(1_000_000_000);
+		jdbc.update("INSERT INTO billing_invoice (campus_id, student_id, target_month, status, open_key, discount_policy, "
+				+ "total_amount, created_at, updated_at) VALUES (1, ?, '2031-06', ?, ?, 'ADDITIVE', 280000, NOW(6), NOW(6))",
+				student, status, "CANCELED".equals(status) ? null : 1);
+		return jdbc.queryForObject("SELECT id FROM billing_invoice WHERE student_id = ?", Long.class, student);
 	}
 
 	private Pass save() {

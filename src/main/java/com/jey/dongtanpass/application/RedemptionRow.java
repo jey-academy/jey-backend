@@ -11,5 +11,5 @@ import java.time.LocalDate;
  * @param staffId 처리한 직원. 로그인 없이 넣은 기록이면 {@code null}
  */
 public record RedemptionRow(long redemptionId, Instant redeemedAt, LocalDate redeemedOn, long campusId, long passId,
-		String passNo, String partnerName, long studentId, String studentName, Long staffId) {
+		String passNo, String partnerName, long studentId, String studentName, Long staffId, Long invoiceId) {
 }

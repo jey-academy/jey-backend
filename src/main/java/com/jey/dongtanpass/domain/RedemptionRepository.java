@@ -43,7 +43,7 @@ public interface RedemptionRepository extends Repository<Redemption, Long> {
 	 */
 	@Query(value = """
 			select new com.jey.dongtanpass.domain.RedemptionEntry(r.id, r.redeemedAt, r.campusId, p.id, p.passNo,
-			 pa.name, r.studentId, r.createdBy)
+			 pa.name, r.studentId, r.createdBy, r.invoiceId)
 			from Redemption r, Pass p, Partner pa
 			where p.id = r.passId and pa.id = p.partnerId
 			 and (:campusId is null or r.campusId = :campusId)

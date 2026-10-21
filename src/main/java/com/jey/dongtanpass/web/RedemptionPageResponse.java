@@ -34,11 +34,14 @@ record RedemptionPageResponse(@Schema(requiredMode = RequiredMode.REQUIRED) List
 			@Schema(description = "학생 이름. 학생을 찾지 못하면 null(있어서는 안 되는 자료)", requiredMode = RequiredMode.REQUIRED,
 					nullable = true) String studentName,
 			@Schema(description = "처리한 직원의 계정 ID. 로그인 없이 넣은 기록이면 null", requiredMode = RequiredMode.REQUIRED,
-					nullable = true) Long staffId) {
+					nullable = true) Long staffId,
+			@Schema(description = "이 사용 기록에서 만든 열린 청구의 ID(결제 전이거나 결제한 청구). 만들지 않았거나 취소했으면 null",
+					requiredMode = RequiredMode.REQUIRED, nullable = true) Long invoiceId) {
 
 		static RedemptionItemResponse from(RedemptionRow row) {
 			return new RedemptionItemResponse(row.redemptionId(), row.redeemedAt(), row.redeemedOn(), row.campusId(),
-					row.passId(), row.passNo(), row.partnerName(), row.studentId(), row.studentName(), row.staffId());
+					row.passId(), row.passNo(), row.partnerName(), row.studentId(), row.studentName(), row.staffId(),
+					row.invoiceId());
 		}
 
 	}

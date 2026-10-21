@@ -8,5 +8,5 @@ import java.time.Instant;
  * @param staffId 처리한 직원(사용 기록의 {@code created_by}). 로그인 없이 넣은 기록이면 {@code null}
  */
 public record RedemptionEntry(Long redemptionId, Instant redeemedAt, Long campusId, Long passId, String passNo,
-		String partnerName, Long studentId, Long staffId) {
+		String partnerName, Long studentId, Long staffId, Long invoiceId) {
 }
