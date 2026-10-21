@@ -178,6 +178,11 @@ public class InvoiceService implements InvoiceIssuing {
 					.map(line -> InvoiceLine.of(line.fee().classId(), line.draft().lessonCount(), line.fee().baseFee8(),
 							charge(line, prepared.discounts())))
 					.toList();
+				// 그 달 청구가 이미 있으면 그 ID와 함께 409(권한 확인 뒤다. 화면이 그 청구로 바로 간다). 동시 요청이 이 확인을
+				// 함께 지나면 유니크 키가 막는다 — 그때는 ID 없이 409다(오류 난 세션으로 다시 읽지 않는다).
+				invoices.findOpenId(draft.studentId(), draft.targetMonth()).ifPresent(existing -> {
+					throw new BusinessException(BillingErrorCode.INVOICE_ALREADY_EXISTS).withId("invoiceId", existing);
+				});
 				Invoice saved = invoices.saveAndFlush(Invoice.issue(prepared.student().campusId(), draft.studentId(),
 						draft.targetMonth(), properties.discountPolicy(), lines));
 				auditLog.record(AuditEntry.of(BillingAuditAction.INVOICE_CREATED)

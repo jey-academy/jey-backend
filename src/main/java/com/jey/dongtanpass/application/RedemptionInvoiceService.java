@@ -71,7 +71,9 @@ public class RedemptionInvoiceService {
 				.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.STUDENT_NOT_FOUND));
 			user.requireCampus(student.campusId());
 			if (redemption.getInvoiceId() != null && invoiceIssuing.isOpen(redemption.getInvoiceId())) {
-				throw new BusinessException(DongtanpassErrorCode.REDEMPTION_ALREADY_INVOICED);
+				// 권한 확인 뒤다. 화면이 그 청구로 바로 간다.
+				throw new BusinessException(DongtanpassErrorCode.REDEMPTION_ALREADY_INVOICED)
+					.withId("invoiceId", redemption.getInvoiceId());
 			}
 			Pass pass = passes.findById(redemption.getPassId())
 				.orElseThrow(() -> new IllegalStateException("사용 기록의 패스가 없다: passId=" + redemption.getPassId()));

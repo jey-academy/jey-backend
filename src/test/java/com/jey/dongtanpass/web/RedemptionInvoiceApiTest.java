@@ -133,7 +133,9 @@ class RedemptionInvoiceApiTest {
 		long first = idOf(issue(redeemed.redemptionId(), 8, "").andExpect(status().isCreated()));
 
 		issue(redeemed.redemptionId(), 8, "").andExpect(status().isConflict())
-			.andExpect(jsonPath("$.code").value("DONGTANPASS_REDEMPTION_ALREADY_INVOICED"));
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_REDEMPTION_ALREADY_INVOICED"))
+			// 화면이 "그 청구 열기"로 바로 이어 간다.
+			.andExpect(jsonPath("$.invoiceId").value(first));
 		mockMvc.perform(post("/api/v1/billing/invoices/" + first + "/cancel").with(csrfToken(mockMvc))
 				.with(idempotencyKey()))
 			.andExpect(status().isOk());
@@ -190,19 +192,22 @@ class RedemptionInvoiceApiTest {
 	}
 
 	// 수납의 일반 경로로 그 달 청구를 먼저 만든 경우. 패스 경로는 바깥 트랜잭션 안에서 수납을 부르므로,
-	// 유니크 위반이 409로 끝나고 사용 기록도 그대로인지 본다(트랜잭션을 함께 쓰는 경로).
+	// 409로 끝나고 사용 기록도 그대로인지 본다(트랜잭션을 함께 쓰는 경로). 409에는 이미 있는 청구의 ID가 있다.
 	@Test
 	void 그_달_청구가_이미_있으면_409이고_사용_기록은_그대로다() throws Exception {
 		Redeemed redeemed = redeemed();
 		long student = studentOf(redeemed);
-		mockMvc.perform(post("/api/v1/billing/invoices").with(csrfToken(mockMvc)).with(idempotencyKey())
+		String existing = mockMvc.perform(post("/api/v1/billing/invoices").with(csrfToken(mockMvc)).with(idempotencyKey())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"studentId\": %d, \"targetMonth\": \"2026-11\", \"lines\": [{\"classId\": %d, \"lessonCount\": 8}]}"
 					.formatted(student, cls)))
-			.andExpect(status().isCreated());
+			.andExpect(status().isCreated())
+			.andReturn().getResponse().getContentAsString();
+		long existingId = Long.parseLong(existing.replaceAll("(?s).*?\"id\":(\\d+).*", "$1"));
 
 		issue(redeemed.redemptionId(), 8, "").andExpect(status().isConflict())
-			.andExpect(jsonPath("$.code").value("BILLING_INVOICE_ALREADY_EXISTS"));
+			.andExpect(jsonPath("$.code").value("BILLING_INVOICE_ALREADY_EXISTS"))
+			.andExpect(jsonPath("$.invoiceId").value(existingId));
 		assertThat(jdbc.queryForObject("SELECT invoice_id FROM dongtanpass_redemption WHERE id = ?", Long.class,
 				redeemed.redemptionId())).isNull();
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM billing_invoice WHERE student_id = ?", Long.class,

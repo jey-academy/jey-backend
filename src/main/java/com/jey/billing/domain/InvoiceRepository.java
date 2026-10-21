@@ -25,4 +25,9 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 	/** 한 지점의 그 달 청구. */
 	Page<Invoice> findByCampusIdAndTargetMonth(long campusId, YearMonth targetMonth, Pageable pageable);
 
+	/** 그 학생의 그 달 열린 청구(결제 전·결제함)의 ID. 한 학생 한 달에 열린 청구는 하나다(유니크 키). */
+	@Query("select i.id from Invoice i where i.studentId = :studentId and i.targetMonth = :targetMonth "
+			+ "and i.status <> com.jey.billing.domain.InvoiceStatus.CANCELED")
+	Optional<Long> findOpenId(@Param("studentId") long studentId, @Param("targetMonth") YearMonth targetMonth);
+
 }
