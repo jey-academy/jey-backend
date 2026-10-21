@@ -66,7 +66,8 @@ class MemberDirectoryService implements MemberDirectory {
 
 	private static StudentInfo infoOf(Student student) {
 		return new StudentInfo(student.getId(), student.getCampusId(), student.getClassId(), student.getName(),
-				student.getStatus() == StudentStatus.ENROLLED, student.getCreatedAt());
+				student.getStatus() == StudentStatus.ENROLLED, student.getCreatedAt(),
+				SchoolLabels.of(student.getSchool(), student.getGrade()));
 	}
 
 }

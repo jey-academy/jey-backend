@@ -103,6 +103,12 @@ jey:
     # 근거(참조값)가 있어야 붙는 할인. 직원이 고르는 청구 API로는 붙지 않고, 그 할인을 준 모듈이 참조값(패스 번호)과 함께 붙인다
     # (패스를 쓰지 않은 학생에게 패스 할인을 고르지 못하게). 미리 계산은 된다.
     referenced-discount-codes: DONGTAN_PASS
+    # 결제를 지점의 장부(구글 시트)에 쓴다 (ADR-0044). 지점 ID → 스프레드시트 ID. 비어 있으면 장부 연결이 꺼진다
+    # (결제는 그대로이고 장부 반영은 NOT_CONFIGURED로 미반영). 운영은 환경 변수 JEY_BILLING_LEDGER_SPREADSHEETS_{지점 ID}로 켠다.
+    ledger:
+      # spreadsheets.{지점 ID}: 스프레드시트 ID (여기서는 정하지 않는다)
+      # 서비스 계정 키(JSON)를 base64로. Parameter Store에만 둔다. 스프레드시트를 정했는데 키가 없으면 서버가 뜨지 않는다.
+      service-account-key: ${GOOGLE_LEDGER_SA_KEY_B64:}
 
   dongtanpass:
     # 학부모 링크 다시 받기의 틀린 시도 (ADR-0035). 이름과 번호가 맞은 요청은 세지 않는다. 넘으면 구간이 끝날 때까지 429로 응답한다.

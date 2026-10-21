@@ -21,6 +21,11 @@ jey:
       active-key-version: 1
       keys:
         1: dGVzdC1vbmx5LWRvbmd0YW5wYXNzLXFyLWtleS0wMDE=
+  billing:
+    ledger:
+      # 장부 반영의 다시 시도 스케줄러는 테스트에서 돌지 않게 한다. 테스트 컨텍스트들이 DB 하나를 같이 쓰므로,
+      # 장부가 꺼진 컨텍스트의 스케줄러가 다른 테스트의 줄을 집어 NOT_CONFIGURED로 끝내 버린다. 필요한 테스트가 직접 부른다.
+      retry-interval: 1h
   member:
     # 테스트는 한 계정으로 거부되는 요청을 되풀이하고 Redis의 횟수는 테스트 사이에 남는다.
     # 한도를 그대로 두면 순서에 따라 엉뚱한 테스트가 429를 받는다. 한도를 보는 테스트는 값을 직접 정한다.
