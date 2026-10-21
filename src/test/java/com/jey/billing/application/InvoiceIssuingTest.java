@@ -208,6 +208,20 @@ class InvoiceIssuingTest {
 		assertThat(issuing.openAmong(List.of(issuedId, paidId, canceledId, Long.MAX_VALUE)))
 			.containsExactlyInAnyOrder(issuedId, paidId);
 		assertThat(issuing.openAmong(List.of())).isEmpty();
+		assertThat(issuing.openAmong(List.of(issuedId, issuedId))).containsExactly(issuedId);
+	}
+
+	// 공개 창구의 계약: null을 넘기면 부르는 쪽의 버그다. 어디서 났는지 보이게 바로 실패한다.
+	@Test
+	void 열린_청구를_물을_때_null을_넘기면_바로_실패한다() {
+		java.util.List<Long> withNull = new java.util.ArrayList<>();
+		withNull.add(1L);
+		withNull.add(null);
+
+		assertThatThrownBy(() -> issuing.openAmong(withNull)).isInstanceOf(NullPointerException.class)
+			.hasMessageContaining("청구 ID");
+		assertThatThrownBy(() -> issuing.openAmong(null)).isInstanceOf(NullPointerException.class)
+			.hasMessageContaining("청구 ID");
 	}
 
 	@Test

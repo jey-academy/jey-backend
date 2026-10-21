@@ -150,18 +150,20 @@ public class InvoiceService implements InvoiceIssuing {
 	@Override
 	@Transactional(readOnly = true)
 	public boolean isOpen(long invoiceId) {
-		return invoices.findById(invoiceId).map(invoice -> invoice.getStatus() != InvoiceStatus.CANCELED).orElse(false);
+		return invoices.findById(invoiceId).map(Invoice::isOpen).orElse(false);
 	}
 
 	@Override
 	@Transactional(readOnly = true)
 	public Set<Long> openAmong(Collection<Long> invoiceIds) {
+		Objects.requireNonNull(invoiceIds, "청구 ID 목록이 없다");
+		invoiceIds.forEach(id -> Objects.requireNonNull(id, "청구 ID 목록에 null이 있다"));
 		if (invoiceIds.isEmpty()) {
 			return Set.of();
 		}
 		return invoices.findAllById(Set.copyOf(invoiceIds))
 			.stream()
-			.filter(invoice -> invoice.getStatus() != InvoiceStatus.CANCELED)
+			.filter(Invoice::isOpen)
 			.map(Invoice::getId)
 			.collect(Collectors.toUnmodifiableSet());
 	}
@@ -184,7 +186,7 @@ public class InvoiceService implements InvoiceIssuing {
 					.with("invoiceId", saved.getId())
 					.with("targetMonth", saved.getTargetMonth().toString())
 					.with("totalAmount", saved.getTotalAmount().amount().longValueExact()));
-				return detail(saved, studentNames.nameOf(saved.getStudentId()));
+				return detail(saved, prepared.student().name());
 			});
 		}
 		catch (DataIntegrityViolationException e) {
