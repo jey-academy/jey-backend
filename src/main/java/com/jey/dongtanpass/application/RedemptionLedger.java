@@ -27,10 +27,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 지점별 패스 사용 내역(데스크). 소속 지점으로 묶은 자료라 지점 범위는 부르는 쪽이 정해 넘긴다(ADR-0021).
+ * 지점별 패스 사용 내역과 사용 기록 하나(데스크). 소속 지점으로 묶은 자료다(ADR-0021): 목록은 부르는 쪽이 정한 지점 범위로 자르고,
+ * 단건은 사용한 지점을 여기서 확인한다.
  *
  * <p>기간은 사용일(한국 날짜)로 자르고 양끝을 포함한다. 시작일과 종료일은 모두 받아야 하고 1년까지다(아주 넓은 조회를 막는다).
- * 학생 이름은 한 페이지의 학생을 한 번에 조회해 붙인다.
+ * 학생 이름은 한 페이지의 학생을 한 번에 조회해 붙이고, 사용 기록에서 만든 청구는 열린 것(결제 전·결제함)만 싣는다
+ * (한 페이지를 billing에 한 번에 묻는다).
  */
 @Service
 public class RedemptionLedger {

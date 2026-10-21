@@ -25,7 +25,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-// 데스크가 지점의 패스 사용 내역을 본다. 소속 지점으로 묶은 자료다(직원은 자기 지점, 관리자는 전 지점, ADR-0021).
+// 데스크가 지점의 패스 사용 내역과 사용 기록 하나를 보고, 사용 기록에서 청구를 만든다.
+// 소속 지점으로 묶은 자료다(직원은 자기 지점, 관리자는 전 지점, ADR-0021).
 @RestController
 @RequestMapping("/api/v1/dongtanpass/redemptions")
 @AllowedRoles({ UserRole.STAFF, UserRole.ADMIN })
