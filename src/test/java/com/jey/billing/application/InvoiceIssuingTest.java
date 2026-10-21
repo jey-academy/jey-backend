@@ -195,6 +195,21 @@ class InvoiceIssuingTest {
 		assertThat(issuing.isOpen(Long.MAX_VALUE)).isFalse();
 	}
 
+	// 사용 내역 한 페이지의 청구가 열려 있는지 한 번에 묻는다(줄마다 묻지 않게).
+	@Test
+	void 여러_청구_가운데_열린_것만_한_번에_알려_준다() {
+		long cls = newClass();
+		long issuedId = issuing.issue(command(newStudent(), cls, List.of())).invoiceId();
+		long paidId = issuing.issue(command(newStudent(), cls, List.of())).invoiceId();
+		payments.record(paidId, PaymentMethod.CASH, Money.of(280_000), Money.ZERO, STAFF);
+		long canceledId = issuing.issue(command(newStudent(), cls, List.of())).invoiceId();
+		invoices.cancel(canceledId, STAFF);
+
+		assertThat(issuing.openAmong(List.of(issuedId, paidId, canceledId, Long.MAX_VALUE)))
+			.containsExactlyInAnyOrder(issuedId, paidId);
+		assertThat(issuing.openAmong(List.of())).isEmpty();
+	}
+
 	@Test
 	void 넘기는_할인은_코드_할인율_참조값이_규칙_안이어야_한다() {
 		assertThatThrownBy(() -> new InvoiceDiscount(" ", new BigDecimal("0.05"), "DT-1"))

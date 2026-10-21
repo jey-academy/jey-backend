@@ -1,5 +1,8 @@
 package com.jey.billing.api;
 
+import java.util.Collection;
+import java.util.Set;
+
 import com.jey.core.shared.BusinessException;
 
 /**
@@ -23,5 +26,11 @@ public interface InvoiceIssuing {
 
 	/** 열린 청구(결제 전이거나 결제함)인지. 취소했거나 없는 청구면 {@code false}. */
 	boolean isOpen(long invoiceId);
+
+	/**
+	 * 그 가운데 열린 청구(결제 전이거나 결제함)의 ID. 취소했거나 없는 청구는 빠진다. 목록 한 페이지 분량(수십~백 개)에 쓴다
+	 * (줄마다 {@link #isOpen}을 부르지 않게). 빈 목록이면 DB를 부르지 않고 빈 집합이다.
+	 */
+	Set<Long> openAmong(Collection<Long> invoiceIds);
 
 }

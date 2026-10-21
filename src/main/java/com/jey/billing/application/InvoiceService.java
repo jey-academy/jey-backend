@@ -3,12 +3,14 @@ package com.jey.billing.application;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.LongConsumer;
+import java.util.stream.Collectors;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -149,6 +151,19 @@ public class InvoiceService implements InvoiceIssuing {
 	@Transactional(readOnly = true)
 	public boolean isOpen(long invoiceId) {
 		return invoices.findById(invoiceId).map(invoice -> invoice.getStatus() != InvoiceStatus.CANCELED).orElse(false);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Set<Long> openAmong(Collection<Long> invoiceIds) {
+		if (invoiceIds.isEmpty()) {
+			return Set.of();
+		}
+		return invoices.findAllById(Set.copyOf(invoiceIds))
+			.stream()
+			.filter(invoice -> invoice.getStatus() != InvoiceStatus.CANCELED)
+			.map(Invoice::getId)
+			.collect(Collectors.toUnmodifiableSet());
 	}
 
 	// 부르는 쪽이 바깥 트랜잭션을 열었으면 그 안에서 돈다. 여기서 예외가 나면 바깥 트랜잭션은 롤백으로 표시된다
