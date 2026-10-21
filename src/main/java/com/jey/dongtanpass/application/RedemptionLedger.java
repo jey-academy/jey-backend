@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 
 import com.jey.core.auth.api.CampusScope;
 import com.jey.billing.api.InvoiceIssuing;
+import com.jey.core.auth.api.AuthenticatedUser;
 import com.jey.core.member.api.MemberDirectory;
 import com.jey.core.member.api.StudentInfo;
 import com.jey.core.shared.BusinessException;
@@ -87,6 +88,27 @@ public class RedemptionLedger {
 				entries.getContent().stream().map(RedemptionEntry::invoiceId).filter(Objects::nonNull).toList());
 		return new PageImpl<>(entries.getContent().stream().map(entry -> rowOf(entry, students, openInvoices)).toList(),
 				entries.getPageable(), entries.getTotalElements());
+	}
+
+	/**
+	 * 사용 기록 하나. 사용한 지점을 다룰 수 있어야 본다(직원은 소속 지점, 관리자는 모두).
+	 *
+	 * @throws BusinessException 없으면 404, 사용한 지점을 다룰 수 없으면 403
+	 */
+	@Transactional(readOnly = true)
+	public RedemptionDetail get(long redemptionId, AuthenticatedUser user) {
+		RedemptionEntry entry = redemptions.findEntry(redemptionId)
+			.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.REDEMPTION_NOT_FOUND));
+		user.requireCampus(entry.campusId());
+		StudentInfo student = members.findStudent(entry.studentId()).orElse(null);
+		if (student == null) {
+			log.warn("사용 기록의 학생을 찾지 못했다: redemptionId={} studentId={}", entry.redemptionId(), entry.studentId());
+		}
+		Long invoiceId = entry.invoiceId() != null && invoices.isOpen(entry.invoiceId()) ? entry.invoiceId() : null;
+		return new RedemptionDetail(entry.redemptionId(), entry.redeemedAt(),
+				LocalDate.ofInstant(entry.redeemedAt(), clock.getZone()), entry.campusId(), entry.passId(),
+				entry.passNo(), entry.partnerName(), entry.studentId(), student == null ? null : student.name(),
+				student == null ? null : student.campusId(), invoiceId);
 	}
 
 	private RedemptionRow rowOf(RedemptionEntry entry, Map<Long, StudentInfo> students, Set<Long> openInvoices) {

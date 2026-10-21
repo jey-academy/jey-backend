@@ -137,6 +137,75 @@ class RedemptionLedgerApiTest {
 			.andExpect(jsonPath("$.items[?(@.redemptionId == " + none + ")].invoiceId", contains(nullValue())));
 	}
 
+	// 청구 화면은 주소에 사용 기록만 두고 학생·지점을 여기서 읽는다(주소의 학생을 손으로 고쳐 화면과 청구가 어긋나지 않게).
+	@Test
+	void 단건은_사용_기록과_학생과_열린_청구를_준다() throws Exception {
+		String name = "단건" + Integer.toHexString(RANDOM.nextInt());
+		long studentId = register(name);
+		Pass pass = save();
+		long id = insert(DONGTAN, "2031-07-01 10:00:00", pass, studentId);
+		long invoiceId = invoice("ISSUED");
+		jdbc.update("UPDATE dongtanpass_redemption SET invoice_id = ? WHERE id = ?", invoiceId, id);
+
+		one(UserRole.STAFF, DONGTAN, id).andExpect(status().isOk())
+			.andExpect(jsonPath("$.redemptionId").value(id))
+			.andExpect(jsonPath("$.redeemedOn").value("2031-07-01"))
+			.andExpect(jsonPath("$.redeemedAt").value("2031-07-01T01:00:00Z"))
+			.andExpect(jsonPath("$.campusId").value(DONGTAN))
+			.andExpect(jsonPath("$.passId").value(pass.getId()))
+			.andExpect(jsonPath("$.passNo").value(pass.getPassNo()))
+			.andExpect(jsonPath("$.partnerName").value("테스트학원-" + PARTNER))
+			.andExpect(jsonPath("$.studentId").value(studentId))
+			.andExpect(jsonPath("$.studentName").value(name))
+			.andExpect(jsonPath("$.studentCampusId").value(DONGTAN))
+			.andExpect(jsonPath("$.invoiceId").value(invoiceId));
+	}
+
+	@Test
+	void 단건의_청구는_취소했으면_null이다() throws Exception {
+		long id = insert(DONGTAN, "2031-07-02 10:00:00");
+		jdbc.update("UPDATE dongtanpass_redemption SET invoice_id = ? WHERE id = ?", invoice("CANCELED"), id);
+
+		one(UserRole.STAFF, DONGTAN, id).andExpect(status().isOk()).andExpect(jsonPath("$.invoiceId").value(nullValue()));
+	}
+
+	// 반 목록과 청구는 학생의 지금 지점 기준이다. 사용 처리 뒤 학생이 지점을 옮기면 두 지점이 다르다.
+	@Test
+	void 학생이_지점을_옮겼으면_사용_지점과_학생의_지금_지점이_다르다() throws Exception {
+		long studentId = register("이동" + Integer.toHexString(RANDOM.nextInt()));
+		long id = insert(DONGTAN, "2031-07-03 10:00:00", save(), studentId);
+		jdbc.update("UPDATE core_student SET campus_id = ?, class_id = NULL WHERE id = ?", NEUNGDONG, studentId);
+
+		one(UserRole.STAFF, DONGTAN, id).andExpect(status().isOk())
+			.andExpect(jsonPath("$.campusId").value(DONGTAN))
+			.andExpect(jsonPath("$.studentCampusId").value(NEUNGDONG));
+	}
+
+	@Test
+	void 학생을_찾지_못한_기록도_보이고_이름과_학생의_지점만_비어_있다() throws Exception {
+		long id = insert(DONGTAN, "2031-07-04 10:00:00");
+
+		one(UserRole.STAFF, DONGTAN, id).andExpect(status().isOk())
+			.andExpect(jsonPath("$.studentName").value(nullValue()))
+			.andExpect(jsonPath("$.studentCampusId").value(nullValue()));
+	}
+
+	@Test
+	void 단건은_다른_지점_직원이_보지_못하고_관리자는_본다() throws Exception {
+		long id = insert(DONGTAN, "2031-07-05 10:00:00");
+
+		one(UserRole.STAFF, NEUNGDONG, id).andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("AUTH_CAMPUS_NOT_ALLOWED"));
+		one(UserRole.ADMIN, null, id).andExpect(status().isOk());
+		one(UserRole.PARTNER, null, id).andExpect(status().isForbidden());
+	}
+
+	@Test
+	void 없는_사용_기록은_404다() throws Exception {
+		one(UserRole.STAFF, DONGTAN, Long.MAX_VALUE).andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_REDEMPTION_NOT_FOUND"));
+	}
+
 	// 같은 시각이면 나중에 넣은 기록(ID가 큰 것)이 먼저다.
 	@Test
 	void 최신_사용_순이고_페이지로_나눈다() throws Exception {
@@ -212,6 +281,10 @@ class RedemptionLedgerApiTest {
 
 	private ResultActions list(UserRole role, Long campusId, String query) throws Exception {
 		return mockMvc.perform(get("/api/v1/dongtanpass/redemptions?" + query).with(securityContext(login(role, campusId))));
+	}
+
+	private ResultActions one(UserRole role, Long campusId, long id) throws Exception {
+		return mockMvc.perform(get("/api/v1/dongtanpass/redemptions/" + id).with(securityContext(login(role, campusId))));
 	}
 
 	private static SecurityContext login(UserRole role, Long campusId) {

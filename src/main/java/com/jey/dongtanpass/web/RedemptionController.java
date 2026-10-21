@@ -58,6 +58,15 @@ class RedemptionController {
 				body.discountCodesOrEmpty(), user));
 	}
 
+	// operationId는 직접 정한다(메서드 이름이 다른 컨트롤러와 겹치면 기존 경로의 번호가 밀린다).
+	@Operation(operationId = "getRedemption", summary = "패스 사용 기록 하나",
+			description = "청구 화면이 학생(이름, 지금 지점)과 이 사용 기록의 열린 청구를 읽는다. 사용한 지점을 다룰 수 없으면 403(AUTH_CAMPUS_NOT_ALLOWED), "
+					+ "없으면 404(DONGTANPASS_REDEMPTION_NOT_FOUND)")
+	@GetMapping("/{id}")
+	RedemptionDetailResponse get(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable long id) {
+		return RedemptionDetailResponse.from(redemptionLedger.get(id, user));
+	}
+
 	@Operation(summary = "패스 사용 내역",
 			description = "최신 사용 순이다. 직원은 지점을 고르지 않으면 소속 지점이고, 다른 지점을 고르면 403(AUTH_CAMPUS_NOT_ALLOWED). "
 					+ "관리자는 고르지 않으면 전 지점이다. 기간은 사용일(한국 날짜)로 자르고 양끝을 포함하며 둘 다 필수다. "
