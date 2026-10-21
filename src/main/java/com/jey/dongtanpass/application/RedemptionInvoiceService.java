@@ -2,6 +2,7 @@ package com.jey.dongtanpass.application;
 
 import java.time.YearMonth;
 import java.util.List;
+import java.util.OptionalLong;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -70,10 +71,16 @@ public class RedemptionInvoiceService {
 			StudentInfo student = members.findStudent(redemption.getStudentId())
 				.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.STUDENT_NOT_FOUND));
 			user.requireCampus(student.campusId());
-			if (redemption.getInvoiceId() != null && invoiceIssuing.isOpen(redemption.getInvoiceId())) {
-				// 권한 확인 뒤다. 화면이 그 청구로 바로 간다.
-				throw new BusinessException(DongtanpassErrorCode.REDEMPTION_ALREADY_INVOICED)
-					.withId("invoiceId", redemption.getInvoiceId());
+			OptionalLong openCampus = redemption.getInvoiceId() == null ? OptionalLong.empty()
+					: invoiceIssuing.campusOfOpen(redemption.getInvoiceId());
+			if (openCampus.isPresent()) {
+				BusinessException conflict = new BusinessException(DongtanpassErrorCode.REDEMPTION_ALREADY_INVOICED);
+				// 그 청구가 학생의 지금 지점(위에서 권한을 확인한 지점)에 속할 때만 ID를 싣는다. 학생이 지점을 옮겼으면 옛 지점의
+				// 청구라 요청한 사람이 열 수 없다.
+				if (openCampus.getAsLong() == student.campusId()) {
+					conflict.withId("invoiceId", redemption.getInvoiceId());
+				}
+				throw conflict;
 			}
 			Pass pass = passes.findById(redemption.getPassId())
 				.orElseThrow(() -> new IllegalStateException("사용 기록의 패스가 없다: passId=" + redemption.getPassId()));

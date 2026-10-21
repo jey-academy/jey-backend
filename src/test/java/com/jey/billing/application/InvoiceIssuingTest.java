@@ -211,6 +211,19 @@ class InvoiceIssuingTest {
 		assertThat(issuing.openAmong(List.of(issuedId, issuedId))).containsExactly(issuedId);
 	}
 
+	// 열린 청구의 지점. 부르는 쪽이 확인한 지점과 같을 때만 그 청구 ID를 화면에 알려 준다.
+	@Test
+	void 열린_청구면_그_지점을_알려_주고_닫혔거나_없으면_비어_있다() {
+		long cls = newClass();
+		long issuedId = issuing.issue(command(newStudent(), cls, List.of())).invoiceId();
+		long canceledId = issuing.issue(command(newStudent(), cls, List.of())).invoiceId();
+		invoices.cancel(canceledId, STAFF);
+
+		assertThat(issuing.campusOfOpen(issuedId)).hasValue(1L);
+		assertThat(issuing.campusOfOpen(canceledId)).isEmpty();
+		assertThat(issuing.campusOfOpen(Long.MAX_VALUE)).isEmpty();
+	}
+
 	// 공개 창구의 계약: null을 넘기면 부르는 쪽의 버그다. 어디서 났는지 보이게 바로 실패한다.
 	@Test
 	void 열린_청구를_물을_때_null을_넘기면_바로_실패한다() {

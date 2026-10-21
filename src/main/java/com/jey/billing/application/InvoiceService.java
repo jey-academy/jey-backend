@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.LongConsumer;
 import java.util.stream.Collectors;
@@ -155,6 +156,15 @@ public class InvoiceService implements InvoiceIssuing {
 
 	@Override
 	@Transactional(readOnly = true)
+	public OptionalLong campusOfOpen(long invoiceId) {
+		return invoices.findById(invoiceId)
+			.filter(Invoice::isOpen)
+			.map(invoice -> OptionalLong.of(invoice.getCampusId()))
+			.orElse(OptionalLong.empty());
+	}
+
+	@Override
+	@Transactional(readOnly = true)
 	public Set<Long> openAmong(Collection<Long> invoiceIds) {
 		Objects.requireNonNull(invoiceIds, "청구 ID 목록이 없다");
 		invoiceIds.forEach(id -> Objects.requireNonNull(id, "청구 ID 목록에 null이 있다"));
@@ -178,10 +188,15 @@ public class InvoiceService implements InvoiceIssuing {
 					.map(line -> InvoiceLine.of(line.fee().classId(), line.draft().lessonCount(), line.fee().baseFee8(),
 							charge(line, prepared.discounts())))
 					.toList();
-				// 그 달 청구가 이미 있으면 그 ID와 함께 409(권한 확인 뒤다. 화면이 그 청구로 바로 간다). 동시 요청이 이 확인을
-				// 함께 지나면 유니크 키가 막는다 — 그때는 ID 없이 409다(오류 난 세션으로 다시 읽지 않는다).
-				invoices.findOpenId(draft.studentId(), draft.targetMonth()).ifPresent(existing -> {
-					throw new BusinessException(BillingErrorCode.INVOICE_ALREADY_EXISTS).withId("invoiceId", existing);
+				// 그 달 청구가 이미 있으면 409. 그 청구가 학생의 지금 지점(위에서 권한을 확인한 지점)에 속할 때만 ID를 싣는다
+				// — 학생이 지점을 옮겼으면 옛 지점의 청구라 요청한 사람이 열 수 없다. 동시 요청이 이 확인을 함께 지나면
+				// 유니크 키가 막는다 — 그때도 ID 없이 409다(오류 난 세션으로 다시 읽지 않는다).
+				invoices.findOpen(draft.studentId(), draft.targetMonth()).ifPresent(existing -> {
+					BusinessException conflict = new BusinessException(BillingErrorCode.INVOICE_ALREADY_EXISTS);
+					if (existing.campusId() == prepared.student().campusId()) {
+						conflict.withId("invoiceId", existing.id());
+					}
+					throw conflict;
 				});
 				Invoice saved = invoices.saveAndFlush(Invoice.issue(prepared.student().campusId(), draft.studentId(),
 						draft.targetMonth(), properties.discountPolicy(), lines));

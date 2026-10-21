@@ -133,6 +133,23 @@ class InvoiceApiTest {
 		assertThat(again).isEqualTo(conflict);
 	}
 
+	// 학생이 지점을 옮겼으면 그 달 청구는 옛 지점의 것이다. 확인한 것은 학생의 지금 지점이라, 옛 지점의 청구 ID는 싣지 않는다
+	// (화면이 열 수 없는 청구로 보내지 않게 — ID 없는 409는 "그 달 청구 목록에서 열기"로 안내한다).
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 학생이_지점을_옮긴_뒤의_409에는_옛_지점_청구의_ID를_싣지_않는다() throws Exception {
+		Fixture fixture = fixture();
+		issue(body(fixture.student(), "2026-11", fixture.cls(), 8, "")).andExpect(status().isCreated());
+		jdbc.update("UPDATE core_student SET campus_id = ?, class_id = NULL WHERE id = ?", MemberFixtures.NEUNGDONG,
+				fixture.student());
+		long neungdongClass = classes.create(MemberFixtures.NEUNGDONG, "반-" + UUID.randomUUID().toString().substring(0, 8),
+				Money.of(280_000), Money.ZERO).getId();
+
+		issue(body(fixture.student(), "2026-11", neungdongClass, 8, "")).andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("BILLING_INVOICE_ALREADY_EXISTS"))
+			.andExpect(jsonPath("$.invoiceId").doesNotExist());
+	}
+
 	// 취소한 청구만 있는 달은 막지 않는다(열린 청구만 본다).
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = MemberFixtures.DONGTAN)

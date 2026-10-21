@@ -191,6 +191,20 @@ class RedemptionInvoiceApiTest {
 				student)).isZero();
 	}
 
+	// 사용 기록의 청구는 만들 때의 학생 지점에 속한다. 그 뒤 학생이 지점을 옮겼으면 그 청구 ID는 싣지 않는다
+	// (두 지점을 다 다루는 관리자라도 확인한 것은 학생의 지금 지점이다).
+	@Test
+	@WithJeyUser(role = UserRole.ADMIN)
+	void 학생이_지점을_옮긴_뒤의_409에는_옛_지점_청구의_ID를_싣지_않는다() throws Exception {
+		Redeemed redeemed = redeemed();
+		issue(redeemed.redemptionId(), 8, "").andExpect(status().isCreated());
+		jdbc.update("UPDATE core_student SET campus_id = 2, class_id = NULL WHERE id = ?", studentOf(redeemed));
+
+		issue(redeemed.redemptionId(), 8, "").andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("DONGTANPASS_REDEMPTION_ALREADY_INVOICED"))
+			.andExpect(jsonPath("$.invoiceId").doesNotExist());
+	}
+
 	// 수납의 일반 경로로 그 달 청구를 먼저 만든 경우. 패스 경로는 바깥 트랜잭션 안에서 수납을 부르므로,
 	// 409로 끝나고 사용 기록도 그대로인지 본다(트랜잭션을 함께 쓰는 경로). 409에는 이미 있는 청구의 ID가 있다.
 	@Test

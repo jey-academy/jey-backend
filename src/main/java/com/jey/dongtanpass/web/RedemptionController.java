@@ -46,7 +46,7 @@ class RedemptionController {
 	// operationId는 직접 정한다(메서드 이름이 다른 컨트롤러와 겹치면 기존 경로의 번호가 밀린다).
 	@Operation(operationId = "issueRedemptionInvoice", summary = "사용 기록에서 청구 만들기",
 			description = "패스를 쓴 학생의 그 달 청구를 만든다. 패스 할인은 서버가 붙인다(지금 할인율, 참조값 = 패스 번호, 직원이 더 고른 할인보다 먼저 계산). "
-					+ "패스 할인은 이 경로로만 청구에 붙는다(수납의 청구 만들기는 받지 않는다). 사용 기록 하나에 열린 청구 하나다: 있으면 409(DONGTANPASS_REDEMPTION_ALREADY_INVOICED — 오류 본문의 invoiceId가 그 청구다), "
+					+ "패스 할인은 이 경로로만 청구에 붙는다(수납의 청구 만들기는 받지 않는다). 사용 기록 하나에 열린 청구 하나다: 있으면 409(DONGTANPASS_REDEMPTION_ALREADY_INVOICED — 오류 본문의 invoiceId가 그 청구다. 학생이 지점을 옮겨 옛 지점의 청구면 없다), "
 					+ "그 청구를 취소하면 다시 만들 수 있다. 없는 사용 기록 404(DONGTANPASS_REDEMPTION_NOT_FOUND), 사용 기록의 지점이나 학생의 지금 지점을 다룰 수 없으면 403(AUTH_CAMPUS_NOT_ALLOWED), "
 					+ "패스 할인이 꺼져 있으면 409(DONGTANPASS_DISCOUNT_INACTIVE). 추가 할인에 패스 할인을 또 고르면 400(BILLING_DISCOUNT_NEEDS_REFERENCE). "
 					+ "반·학생·할인·한 달 한 청구의 거부는 수납의 청구 만들기와 같은 코드다(BILLING_…, 그 달 청구가 있으면 본문의 invoiceId)")
