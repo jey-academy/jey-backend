@@ -254,7 +254,7 @@
             "type" : "string"
           },
           "paidAmount" : {
-            "description" : "근거 결제의 금액(원). 0보다 큰 1원 단위의 정수",
+            "description" : "근거 결제의 금액(원). JEY가 이 학생에게 받은 그 달 수강료다. 0보다 큰 1원 단위의 정수. 기록으로만 남고 할인 계산에 쓰지 않는다(연계 학원이 사용 처리 때 원래 수강료를 따로 넣는다)",
             "type" : "number"
           },
           "paidOn" : {
@@ -263,7 +263,7 @@
             "type" : "string"
           },
           "paymentMethod" : {
-            "description" : "결제 수단",
+            "description" : "근거 결제의 수단",
             "enum" : [ "CARD", "CASH", "TRANSFER", "OTHER" ],
             "type" : "string"
           },
@@ -1796,16 +1796,16 @@
             "type" : "string"
           },
           "paidAmount" : {
-            "description" : "결제 금액(원). 0보다 큰 1원 단위의 정수",
+            "description" : "근거 결제의 금액(원). 0보다 큰 1원 단위의 정수. 기록으로만 남고 할인 계산에 쓰지 않는다(할인은 JEY 청구에서 계산한다)",
             "type" : "number"
           },
           "paidOn" : {
-            "description" : "결제일(YYYY-MM-DD). 오늘(한국 날짜)보다 뒤는 안 된다",
+            "description" : "근거 결제의 결제일(YYYY-MM-DD). 근거 결제는 발급하는 연계 학원이 이 학생에게 받은 결제다. 오늘(한국 날짜)보다 뒤는 안 된다",
             "format" : "date",
             "type" : "string"
           },
           "paymentMethod" : {
-            "description" : "결제 수단",
+            "description" : "근거 결제의 수단",
             "enum" : [ "CARD", "CASH", "TRANSFER", "OTHER" ],
             "type" : "string"
           },

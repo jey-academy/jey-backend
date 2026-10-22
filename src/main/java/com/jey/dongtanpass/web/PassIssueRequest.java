@@ -21,9 +21,9 @@ record PassIssueRequest(
 		@Schema(description = "학생 이름. 앞뒤 공백은 뗀다. 데스크에서 등록할 이름과 같아야 한다(띄어쓰기는 달라도 된다)") @NotBlank @Size(
 				max = Pass.MAX_STUDENT_NAME_LENGTH) String studentName,
 		@Schema(description = "학부모 휴대전화 번호. 확인용 값으로만 저장되고 다시 보여 주지 않는다") @NotNull PhoneNumber guardianPhone,
-		@Schema(description = "결제일(YYYY-MM-DD). 오늘(한국 날짜)보다 뒤는 안 된다") @NotNull LocalDate paidOn,
-		@Schema(description = "결제 금액(원). 0보다 큰 1원 단위의 정수") @NotNull Money paidAmount,
-		@Schema(description = "결제 수단") @NotNull PaymentMethod paymentMethod,
+		@Schema(description = "근거 결제의 결제일(YYYY-MM-DD). 근거 결제는 발급하는 연계 학원이 이 학생에게 받은 결제다. 오늘(한국 날짜)보다 뒤는 안 된다") @NotNull LocalDate paidOn,
+		@Schema(description = "근거 결제의 금액(원). 0보다 큰 1원 단위의 정수. 기록으로만 남고 할인 계산에 쓰지 않는다(할인은 JEY 청구에서 계산한다)") @NotNull Money paidAmount,
+		@Schema(description = "근거 결제의 수단") @NotNull PaymentMethod paymentMethod,
 		@Schema(description = "학부모에게 고지 문구를 보여 주고 동의를 받았는지. true여야 발급한다") @NotNull Boolean consentConfirmed,
 		@Schema(description = "보여 준 고지 문구의 버전(고지 문구 API의 version). 지금 버전과 다르면 400") @NotBlank @Size(
 				max = ConsentNotice.MAX_VERSION_LENGTH) String noticeVersion) {
