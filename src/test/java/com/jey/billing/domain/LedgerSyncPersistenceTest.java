@@ -84,6 +84,21 @@ class LedgerSyncPersistenceTest {
 		assertThat(read.isCancelMarked()).isFalse();
 	}
 
+	// 탭 이름은 지점 이름이 들어가 길어질 수 있다(예: "11월 동탄관(26)").
+	@Test
+	void 긴_탭_이름도_저장한다() {
+		long paymentId = newPayment();
+		String tab = "12월 아주긴지점이름이들어간캠퍼스본관과별관을합친곳(26)";
+		long id = transaction.execute(status -> {
+			LedgerSync sync = syncs.save(LedgerSync.pending(paymentId, NO_LEDGER_CAMPUS, 2L, YearMonth.of(2026, 12), AT));
+			sync.claim(AT);
+			sync.written(tab, 8, AT);
+			return sync.getId();
+		});
+
+		assertThat(syncs.findById(id).orElseThrow().getSheetTab()).isEqualTo(tab);
+	}
+
 	@Test
 	void 같은_결제의_줄은_하나다() {
 		long paymentId = newPayment();

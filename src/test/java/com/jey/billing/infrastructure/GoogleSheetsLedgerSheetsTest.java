@@ -76,6 +76,20 @@ class GoogleSheetsLedgerSheetsTest {
 		assertThat(sheets.read(SHEET_ID, "a'b")).containsExactly(List.of("x"));
 	}
 
+	// 실제 장부의 탭 이름(한글, 공백, 괄호). 주소에서는 한글과 공백이 인코딩되고, 범위는 작은따옴표로 감싼다.
+	@Test
+	void 한글과_공백과_괄호가_든_탭_이름으로_읽고_쓴다() {
+		google.stubFor(get(urlPathEqualTo("/v4/spreadsheets/sheet-1/values/'11%EC%9B%94%20%EB%8F%99%ED%83%84%EA%B4%80(26)'!A:AZ"))
+			.willReturn(okJson("{\"values\": [[\"x\"]]}")));
+		google.stubFor(post(urlPathEqualTo(WRITE_PATH)).willReturn(okJson("{}")));
+
+		assertThat(sheets.read(SHEET_ID, "11월 동탄관(26)")).containsExactly(List.of("x"));
+		sheets.write(SHEET_ID, "11월 동탄관(26)", Map.of("D8", "김하윤(EJ5)"));
+
+		google.verify(postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(equalToJson("""
+				{"valueInputOption": "RAW", "data": [{"range": "'11월 동탄관(26)'!D8", "values": [["김하윤(EJ5)"]]}]}""")));
+	}
+
 	@Test
 	void 탭이_없으면_탭_없음으로_거절된다() {
 		google.stubFor(get(urlPathEqualTo(READ_PATH)).willReturn(aResponse().withStatus(400)

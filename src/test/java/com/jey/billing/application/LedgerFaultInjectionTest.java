@@ -209,7 +209,7 @@ class LedgerFaultInjectionTest extends LedgerSheetsTestSupport {
 		assertThat(sync(paymentId).getSheetRow()).isEqualTo(7);
 		// 쓰기 요청은 둘: 실패한 6행, 그다음 7행. 6행에 성공한 쓰기는 없다.
 		google.verify(2, postRequestedFor(urlPathEqualTo(WRITE_PATH)));
-		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(containing("'2026-11'!D7")));
+		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(containing("'11월 동탄관(26)'!D7")));
 		report("사람이 그 줄을 채움", attempts, 0, doubleWrites());
 	}
 
@@ -259,8 +259,8 @@ class LedgerFaultInjectionTest extends LedgerSheetsTestSupport {
 
 		paid.forEach(id -> awaitStatus(id, LedgerSyncStatus.SYNCED));
 		assertThat(paid.stream().map(id -> sync(id).getSheetRow())).containsExactlyInAnyOrder(6, 7);
-		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(containing("'2026-11'!D6")));
-		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(containing("'2026-11'!D7")));
+		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(containing("'11월 동탄관(26)'!D6")));
+		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(containing("'11월 동탄관(26)'!D7")));
 		report("두 결제 동시(같은 블록)", paid.stream().mapToInt(id -> sync(id).getAttempts()).sum(), 0, doubleWrites());
 	}
 

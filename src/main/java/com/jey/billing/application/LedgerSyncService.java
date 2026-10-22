@@ -33,6 +33,8 @@ import com.jey.billing.domain.ledger.LedgerRow;
 import com.jey.billing.domain.ledger.LedgerTarget;
 import com.jey.core.audit.api.AuditEntry;
 import com.jey.core.audit.api.AuditLog;
+import com.jey.core.campus.api.CampusCatalog;
+import com.jey.core.campus.api.CampusInfo;
 import com.jey.core.member.api.MemberRefs;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.UniqueKeys;
@@ -79,13 +81,15 @@ public class LedgerSyncService {
 
 	private final AuditLog auditLog;
 
+	private final CampusCatalog catalog;
+
 	private final TransactionTemplate transaction;
 
 	private final Clock clock;
 
 	LedgerSyncService(LedgerSyncRepository syncs, PaymentRepository payments, InvoiceRepository invoices,
 			LedgerEntryAssembler assembler, LedgerSheets sheets, LedgerLock lock, LedgerProperties properties,
-			AuditLog auditLog, TransactionTemplate transaction, Clock clock) {
+			AuditLog auditLog, CampusCatalog catalog, TransactionTemplate transaction, Clock clock) {
 		this.syncs = syncs;
 		this.payments = payments;
 		this.invoices = invoices;
@@ -94,6 +98,7 @@ public class LedgerSyncService {
 		this.lock = lock;
 		this.properties = properties;
 		this.auditLog = auditLog;
+		this.catalog = catalog;
 		this.transaction = transaction;
 		this.clock = clock;
 	}
@@ -224,9 +229,10 @@ public class LedgerSyncService {
 			if (held.isEmpty()) {
 				return new Postpone();
 			}
+			String tab = tabOf(claimed);
 			try (LedgerLock.Held hold = held.get()) {
-				return cancel ? markCanceled(spreadsheet.get(), claimed, hold)
-						: write(spreadsheet.get(), claimed, (LedgerEntryAssembler.Assembled.Ready) assembled, hold);
+				return cancel ? markCanceled(spreadsheet.get(), tab, claimed, hold)
+						: write(spreadsheet.get(), tab, claimed, (LedgerEntryAssembler.Assembled.Ready) assembled, hold);
 			}
 		} catch (LedgerSheetsUnavailable e) {
 			log.warn("구글 시트 장애로 장부 반영을 미룬다: 반영 {}, 시도 {}, {}", claimed.id(), claimed.attempts(), e.getMessage());
@@ -250,9 +256,16 @@ public class LedgerSyncService {
 		return claimed.hasWrittenRow() ? new Unsynced(reason) : new CancelUnwritten();
 	}
 
-	private Outcome write(String spreadsheet, Claimed claimed, LedgerEntryAssembler.Assembled.Ready ready,
+	// 대상 월과 지점 이름으로 만든 탭 이름. 지점이 없으면(있어서는 안 되는 자료) 앱 오류로 미반영이 된다.
+	private String tabOf(Claimed claimed) {
+		String campusName = catalog.findCampus(claimed.campusId())
+			.map(CampusInfo::name)
+			.orElseThrow(() -> new IllegalStateException("장부 탭 이름을 만들 지점이 없다: " + claimed.campusId()));
+		return properties.tabNameFor(claimed.targetMonth(), campusName);
+	}
+
+	private Outcome write(String spreadsheet, String tab, Claimed claimed, LedgerEntryAssembler.Assembled.Ready ready,
 			LedgerLock.Held hold) {
-		String tab = claimed.tab();
 		LedgerLayout layout = LedgerLayout.parse(sheets.read(spreadsheet, tab), claimed.targetMonth());
 		return switch (layout.find(ready.className(), LedgerFormats.marker(claimed.paymentId()))) {
 			case LedgerTarget.AlreadyWritten written -> new Written(tab, written.row());
@@ -265,8 +278,7 @@ public class LedgerSyncService {
 	}
 
 	// 쓰기 전이라도 표시를 찾는다 — 앞선 시도가 쓰고 응답을 잃었을 수 있다.
-	private Outcome markCanceled(String spreadsheet, Claimed claimed, LedgerLock.Held hold) {
-		String tab = claimed.tab();
+	private Outcome markCanceled(String spreadsheet, String tab, Claimed claimed, LedgerLock.Held hold) {
 		LedgerLayout layout = LedgerLayout.parse(sheets.read(spreadsheet, tab), claimed.targetMonth());
 		Optional<Integer> row = layout.rowOf(LedgerFormats.marker(claimed.paymentId()));
 		if (row.isEmpty()) {
@@ -309,7 +321,7 @@ public class LedgerSyncService {
 				audit(BillingAuditAction.LEDGER_WRITTEN, sync, written.tab(), written.row());
 			}
 			case CancelMarked marked -> {
-				sync.cancelMarked(marked.row(), now);
+				sync.cancelMarked(marked.tab(), marked.row(), now);
 				audit(BillingAuditAction.LEDGER_CANCEL_MARKED, sync, marked.tab(), marked.row());
 			}
 			case CancelUnwritten unwritten -> sync.cancelUnwritten(now);
@@ -347,11 +359,6 @@ public class LedgerSyncService {
 		/** 이번 시도가 취소 처리인지(맡을 때 취소 요청이 와 있었다). */
 		boolean cancelAttempt() {
 			return canceledOn != null;
-		}
-
-		/** 대상 월의 탭 이름({@code 2026-11}). */
-		String tab() {
-			return targetMonth.toString();
 		}
 
 	}
