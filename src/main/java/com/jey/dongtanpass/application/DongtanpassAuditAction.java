@@ -51,7 +51,13 @@ enum DongtanpassAuditAction implements AuditAction {
 	PASS_CANCELED("dongtanpass.pass-canceled", AuditOutcome.DONE),
 
 	/** 반대 방향 패스의 할인율을 바꿨다. 대상은 없고, 새 할인율을 덧붙인다(이미 발급한 패스는 발급 때 값 그대로다). */
-	CAMPUS_BENEFIT_CHANGED("dongtanpass.campus-benefit-changed", AuditOutcome.DONE);
+	CAMPUS_BENEFIT_CHANGED("dongtanpass.campus-benefit-changed", AuditOutcome.DONE),
+
+	/**
+	 * 패스 사용을 연계 학원 장부에 썼다(또는 앞선 시도가 붙인 줄을 찾았다). 대상은 그 패스, 덧붙이는 값은 학원 ID·종류·행.
+	 * 행위자는 없다(사용 처리가 커밋된 뒤 리스너나 스케줄러가 쓴다).
+	 */
+	PARTNER_LEDGER_WRITTEN("dongtanpass.partner-ledger-written", AuditOutcome.DONE);
 
 	private final String code;
 

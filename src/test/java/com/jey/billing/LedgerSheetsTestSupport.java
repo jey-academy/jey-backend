@@ -4,7 +4,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
-import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -15,32 +14,18 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.web.util.UriUtils;
 
-import com.github.tomakehurst.wiremock.WireMockServer;
-import com.jey.TestcontainersConfiguration;
-import com.jey.TestServiceAccountKeys;
+import com.jey.SheetsTestSupport;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * 장부 연결을 켠 스프링 테스트의 바탕. 동탄관(지점 1)의 장부가 흉내 낸 구글 서버의 {@value #SHEET_ID}다.
- * 흉내 낸 서버는 테스트 실행 동안 하나만 띄워(주소가 같아야 스프링 컨텍스트를 다시 쓴다) 테스트마다 응답을 비운다.
- * 다시 시도 스케줄러는 돌지 않게 간격을 길게 잡는다(테스트가 직접 부른다). 시간 제한은 1초로 줄인다(장애 시험이 빨리 끝나게).
- * 스프링 테스트 설정을 여기 모아 둔다 — 장부 시험 클래스들이 컨텍스트 하나를 같이 쓴다.
+ * 장부 연결을 켠 수납 장부 시험의 바탕. 동탄관(지점 1)의 장부가 흉내 낸 구글 서버의 {@value #SHEET_ID}다.
+ * 스프링 테스트 설정과 흉내 낸 서버는 {@link SheetsTestSupport}에 있다(연계 학원 장부 시험과 컨텍스트 하나를 같이 쓴다).
  */
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-@AutoConfigureMockMvc
-@ActiveProfiles("test")
-public abstract class LedgerSheetsTestSupport {
+public abstract class LedgerSheetsTestSupport extends SheetsTestSupport {
 
-	public static final String SHEET_ID = "sheet-1";
+	public static final String SHEET_ID = BILLING_SHEET_ID;
 
 	/** 시험 지점(1, 동탄관)의 2026년 11월 탭. 탭 이름의 기본 틀(실제 장부 모양)로 만든 이름이다. */
 	protected static final String TAB = "11월 동탄관(26)";
@@ -51,26 +36,7 @@ public abstract class LedgerSheetsTestSupport {
 
 	protected static final String WRITE_PATH = "/v4/spreadsheets/" + SHEET_ID + "/values:batchUpdate";
 
-	protected static final WireMockServer google = start();
-
 	private static final JsonMapper JSON = JsonMapper.builder().build();
-
-	private static WireMockServer start() {
-		WireMockServer server = new WireMockServer(wireMockConfig().dynamicPort());
-		server.start();
-		Runtime.getRuntime().addShutdownHook(new Thread(server::stop));
-		return server;
-	}
-
-	@DynamicPropertySource
-	static void ledger(DynamicPropertyRegistry registry) {
-		registry.add("jey.sheets.base-url", google::baseUrl);
-		registry.add("jey.billing.ledger.spreadsheets.1", () -> SHEET_ID);
-		registry.add("jey.sheets.service-account-key", TestServiceAccountKeys::base64);
-		registry.add("jey.billing.ledger.retry-interval", () -> "1h");
-		registry.add("jey.sheets.connect-timeout", () -> "1s");
-		registry.add("jey.sheets.read-timeout", () -> "1s");
-	}
 
 	/** 장부 잠금의 Redis 키(시험용 장부). */
 	protected static final String LOCK_KEY = "jey:billing:ledger-lock:" + SHEET_ID;
@@ -79,8 +45,7 @@ public abstract class LedgerSheetsTestSupport {
 	protected StringRedisTemplate redis;
 
 	@BeforeEach
-	void resetGoogle() {
-		google.resetAll();
+	void resetLedgerLock() {
 		expireLedgerLock();
 	}
 

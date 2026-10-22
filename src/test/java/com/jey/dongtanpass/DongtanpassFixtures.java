@@ -18,6 +18,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * <li>901_2xx {@code HolderRelinkApiTest}, 901_3xx {@code HolderRelinkServiceTest}</li>
  * <li>901_4xx {@code DeskVerifyApiTest}, 901_5xx {@code DeskVerifyConcurrencyTest}, 901_6xx {@code HolderCheckApiTest}</li>
  * <li>901_7xx {@code PassRedeemApiTest}, 901_8xx {@code PassRedeemConcurrencyTest}, 901_9xx {@code RedemptionLedgerApiTest}</li>
+ * <li>902_0xx 연계 학원 장부 시험({@code SheetsTestSupport}의 학원 ID — 장부 설정이 이 ID를 가리킨다)</li>
  * </ul>
  */
 public final class DongtanpassFixtures {

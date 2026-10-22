@@ -110,6 +110,12 @@ jey:
     #   spreadsheets.{지점 ID}: 스프레드시트 ID (여기서는 정하지 않는다)
 
   dongtanpass:
+    # 패스 사용을 연계 학원의 장부(구글 시트)에 한 줄씩 붙인다 (ADR-0048). 연계 학원 ID → 스프레드시트 ID. 비어 있으면 그 학원의
+    # 장부 연결이 꺼진다(사용 처리는 그대로이고 장부 반영은 NOT_CONFIGURED로 미반영). 운영은 환경 변수
+    # JEY_DONGTANPASS_PARTNERLEDGER_SPREADSHEETS_{학원 ID}로 켠다. 정했는데 jey.sheets의 서비스 계정 키가 없으면 서버가 뜨지 않는다.
+    # partner-ledger:
+    #   spreadsheets.{학원 ID}: 스프레드시트 ID (여기서는 정하지 않는다)
+    #   tab-name: JEY 패스 (기본값)
     # 학부모 링크 다시 받기의 틀린 시도 (ADR-0035). 이름과 번호가 맞은 요청은 세지 않는다. 넘으면 구간이 끝날 때까지 429로 응답한다.
     # 테스트도 이 값을 그대로 쓴다(테스트마다 다른 접속 주소를 쓰고 횟수 키를 비운다).
     holder-relink:
