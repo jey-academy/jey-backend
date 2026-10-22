@@ -10,18 +10,13 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ThreadLocalRandom;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,33 +29,22 @@ import org.springframework.web.util.UriUtils;
 import com.jey.SheetsTestSupport;
 import com.jey.core.shared.Actor;
 import com.jey.core.shared.EventMetadata;
-import com.jey.core.shared.Money;
 import com.jey.dongtanpass.DongtanpassFixtures;
+import com.jey.dongtanpass.PartnerLedgerFixtures;
 import com.jey.dongtanpass.api.PartnerPassRedeemed;
 import com.jey.dongtanpass.api.PassRedeemed;
-import com.jey.dongtanpass.domain.LinkToken;
 import com.jey.dongtanpass.domain.PartnerLedgerKind;
 import com.jey.dongtanpass.domain.PartnerLedgerReason;
 import com.jey.dongtanpass.domain.PartnerLedgerStatus;
 import com.jey.dongtanpass.domain.PartnerLedgerSync;
 import com.jey.dongtanpass.domain.PartnerLedgerSyncRepository;
 import com.jey.dongtanpass.domain.PartnerRedemptionRepository;
-import com.jey.dongtanpass.domain.Pass;
-import com.jey.dongtanpass.domain.PassNumber;
 import com.jey.dongtanpass.domain.PassRepository;
-import com.jey.dongtanpass.domain.PaymentMethod;
 import com.jey.dongtanpass.domain.RedemptionRepository;
 import tools.jackson.databind.json.JsonMapper;
 
 // 패스 사용을 그 연계 학원의 장부(흉내 낸 구글 서버)에 한 줄씩 붙인다. 지점 1은 동탄관이다.
 class PartnerLedgerServiceTest extends SheetsTestSupport {
-
-	private static final SecureRandom RANDOM = new SecureRandom();
-
-	private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-
-	/** 한국 날짜로 2026-11-03. */
-	private static final Instant USED_AT = Instant.parse("2026-11-02T16:30:00Z");
 
 	private static final String TAB_PATH = "/v4/spreadsheets/" + PARTNER_SHEET_ID + "/values/'"
 			+ UriUtils.encodePath("JEY 패스", StandardCharsets.UTF_8) + "'";
@@ -98,8 +82,11 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 	@Autowired
 	Clock clock;
 
+	private PartnerLedgerFixtures fixtures;
+
 	@BeforeEach
 	void partners() {
+		fixtures = new PartnerLedgerFixtures(passes, partnerRedemptions, redemptions, transaction);
 		DongtanpassFixtures.upsertPartner(jdbc, PARTNER_WITH_LEDGER, true);
 		DongtanpassFixtures.upsertPartner(jdbc, PARTNER_WITHOUT_LEDGER, true);
 	}
@@ -108,7 +95,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 	void 할인해_준_기록을_그_학원_장부에_붙인다() {
 		stubRead(List.of(PartnerLedgerRow.HEADER));
 		stubAppend(7);
-		long passId = campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
 
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
 
@@ -125,7 +112,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 	void 그_학원이_발급한_패스가_JEY에서_쓰인_기록을_붙인다() {
 		stubRead(List.of(PartnerLedgerRow.HEADER));
 		stubAppend(3);
-		long passId = partnerPassRedeemedAtDesk(PARTNER_WITH_LEDGER, "이서준");
+		long passId = fixtures.partnerPassRedeemedAtDesk(PARTNER_WITH_LEDGER, "이서준");
 
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.USED_AT_JEY);
 
@@ -139,7 +126,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 	void 같은_기록을_두_번_받아도_한_번만_붙인다() {
 		stubRead(List.of(PartnerLedgerRow.HEADER));
 		stubAppend(7);
-		long passId = campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
 
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
@@ -149,7 +136,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 
 	@Test
 	void 앞선_시도가_붙인_줄이_있으면_붙이지_않고_그_줄로_반영됨이다() {
-		long passId = campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
 		stubRead(List.of(PartnerLedgerRow.HEADER, List.of("JEY 패스 할인", "2026-11-01"),
 				List.of("JEY 패스 할인", "2026-11-03", "김하윤", "", "", "", "", "", "", "앱:패스-" + passId)));
 
@@ -163,7 +150,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 
 	@Test
 	void 장부를_정하지_않은_학원은_구글을_부르지_않고_미반영이다() {
-		long passId = campusPassRedeemedAt(PARTNER_WITHOUT_LEDGER, "김하윤");
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITHOUT_LEDGER, "김하윤");
 
 		ledger.record(passId, PARTNER_WITHOUT_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
 
@@ -174,7 +161,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 	@Test
 	void 머리글이_다르면_쓰지_않고_미반영이다() {
 		stubRead(List.of(List.of("학년", "No", "학교", "성명")));
-		long passId = campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
 
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
 
@@ -185,7 +172,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 	@Test
 	void 빈_탭도_머리글이_다른_것이다() {
 		stubRead(List.of());
-		long passId = campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
 
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
 
@@ -197,7 +184,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 		google.stubFor(get(urlPathEqualTo(READ_PATH)).willReturn(aResponse().withStatus(400)
 			.withHeader("Content-Type", "application/json")
 			.withBody("{\"error\": {\"code\": 400, \"message\": \"Unable to parse range: 'JEY 패스'!A:AZ\"}}")));
-		long passId = campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
 
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
 
@@ -207,7 +194,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 	@Test
 	void 구글_장애면_1분_뒤에_다시_하도록_기다린다() {
 		google.stubFor(get(urlPathEqualTo(READ_PATH)).willReturn(aResponse().withStatus(503)));
-		long passId = campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
 		Instant before = clock.instant();
 
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
@@ -224,7 +211,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 		stubRead(List.of(PartnerLedgerRow.HEADER));
 		google.stubFor(post(urlPathEqualTo(APPEND_PATH)).willReturn(
 				okJson("{\"updates\": {\"updatedRange\": \"'JEY 패스'!A2:J2\"}}").withFixedDelay(2_000)));
-		long passId = campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
 
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
 		assertThat(syncs.findByPassId(passId).orElseThrow().getStatus()).isEqualTo(PartnerLedgerStatus.PENDING);
@@ -244,11 +231,11 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 	void 연계_학원의_사용_처리_이벤트를_받으면_그_학원_장부에_붙인다() {
 		stubRead(List.of(PartnerLedgerRow.HEADER));
 		stubAppend(5);
-		long passId = campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
 
 		transaction.executeWithoutResult(status -> events.publishEvent(new PartnerPassRedeemed(EventMetadata
 			.create(PartnerPassRedeemed.TYPE, PartnerPassRedeemed.VERSION, 1L, Actor.none(), clock), passId,
-				PARTNER_WITH_LEDGER, newStudentId())));
+				PARTNER_WITH_LEDGER, PartnerLedgerFixtures.newStudentId())));
 
 		awaitSynced(passId);
 		assertThat(syncs.findByPassId(passId).orElseThrow().getKind()).isEqualTo(PartnerLedgerKind.PARTNER_DISCOUNT);
@@ -258,11 +245,11 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 	void 데스크의_사용_처리_이벤트를_받으면_발급한_학원_장부에_붙인다() {
 		stubRead(List.of(PartnerLedgerRow.HEADER));
 		stubAppend(5);
-		long passId = partnerPassRedeemedAtDesk(PARTNER_WITH_LEDGER, "이서준");
+		long passId = fixtures.partnerPassRedeemedAtDesk(PARTNER_WITH_LEDGER, "이서준");
 
 		transaction.executeWithoutResult(status -> events.publishEvent(new PassRedeemed(
 				EventMetadata.create(PassRedeemed.TYPE, PassRedeemed.VERSION, 1L, Actor.none(), clock), passId,
-				newStudentId(), PARTNER_WITH_LEDGER)));
+				PartnerLedgerFixtures.newStudentId(), PARTNER_WITH_LEDGER)));
 
 		awaitSynced(passId);
 		assertThat(syncs.findByPassId(passId).orElseThrow().getKind()).isEqualTo(PartnerLedgerKind.USED_AT_JEY);
@@ -298,36 +285,6 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 
 	private String passNo(long passId) {
 		return passes.findById(passId).orElseThrow().getPassNo();
-	}
-
-	// 동탄관(지점 1)이 발급한 패스를 그 학원이 280,000원에 5% 할인으로 썼다.
-	private long campusPassRedeemedAt(long partnerId, String studentName) {
-		return transaction.execute(status -> {
-			Pass pass = passes.saveAndFlush(Pass.issueAtCampus(1L, newStudentId(), PassNumber.generate(RANDOM),
-					LinkToken.generate(RANDOM).hash(), studentName, "phone-index", USED_AT.minus(Duration.ofDays(3)),
-					SEOUL, LocalDate.of(2026, 10, 31), Money.of(280_000), PaymentMethod.CARD, new BigDecimal("0.05")));
-			var redemption = pass.redeemAtPartner(partnerId, Money.of(280_000), USED_AT);
-			passes.saveAndFlush(pass);
-			partnerRedemptions.saveAndFlush(redemption);
-			return pass.getId();
-		});
-	}
-
-	// 그 학원이 발급한 패스를 동탄관(지점 1) 데스크가 썼다.
-	private long partnerPassRedeemedAtDesk(long partnerId, String studentName) {
-		return transaction.execute(status -> {
-			Pass pass = passes.saveAndFlush(Pass.issue(partnerId, PassNumber.generate(RANDOM),
-					LinkToken.generate(RANDOM).hash(), studentName, "phone-index", USED_AT.minus(Duration.ofDays(3)),
-					SEOUL, LocalDate.of(2026, 10, 31), Money.of(150_000), PaymentMethod.CARD));
-			var redemption = pass.redeem(newStudentId(), 1L, USED_AT);
-			passes.saveAndFlush(pass);
-			redemptions.saveAndFlush(redemption);
-			return pass.getId();
-		});
-	}
-
-	private static long newStudentId() {
-		return ThreadLocalRandom.current().nextLong(1_000_000_000L, Long.MAX_VALUE / 2);
 	}
 
 }

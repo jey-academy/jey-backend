@@ -68,6 +68,11 @@ public enum DongtanpassErrorCode implements ErrorCode {
 	// 연계 학원 계정이 사용 내역에서 다른 학원을 골랐다. 조용히 자기 학원으로 바꾸지 않는다(화면의 실수가 드러나게).
 	OTHER_PARTNER_NOT_ALLOWED(HttpStatus.FORBIDDEN, "다른 연계 학원의 내역은 볼 수 없습니다."),
 
+	PARTNER_LEDGER_SYNC_NOT_FOUND(HttpStatus.NOT_FOUND, "연계 학원 장부 반영 기록을 찾을 수 없습니다."),
+
+	// 미반영이 아닌 줄(반영됨, 대기 중, 시도 중)은 다시 반영하지 않는다.
+	PARTNER_LEDGER_SYNC_NOT_RETRYABLE(HttpStatus.CONFLICT, "연계 학원 장부에 반영되지 않은 기록만 다시 반영할 수 있습니다."),
+
 	// 같은 학생이 이 연계 학원에서 JEY 패스 할인을 이미 받았다(할인은 그 학원에 새로 오는 학생에게만). 다른 연계 학원은 따로 센다.
 	STUDENT_ALREADY_USED_AT_PARTNER(HttpStatus.CONFLICT, "이 학생은 이 학원에서 JEY 패스 할인을 이미 받았습니다."),
 

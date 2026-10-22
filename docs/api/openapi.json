@@ -1405,6 +1405,108 @@
         "required" : [ "name" ],
         "type" : "object"
       },
+      "PartnerLedgerSyncPageResponse" : {
+        "description" : "연계 학원 장부 미반영 목록의 한 페이지. 최근에 생긴 반영 기록부터",
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PartnerLedgerSyncResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "description" : "지금 페이지. 0부터",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "size" : {
+            "description" : "한 페이지의 크기",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "totalElements" : {
+            "description" : "조건에 맞는 전체 건수",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalPages" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "items", "page", "size", "totalElements", "totalPages" ],
+        "type" : "object"
+      },
+      "PartnerLedgerSyncResponse" : {
+        "description" : "연계 학원 장부에 반영하지 못한 패스 사용 하나. 전화번호는 싣지 않는다",
+        "properties" : {
+          "attempts" : {
+            "description" : "시도한 횟수(관리자가 다시 반영하면 처음부터 센다)",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "id" : {
+            "description" : "장부 반영 ID. 다시 반영할 때 쓴다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "kind" : {
+            "description" : "기록의 종류. PARTNER_DISCOUNT(그 학원이 JEY 패스로 할인해 주었다 — 금액이 있는 줄), USED_AT_JEY(그 학원이 발급한 패스가 JEY 지점에서 쓰였다)",
+            "enum" : [ "PARTNER_DISCOUNT", "USED_AT_JEY" ],
+            "type" : "string"
+          },
+          "lastAttemptAt" : {
+            "description" : "마지막으로 시도한 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "partnerId" : {
+            "description" : "장부의 주인인 연계 학원(할인해 준 학원, 또는 패스를 발급한 학원)",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "partnerName" : {
+            "description" : "연계 학원 이름. 학원을 찾지 못하면 null(있어서는 안 되는 자료)",
+            "type" : [ "string", "null" ]
+          },
+          "passId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "reason" : {
+            "description" : "미반영 이유. NOT_CONFIGURED(그 학원의 장부 연결이 없거나 스프레드시트를 찾지 못했다 — 서버 설정을 확인한다), TAB_NOT_FOUND(장부 파일에 'JEY 패스' 탭이 없다 — 그 이름의 탭을 만든다), HEADER_MISMATCH(탭의 1행 머리글이 정한 것과 다르다 — 1행을 '구분, 사용일, 학생, 패스 번호, 원래 수강료, 할인율, 할인액, 받을 금액, JEY 지점, 앱 표시'로 맞춘다), ACCESS_DENIED(서비스 계정에 장부 편집 권한이 없거나 키가 더는 유효하지 않다), GOOGLE_UNAVAILABLE(구글 장애가 오래 이어졌다), GOOGLE_REJECTED(구글이 요청을 거절했다 — 개발자 확인), APP_ERROR(앱 오류 — 개발자 확인)",
+            "enum" : [ "GOOGLE_UNAVAILABLE", "NOT_CONFIGURED", "TAB_NOT_FOUND", "HEADER_MISMATCH", "ACCESS_DENIED", "GOOGLE_REJECTED", "APP_ERROR" ],
+            "type" : "string"
+          },
+          "studentName" : {
+            "description" : "패스의 학생 이름(발급 때의 이름). 패스를 찾지 못하면 null",
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "attempts", "id", "kind", "lastAttemptAt", "partnerId", "partnerName", "passId", "reason", "studentName" ],
+        "type" : "object"
+      },
+      "PartnerLedgerSyncRetryResponse" : {
+        "description" : "연계 학원 장부 다시 반영을 한 번 시도한 뒤의 상태",
+        "properties" : {
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "reason" : {
+            "description" : "UNSYNCED일 때의 이유. 아니면 null. 미반영 이유. NOT_CONFIGURED(그 학원의 장부 연결이 없거나 스프레드시트를 찾지 못했다 — 서버 설정을 확인한다), TAB_NOT_FOUND(장부 파일에 'JEY 패스' 탭이 없다 — 그 이름의 탭을 만든다), HEADER_MISMATCH(탭의 1행 머리글이 정한 것과 다르다 — 1행을 '구분, 사용일, 학생, 패스 번호, 원래 수강료, 할인율, 할인액, 받을 금액, JEY 지점, 앱 표시'로 맞춘다), ACCESS_DENIED(서비스 계정에 장부 편집 권한이 없거나 키가 더는 유효하지 않다), GOOGLE_UNAVAILABLE(구글 장애가 오래 이어졌다), GOOGLE_REJECTED(구글이 요청을 거절했다 — 개발자 확인), APP_ERROR(앱 오류 — 개발자 확인)",
+            "enum" : [ "GOOGLE_UNAVAILABLE", "NOT_CONFIGURED", "TAB_NOT_FOUND", "HEADER_MISMATCH", "ACCESS_DENIED", "GOOGLE_REJECTED", "APP_ERROR" ],
+            "type" : [ "string", "null" ]
+          },
+          "status" : {
+            "description" : "SYNCED(장부에 썼다), UNSYNCED(또 못 썼다 — reason을 본다), PENDING(구글 장애라 잠시 뒤 저절로 다시 한다), IN_PROGRESS(그 순간 다른 쪽이 반영하는 중이다 — 목록을 다시 본다)",
+            "enum" : [ "PENDING", "IN_PROGRESS", "SYNCED", "UNSYNCED" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "id", "reason", "status" ],
+        "type" : "object"
+      },
       "PartnerQuoteRequest" : {
         "description" : "받을 금액 미리 보기",
         "properties" : {
@@ -4066,6 +4168,100 @@
         },
         "summary" : "학부모 패스 열기",
         "tags" : [ "holder-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/partner-ledger-sync/unsynced" : {
+      "get" : {
+        "description" : "연계 학원 장부에 쓰지 못한 패스 사용, 최근에 생긴 반영 기록부터. 구글 장애로 다시 시도하는 중인 기록은 여기 없다(정한 간격대로 다시 하고, 끝내 실패하면 GOOGLE_UNAVAILABLE로 들어온다)",
+        "operationId" : "listUnsyncedPartnerLedger",
+        "parameters" : [ {
+          "description" : "연계 학원. 안 주면 전 학원",
+          "in" : "query",
+          "name" : "partnerId",
+          "required" : false,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "0부터 10000까지",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "format" : "int32",
+            "maximum" : 10000,
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PartnerLedgerSyncPageResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "연계 학원 장부 미반영 목록",
+        "tags" : [ "partner-ledger-sync-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/partner-ledger-sync/{id}/retry" : {
+      "post" : {
+        "description" : "장부(탭, 머리글, 권한, 설정)를 고친 뒤 부른다. 요청 본문은 없다. 바로 한 번 써 보고 그 뒤의 상태를 준다. 미반영이 아니면 409(DONGTANPASS_PARTNER_LEDGER_SYNC_NOT_RETRYABLE), 없으면 404(DONGTANPASS_PARTNER_LEDGER_SYNC_NOT_FOUND)",
+        "operationId" : "retryPartnerLedgerSync",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "이번 시도의 키(UUID). 같은 시도를 다시 보낼 때는 같은 키를, 값을 고쳐 새로 낼 때는 새 키를 쓴다. 같은 키의 같은 요청은 한 번만 실행되고 처음의 응답이 다시 온다(응답 헤더 Idempotency-Replayed: true). 없거나 형식이 틀리면 400(COMMON_IDEMPOTENCY_KEY_REQUIRED), 같은 키에 다른 내용이면 422(COMMON_IDEMPOTENCY_KEY_REUSED), 처음 요청이 처리 중이면 409(COMMON_IDEMPOTENCY_IN_PROGRESS). 409는 업무 규칙의 거부에도 쓰이므로 코드로 가른다. 다시 온 응답에는 상태와 본문만 있다",
+          "example" : "3f2b8c1e-5a7d-4e2f-9b1c-0d6a8e4f2c11",
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 128,
+            "minLength" : 8,
+            "pattern" : "^[A-Za-z0-9_-]{8,128}$",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PartnerLedgerSyncRetryResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "연계 학원 장부 다시 반영",
+        "tags" : [ "partner-ledger-sync-controller" ]
       }
     },
     "/api/v1/dongtanpass/partner-redemptions" : {

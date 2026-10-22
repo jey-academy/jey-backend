@@ -5,12 +5,18 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -18,19 +24,23 @@ import com.jey.core.audit.api.AuditEntry;
 import com.jey.core.audit.api.AuditLog;
 import com.jey.core.campus.api.CampusCatalog;
 import com.jey.core.campus.api.CampusInfo;
+import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.UniqueKeys;
 import com.jey.core.sheets.api.SheetsRejected;
 import com.jey.core.sheets.api.SheetsRejection;
 import com.jey.core.sheets.api.SheetsUnavailable;
 import com.jey.core.sheets.api.Spreadsheets;
 import com.jey.dongtanpass.api.PassRefs;
+import com.jey.dongtanpass.domain.Partner;
 import com.jey.dongtanpass.domain.PartnerLedgerKind;
 import com.jey.dongtanpass.domain.PartnerLedgerReason;
 import com.jey.dongtanpass.domain.PartnerLedgerStatus;
 import com.jey.dongtanpass.domain.PartnerLedgerSync;
 import com.jey.dongtanpass.domain.PartnerLedgerSyncRepository;
+import com.jey.dongtanpass.domain.PartnerLedgerSyncStateException;
 import com.jey.dongtanpass.domain.PartnerRedemption;
 import com.jey.dongtanpass.domain.PartnerRedemptionRepository;
+import com.jey.dongtanpass.domain.PartnerRepository;
 import com.jey.dongtanpass.domain.Pass;
 import com.jey.dongtanpass.domain.PassRepository;
 import com.jey.dongtanpass.domain.Redemption;
@@ -62,6 +72,8 @@ public class PartnerLedgerService {
 
 	private final RedemptionRepository redemptions;
 
+	private final PartnerRepository partners;
+
 	private final Spreadsheets sheets;
 
 	private final PartnerLedgerProperties properties;
@@ -75,13 +87,15 @@ public class PartnerLedgerService {
 	private final Clock clock;
 
 	PartnerLedgerService(PartnerLedgerSyncRepository syncs, PassRepository passes,
-			PartnerRedemptionRepository partnerRedemptions, RedemptionRepository redemptions, Spreadsheets sheets,
+			PartnerRedemptionRepository partnerRedemptions, RedemptionRepository redemptions, PartnerRepository partners,
+			Spreadsheets sheets,
 			PartnerLedgerProperties properties, CampusCatalog catalog, AuditLog auditLog, TransactionTemplate transaction,
 			Clock clock) {
 		this.syncs = syncs;
 		this.passes = passes;
 		this.partnerRedemptions = partnerRedemptions;
 		this.redemptions = redemptions;
+		this.partners = partners;
 		this.sheets = sheets;
 		this.properties = properties;
 		this.catalog = catalog;
@@ -98,6 +112,50 @@ public class PartnerLedgerService {
 	 */
 	public void record(long passId, long partnerId, PartnerLedgerKind kind) {
 		attempt(ensureRow(passId, partnerId, kind));
+	}
+
+	/**
+	 * 관리자가 장부(탭, 머리글, 권한, 설정)를 고친 뒤 미반영 줄을 다시 반영한다. 바로 한 번 시도하고 그 뒤의 상태를 돌려준다:
+	 * 반영됨, 또 미반영, 대기 중(구글 장애라 잠시 뒤 다시 한다), 시도 중(그 순간 다른 쪽이 맡았다).
+	 *
+	 * @throws BusinessException 줄이 없을 때(404), 미반영이 아닐 때(409)
+	 */
+	public PartnerLedgerSyncView retryUnsynced(long id) {
+		transaction.executeWithoutResult(status -> {
+			PartnerLedgerSync sync = syncs.findByIdForUpdate(id)
+				.orElseThrow(() -> new BusinessException(DongtanpassErrorCode.PARTNER_LEDGER_SYNC_NOT_FOUND));
+			try {
+				sync.retryByAdmin(clock.instant());
+			} catch (PartnerLedgerSyncStateException e) {
+				throw new BusinessException(DongtanpassErrorCode.PARTNER_LEDGER_SYNC_NOT_RETRYABLE);
+			}
+		});
+		attempt(id);
+		return viewsOf(List.of(syncs.findById(id).orElseThrow())).getFirst();
+	}
+
+	/** 미반영 줄, 최근 것부터. 학원을 주지 않으면 전 학원이다(관리자 전용). */
+	public Page<PartnerLedgerSyncView> listUnsynced(Long partnerId, int page, int size) {
+		PageRequest request = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+		Page<PartnerLedgerSync> found = partnerId == null ? syncs.findByStatus(PartnerLedgerStatus.UNSYNCED, request)
+				: syncs.findByStatusAndPartnerId(PartnerLedgerStatus.UNSYNCED, partnerId, request);
+		return new PageImpl<>(viewsOf(found.getContent()), found.getPageable(), found.getTotalElements());
+	}
+
+	// 학원 이름과 패스의 학생 이름을 한 번씩 모아 읽는다(줄마다 읽지 않는다).
+	private List<PartnerLedgerSyncView> viewsOf(List<PartnerLedgerSync> found) {
+		Map<Long, String> partnerNames = partners
+			.findAllById(found.stream().map(PartnerLedgerSync::getPartnerId).distinct().toList())
+			.stream()
+			.collect(Collectors.toMap(Partner::getId, Partner::getName));
+		Map<Long, Pass> passById = passes.findAllById(found.stream().map(PartnerLedgerSync::getPassId).toList())
+			.stream()
+			.collect(Collectors.toMap(Pass::getId, Function.identity()));
+		return found.stream().map(sync -> {
+			Pass pass = passById.get(sync.getPassId());
+			return PartnerLedgerSyncView.of(sync, partnerNames.get(sync.getPartnerId()),
+					pass == null ? null : pass.getStudentName());
+		}).toList();
 	}
 
 	/** 다시 시도할 때가 된 줄(구글 장애 뒤, 맡은 서버가 내려간 것)을 집어 시도한다. 스케줄러가 부른다. */
