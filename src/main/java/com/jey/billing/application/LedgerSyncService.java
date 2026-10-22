@@ -83,13 +83,16 @@ public class LedgerSyncService {
 
 	private final CampusCatalog catalog;
 
+	private final StudentNames studentNames;
+
 	private final TransactionTemplate transaction;
 
 	private final Clock clock;
 
 	LedgerSyncService(LedgerSyncRepository syncs, PaymentRepository payments, InvoiceRepository invoices,
 			LedgerEntryAssembler assembler, LedgerSheets sheets, LedgerLock lock, LedgerProperties properties,
-			AuditLog auditLog, CampusCatalog catalog, TransactionTemplate transaction, Clock clock) {
+			AuditLog auditLog, CampusCatalog catalog, StudentNames studentNames, TransactionTemplate transaction,
+			Clock clock) {
 		this.syncs = syncs;
 		this.payments = payments;
 		this.invoices = invoices;
@@ -99,6 +102,7 @@ public class LedgerSyncService {
 		this.properties = properties;
 		this.auditLog = auditLog;
 		this.catalog = catalog;
+		this.studentNames = studentNames;
 		this.transaction = transaction;
 		this.clock = clock;
 	}
@@ -143,7 +147,8 @@ public class LedgerSyncService {
 			}
 		});
 		attempt(id);
-		return LedgerSyncView.of(syncs.findById(id).orElseThrow());
+		LedgerSync sync = syncs.findById(id).orElseThrow();
+		return LedgerSyncView.of(sync, studentNames.nameOf(sync.getStudentId()));
 	}
 
 	/** 미반영 줄, 최근 것부터. 지점을 주지 않으면 전 지점이다(관리자 전용 — 지점 범위를 걸지 않는다). */
@@ -151,7 +156,8 @@ public class LedgerSyncService {
 		PageRequest request = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
 		Page<LedgerSync> found = campusId == null ? syncs.findByStatus(LedgerSyncStatus.UNSYNCED, request)
 				: syncs.findByStatusAndCampusId(LedgerSyncStatus.UNSYNCED, campusId, request);
-		return found.map(LedgerSyncView::of);
+		Map<Long, String> names = studentNames.namesOf(found.map(LedgerSync::getStudentId).getContent());
+		return found.map(sync -> LedgerSyncView.of(sync, names.get(sync.getStudentId())));
 	}
 
 	/** 다시 시도할 때가 된 줄(구글 장애 뒤, 미뤄 둔 것, 맡은 서버가 내려간 것)을 집어 시도한다. 스케줄러가 부른다. */

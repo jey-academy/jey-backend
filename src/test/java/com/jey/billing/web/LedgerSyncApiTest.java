@@ -68,9 +68,10 @@ class LedgerSyncApiTest extends LedgerSheetsTestSupport {
 
 	@Test
 	@WithJeyUser(role = UserRole.ADMIN)
-	void 관리자는_미반영_목록을_최근_것부터_보고_이름과_번호는_없다() throws Exception {
+	void 관리자는_미반영_목록을_최근_것부터_보고_학생_이름은_있고_번호는_없다() throws Exception {
 		stubTab("다른반");
-		LedgerSync sync = unsynced(DONGTAN, newClassName());
+		String studentName = uniqueName();
+		LedgerSync sync = unsynced(DONGTAN, newClassName(), studentName);
 
 		mockMvc.perform(get(UNSYNCED).param("campusId", String.valueOf(DONGTAN)))
 			.andExpect(status().isOk())
@@ -82,7 +83,7 @@ class LedgerSyncApiTest extends LedgerSheetsTestSupport {
 			.andExpect(jsonPath("$.items[0].reason").value("BLOCK_NOT_FOUND"))
 			.andExpect(jsonPath("$.items[0].attempts").value(1))
 			.andExpect(jsonPath("$.items[0].lastAttemptAt").isNotEmpty())
-			.andExpect(jsonPath("$.items[0].name").doesNotExist())
+			.andExpect(jsonPath("$.items[0].studentName").value(studentName))
 			.andExpect(jsonPath("$.items[0].phone").doesNotExist())
 			.andExpect(jsonPath("$.items[*].campusId", Matchers.everyItem(Matchers.is((int) DONGTAN))))
 			.andExpect(jsonPath("$.page").value(0))
@@ -138,7 +139,7 @@ class LedgerSyncApiTest extends LedgerSheetsTestSupport {
 		String className = newClassName();
 		stubTab(className);
 		stubWriteOk();
-		long paymentId = pay(DONGTAN, className);
+		long paymentId = pay(DONGTAN, className, uniqueName());
 		await().atMost(Duration.ofSeconds(15)).until(() -> syncs.findByPaymentId(paymentId)
 			.map(LedgerSync::getStatus).orElse(null) == LedgerSyncStatus.SYNCED);
 		long id = syncs.findByPaymentId(paymentId).orElseThrow().getId();
@@ -170,15 +171,19 @@ class LedgerSyncApiTest extends LedgerSheetsTestSupport {
 
 	// 결제를 하나 넣고 리스너가 미반영으로 끝낼 때까지 기다린다.
 	private LedgerSync unsynced(long campus, String className) {
-		long paymentId = pay(campus, className);
+		return unsynced(campus, className, uniqueName());
+	}
+
+	private LedgerSync unsynced(long campus, String className, String studentName) {
+		long paymentId = pay(campus, className, studentName);
 		await().atMost(Duration.ofSeconds(15)).until(() -> syncs.findByPaymentId(paymentId)
 			.map(LedgerSync::getStatus).orElse(null) == LedgerSyncStatus.UNSYNCED);
 		return syncs.findByPaymentId(paymentId).orElseThrow();
 	}
 
-	private long pay(long campus, String className) {
+	private long pay(long campus, String className, String studentName) {
 		long cls = classes.create(campus, className, Money.of(280_000), Money.ZERO).getId();
-		long student = students.register(new StudentRegistration(campus, null, uniqueName(), "동탄고", Grade.HIGH_1, null,
+		long student = students.register(new StudentRegistration(campus, null, studentName, "동탄고", Grade.HIGH_1, null,
 				null, List.of(mother(randomPhone())))).id();
 		long invoice = invoices.issue(new InvoiceDraft(student, YearMonth.of(2026, 11),
 				List.of(new InvoiceDraft.LineDraft(cls, 8)), List.of()), ADMIN).id();
