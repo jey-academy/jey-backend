@@ -17,6 +17,9 @@ jey:
         1: dGVzdC1vbmx5LXBob25lLWVuYy1rZXktMDAwMDAwMDE=
       hmac-key: dGVzdC1vbmx5LXBob25lLWhtYWMta2V5LTAwMDAwMDE=
   dongtanpass:
+    # 연계 학원 장부의 다시 시도 스케줄러도 같은 이유로 테스트에서 돌지 않게 한다(아래 billing.ledger 참고).
+    partner-ledger:
+      retry-interval: 1h
     qr:
       active-key-version: 1
       keys:

@@ -7,5 +7,5 @@
 @org.springframework.modulith.ApplicationModule(
 		displayName = "Dongtanpass",
 		allowedDependencies = { "core::shared", "core::auth", "core::audit", "core::member", "core::campus",
-				"billing::api" })
+				"core::sheets", "billing::api" })
 package com.jey.dongtanpass;
