@@ -1,4 +1,4 @@
-package com.jey.billing.infrastructure;
+package com.jey.core.sheets;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
@@ -25,12 +25,12 @@ import org.springframework.web.client.RestClientException;
 
 import com.github.tomakehurst.wiremock.http.Fault;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
-import com.jey.billing.application.LedgerSheetsRejected;
-import com.jey.billing.application.LedgerSheetsUnavailable;
-import com.jey.billing.domain.LedgerSyncReason;
+import com.jey.core.sheets.api.SheetsRejected;
+import com.jey.core.sheets.api.SheetsRejection;
+import com.jey.core.sheets.api.SheetsUnavailable;
 
 // 구글 시트 값 API를 흉내 낸 서버로 읽기·쓰기 요청의 모양과, 응답·장애가 어느 결과로 바뀌는지 본다. Docker가 필요 없다.
-class GoogleSheetsLedgerSheetsTest {
+class GoogleSpreadsheetsTest {
 
 	@RegisterExtension
 	static WireMockExtension google = WireMockExtension.newInstance().options(wireMockConfig().dynamicPort()).build();
@@ -41,7 +41,12 @@ class GoogleSheetsLedgerSheetsTest {
 
 	private static final String WRITE_PATH = "/v4/spreadsheets/sheet-1/values:batchUpdate";
 
-	private final GoogleSheetsLedgerSheets sheets = new GoogleSheetsLedgerSheets(google.baseUrl(),
+	// 'JEY 패스'!A:D — 주소에서 공백은 인코딩된다. 범위의 끝 열은 붙이는 줄의 칸 수로 정한다.
+	private static final String APPEND_PATH = "/v4/spreadsheets/sheet-1/values/'JEY%20%ED%8C%A8%EC%8A%A4'!A:D:append";
+
+	private static final List<Object> FOUR_CELLS = List.of("a", "b", "c", "d");
+
+	private final GoogleSpreadsheets sheets = new GoogleSpreadsheets(google.baseUrl(),
 			Duration.ofSeconds(1), Duration.ofMillis(500), () -> "Bearer test-token");
 
 	@Test
@@ -97,7 +102,7 @@ class GoogleSheetsLedgerSheetsTest {
 			.withBody("""
 					{"error": {"code": 400, "message": "Unable to parse range: '2026-11'!A:AZ", "status": "INVALID_ARGUMENT"}}""")));
 
-		assertRejected(() -> sheets.read(SHEET_ID, "2026-11"), LedgerSyncReason.TAB_NOT_FOUND);
+		assertRejected(() -> sheets.read(SHEET_ID, "2026-11"), SheetsRejection.TAB_NOT_FOUND);
 	}
 
 	@Test
@@ -106,23 +111,23 @@ class GoogleSheetsLedgerSheetsTest {
 			.withHeader("Content-Type", "application/json")
 			.withBody("{\"error\": {\"code\": 400, \"message\": \"Invalid value\", \"status\": \"INVALID_ARGUMENT\"}}")));
 
-		assertRejected(() -> sheets.read(SHEET_ID, "2026-11"), LedgerSyncReason.GOOGLE_REJECTED);
+		assertRejected(() -> sheets.read(SHEET_ID, "2026-11"), SheetsRejection.REJECTED);
 	}
 
 	@Test
 	void 권한이_없거나_인증이_틀리면_권한_없음이다() {
 		google.stubFor(get(urlPathEqualTo(READ_PATH)).willReturn(aResponse().withStatus(403)));
-		assertRejected(() -> sheets.read(SHEET_ID, "2026-11"), LedgerSyncReason.ACCESS_DENIED);
+		assertRejected(() -> sheets.read(SHEET_ID, "2026-11"), SheetsRejection.ACCESS_DENIED);
 
 		google.stubFor(get(urlPathEqualTo(READ_PATH)).willReturn(aResponse().withStatus(401)));
-		assertRejected(() -> sheets.read(SHEET_ID, "2026-11"), LedgerSyncReason.ACCESS_DENIED);
+		assertRejected(() -> sheets.read(SHEET_ID, "2026-11"), SheetsRejection.ACCESS_DENIED);
 	}
 
 	@Test
-	void 스프레드시트가_없으면_설정이_틀린_것이다() {
+	void 스프레드시트가_없으면_파일_없음으로_거절된다() {
 		google.stubFor(get(urlPathEqualTo(READ_PATH)).willReturn(aResponse().withStatus(404)));
 
-		assertRejected(() -> sheets.read(SHEET_ID, "2026-11"), LedgerSyncReason.NOT_CONFIGURED);
+		assertRejected(() -> sheets.read(SHEET_ID, "2026-11"), SheetsRejection.SPREADSHEET_NOT_FOUND);
 	}
 
 	@Test
@@ -130,7 +135,7 @@ class GoogleSheetsLedgerSheetsTest {
 		google.stubFor(get(urlPathEqualTo(READ_PATH)).willReturn(aResponse().withStatus(503)));
 
 		assertThatThrownBy(() -> sheets.read(SHEET_ID, "2026-11"))
-			.isInstanceOfSatisfying(LedgerSheetsUnavailable.class, e -> assertThat(e.retryAfter()).isNull());
+			.isInstanceOfSatisfying(SheetsUnavailable.class, e -> assertThat(e.retryAfter()).isNull());
 	}
 
 	@Test
@@ -139,7 +144,7 @@ class GoogleSheetsLedgerSheetsTest {
 			.willReturn(aResponse().withStatus(429).withHeader("Retry-After", "120")));
 
 		assertThatThrownBy(() -> sheets.read(SHEET_ID, "2026-11")).isInstanceOfSatisfying(
-				LedgerSheetsUnavailable.class, e -> assertThat(e.retryAfter()).isEqualTo(Duration.ofSeconds(120)));
+				SheetsUnavailable.class, e -> assertThat(e.retryAfter()).isEqualTo(Duration.ofSeconds(120)));
 	}
 
 	@Test
@@ -148,7 +153,7 @@ class GoogleSheetsLedgerSheetsTest {
 				aResponse().withStatus(429).withHeader("Retry-After", "Wed, 21 Oct 2026 07:28:00 GMT")));
 
 		assertThatThrownBy(() -> sheets.read(SHEET_ID, "2026-11"))
-			.isInstanceOfSatisfying(LedgerSheetsUnavailable.class, e -> assertThat(e.retryAfter()).isNull());
+			.isInstanceOfSatisfying(SheetsUnavailable.class, e -> assertThat(e.retryAfter()).isNull());
 	}
 
 	@Test
@@ -157,7 +162,7 @@ class GoogleSheetsLedgerSheetsTest {
 			.willReturn(okJson("{\"values\": []}").withFixedDelay(2_000)));
 
 		long started = System.nanoTime();
-		assertThatThrownBy(() -> sheets.read(SHEET_ID, "2026-11")).isInstanceOf(LedgerSheetsUnavailable.class);
+		assertThatThrownBy(() -> sheets.read(SHEET_ID, "2026-11")).isInstanceOf(SheetsUnavailable.class);
 		assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofMillis(1_800));
 	}
 
@@ -166,7 +171,7 @@ class GoogleSheetsLedgerSheetsTest {
 		google.stubFor(get(urlPathEqualTo(READ_PATH))
 			.willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
 
-		assertThatThrownBy(() -> sheets.read(SHEET_ID, "2026-11")).isInstanceOf(LedgerSheetsUnavailable.class);
+		assertThatThrownBy(() -> sheets.read(SHEET_ID, "2026-11")).isInstanceOf(SheetsUnavailable.class);
 	}
 
 	// 응답 머리글은 받았는데 본문을 읽다 끊겼다. 다시 하면 나을 수 있는 장애다(앱 오류가 아니다).
@@ -174,7 +179,7 @@ class GoogleSheetsLedgerSheetsTest {
 	void 응답_본문을_읽다_끊기면_장애다() {
 		google.stubFor(get(urlPathEqualTo(READ_PATH)).willReturn(aResponse().withFault(Fault.MALFORMED_RESPONSE_CHUNK)));
 
-		assertThatThrownBy(() -> sheets.read(SHEET_ID, "2026-11")).isInstanceOf(LedgerSheetsUnavailable.class);
+		assertThatThrownBy(() -> sheets.read(SHEET_ID, "2026-11")).isInstanceOf(SheetsUnavailable.class);
 	}
 
 	// 본문을 읽다 끊긴 것이 어떤 예외로 오는지는 운영체제마다 다르다(Linux에서는 "응답을 꺼내지 못했다" 안에 I/O 오류가 든다).
@@ -185,9 +190,9 @@ class GoogleSheetsLedgerSheetsTest {
 				new HttpMessageNotReadableException("I/O error", new java.io.IOException("chunked stream ended"),
 						null));
 
-		assertThatThrownBy(() -> GoogleSheetsLedgerSheets.call(() -> {
+		assertThatThrownBy(() -> GoogleSpreadsheets.call(() -> {
 			throw broken;
-		})).isInstanceOf(LedgerSheetsUnavailable.class);
+		})).isInstanceOf(SheetsUnavailable.class);
 	}
 
 	@Test
@@ -195,17 +200,17 @@ class GoogleSheetsLedgerSheetsTest {
 		RestClientException mapping = new RestClientException("Error while extracting response",
 				new IllegalStateException("모양이 다르다"));
 
-		assertThatThrownBy(() -> GoogleSheetsLedgerSheets.call(() -> {
+		assertThatThrownBy(() -> GoogleSpreadsheets.call(() -> {
 			throw mapping;
 		})).isSameAs(mapping);
 	}
 
 	@Test
 	void 연결할_수_없으면_장애다() {
-		GoogleSheetsLedgerSheets nowhere = new GoogleSheetsLedgerSheets("http://127.0.0.1:1", Duration.ofSeconds(1),
+		GoogleSpreadsheets nowhere = new GoogleSpreadsheets("http://127.0.0.1:1", Duration.ofSeconds(1),
 				Duration.ofMillis(500), () -> "Bearer test-token");
 
-		assertThatThrownBy(() -> nowhere.read(SHEET_ID, "2026-11")).isInstanceOf(LedgerSheetsUnavailable.class);
+		assertThatThrownBy(() -> nowhere.read(SHEET_ID, "2026-11")).isInstanceOf(SheetsUnavailable.class);
 	}
 
 	@Test
@@ -233,10 +238,54 @@ class GoogleSheetsLedgerSheetsTest {
 	void 쓰기의_장애와_거절도_읽기와_같이_바뀐다() {
 		google.stubFor(post(urlPathEqualTo(WRITE_PATH)).willReturn(aResponse().withStatus(500)));
 		assertThatThrownBy(() -> sheets.write(SHEET_ID, "2026-11", Map.of("D10", "x")))
-			.isInstanceOf(LedgerSheetsUnavailable.class);
+			.isInstanceOf(SheetsUnavailable.class);
 
 		google.stubFor(post(urlPathEqualTo(WRITE_PATH)).willReturn(aResponse().withStatus(403)));
-		assertRejected(() -> sheets.write(SHEET_ID, "2026-11", Map.of("D10", "x")), LedgerSyncReason.ACCESS_DENIED);
+		assertRejected(() -> sheets.write(SHEET_ID, "2026-11", Map.of("D10", "x")), SheetsRejection.ACCESS_DENIED);
+	}
+
+	@Test
+	void 줄을_붙이면_A열부터_입력한_그대로_끼워_넣고_붙인_줄_번호를_준다() {
+		google.stubFor(post(urlPathEqualTo(APPEND_PATH)).willReturn(okJson("""
+				{"spreadsheetId": "sheet-1", "tableRange": "'JEY 패스'!A1:J6",
+				 "updates": {"updatedRange": "'JEY 패스'!A7:J7", "updatedRows": 1}}""")));
+
+		int row = sheets.append(SHEET_ID, "JEY 패스", List.of("JEY 패스 할인", "2026-11-03", 280_000L, ""));
+
+		assertThat(row).isEqualTo(7);
+		google.verify(postRequestedFor(urlPathEqualTo(APPEND_PATH))
+			.withQueryParam("valueInputOption", equalTo("RAW"))
+			.withQueryParam("insertDataOption", equalTo("INSERT_ROWS"))
+			.withHeader("Authorization", equalTo("Bearer test-token"))
+			.withRequestBody(equalToJson("""
+					{"values": [["JEY 패스 할인", "2026-11-03", 280000, ""]]}""")));
+	}
+
+	@Test
+	void 붙인_범위를_읽지_못하면_앱_오류다() {
+		google.stubFor(post(urlPathEqualTo(APPEND_PATH)).willReturn(okJson("{\"updates\": {}}")));
+
+		assertThatThrownBy(() -> sheets.append(SHEET_ID, "JEY 패스", FOUR_CELLS))
+			.isInstanceOf(IllegalStateException.class);
+	}
+
+	@Test
+	void 붙이기의_장애와_거절도_읽기와_같이_바뀐다() {
+		google.stubFor(post(urlPathEqualTo(APPEND_PATH)).willReturn(aResponse().withStatus(503)));
+		assertThatThrownBy(() -> sheets.append(SHEET_ID, "JEY 패스", FOUR_CELLS))
+			.isInstanceOf(SheetsUnavailable.class);
+
+		google.stubFor(post(urlPathEqualTo(APPEND_PATH)).willReturn(aResponse().withStatus(400)
+			.withHeader("Content-Type", "application/json")
+			.withBody("{\"error\": {\"code\": 400, \"message\": \"Unable to parse range: 'JEY 패스'!A:A\"}}")));
+		assertRejected(() -> sheets.append(SHEET_ID, "JEY 패스", FOUR_CELLS), SheetsRejection.TAB_NOT_FOUND);
+	}
+
+	@Test
+	void 키가_없으면_꺼져_있다() {
+		assertThat(sheets.enabled()).isTrue();
+		assertThat(new GoogleSpreadsheets(google.baseUrl(), Duration.ofSeconds(1), Duration.ofMillis(500),
+				GoogleAccessTokens.disabled()).enabled()).isFalse();
 	}
 
 	@Test
@@ -250,9 +299,9 @@ class GoogleSheetsLedgerSheetsTest {
 	}
 
 	private static void assertRejected(org.assertj.core.api.ThrowableAssert.ThrowingCallable call,
-			LedgerSyncReason reason) {
-		assertThatThrownBy(call).isInstanceOfSatisfying(LedgerSheetsRejected.class,
-				e -> assertThat(e.reason()).isEqualTo(reason));
+			SheetsRejection rejection) {
+		assertThatThrownBy(call).isInstanceOfSatisfying(SheetsRejected.class,
+				e -> assertThat(e.rejection()).isEqualTo(rejection));
 	}
 
 }

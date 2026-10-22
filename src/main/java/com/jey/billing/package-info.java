@@ -5,5 +5,6 @@
  */
 @org.springframework.modulith.ApplicationModule(
 		displayName = "Billing",
-		allowedDependencies = { "core::shared", "core::auth", "core::audit", "core::member", "core::campus" })
+		allowedDependencies = { "core::shared", "core::auth", "core::audit", "core::member", "core::campus",
+				"core::sheets" })
 package com.jey.billing;

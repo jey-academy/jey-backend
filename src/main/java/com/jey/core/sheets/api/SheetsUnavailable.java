@@ -1,13 +1,13 @@
-package com.jey.billing.application;
+package com.jey.core.sheets.api;
 
 import java.time.Duration;
 
 /** 구글이 응답하지 않았다(시간 초과, 연결 끊김) 또는 408·5xx·429로 답했다. 간격을 두고 다시 시도한다. */
-public class LedgerSheetsUnavailable extends RuntimeException {
+public class SheetsUnavailable extends RuntimeException {
 
 	private final Duration retryAfter;
 
-	public LedgerSheetsUnavailable(String message, Duration retryAfter, Throwable cause) {
+	public SheetsUnavailable(String message, Duration retryAfter, Throwable cause) {
 		super(message, cause);
 		this.retryAfter = retryAfter;
 	}

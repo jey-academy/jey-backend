@@ -1,4 +1,4 @@
-package com.jey.billing.infrastructure;
+package com.jey;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPairGenerator;

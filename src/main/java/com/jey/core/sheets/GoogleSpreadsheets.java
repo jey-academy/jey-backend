@@ -1,4 +1,4 @@
-package com.jey.billing.infrastructure;
+package com.jey.core.sheets;
 
 import java.io.IOException;
 import java.net.URI;
@@ -7,6 +7,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,28 +22,35 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.jey.billing.application.LedgerSheets;
-import com.jey.billing.application.LedgerSheetsRejected;
-import com.jey.billing.application.LedgerSheetsUnavailable;
-import com.jey.billing.domain.LedgerSyncReason;
+import com.jey.core.sheets.api.SheetsRejected;
+import com.jey.core.sheets.api.SheetsRejection;
+import com.jey.core.sheets.api.SheetsUnavailable;
+import com.jey.core.sheets.api.Spreadsheets;
 
 /**
- * 구글 시트 값 API(v4)로 장부를 읽고 쓴다. 구글 클라이언트 라이브러리 없이 REST를 직접 부른다(ADR-0044).
+ * 구글 시트 값 API(v4)로 읽고 쓴다. 구글 클라이언트 라이브러리 없이 REST를 직접 부른다(ADR-0044, ADR-0047).
  *
  * <ul>
  * <li>읽기: {@code GET values/'탭'!A:AZ} — 보이는 글자 그대로({@code FORMATTED_VALUE}), 줄 단위.
- * <li>쓰기: {@code POST values:batchUpdate} — 칸마다 범위 하나, {@code RAW}(입력한 그대로).
- * <li>장애: 시간 초과·연결 끊김·408·5xx·429 → {@link LedgerSheetsUnavailable}. 그 밖의 거절 → {@link LedgerSheetsRejected}.
+ * <li>칸 쓰기: {@code POST values:batchUpdate} — 칸마다 범위 하나, {@code RAW}(입력한 그대로).
+ * <li>줄 붙이기: {@code POST values/'탭'!A:끝열:append} — {@code RAW}, {@code INSERT_ROWS}(표 끝에 줄을 끼워 넣는다).
+ * <li>장애: 시간 초과·연결 끊김·408·5xx·429 → {@link SheetsUnavailable}. 그 밖의 거절 → {@link SheetsRejected}.
  * </ul>
  *
- * <p>응답 본문에는 장부의 값(이름·번호)이 있을 수 있어 예외 문구와 로그에 싣지 않는다. 상태 코드만 싣는다.
+ * <p>응답 본문에는 시트의 값(이름·번호)이 있을 수 있어 예외 문구와 로그에 싣지 않는다. 상태 코드만 싣는다.
  */
-public class GoogleSheetsLedgerSheets implements LedgerSheets {
+class GoogleSpreadsheets implements Spreadsheets {
 
-	private static final Logger log = LoggerFactory.getLogger(GoogleSheetsLedgerSheets.class);
+	private static final Logger log = LoggerFactory.getLogger(GoogleSpreadsheets.class);
 
 	/** 읽는 열의 범위. 장부는 Q열 안팎이다. 줄은 끝까지 읽는다. */
 	private static final String READ_COLUMNS = "A:AZ";
+
+	/** 붙일 수 있는 칸 수(A~Z). 읽는 범위 안에 있어야 붙인 줄을 다시 읽을 수 있다. */
+	private static final int MAX_APPEND_CELLS = 26;
+
+	/** 붙인 범위({@code 'JEY 패스'!A7:J7})의 첫 줄 번호. 탭 이름에 느낌표가 있을 수 있어 마지막 느낌표 뒤를 본다. */
+	private static final Pattern UPDATED_ROW = Pattern.compile("![A-Z]+(\\d+)(?::[A-Z]+\\d+)?$");
 
 	/** 400 가운데 범위(탭 이름)를 읽지 못한 것. 탭이 없을 때 구글이 이렇게 답한다. */
 	private static final String UNPARSABLE_RANGE = "Unable to parse range";
@@ -52,7 +61,7 @@ public class GoogleSheetsLedgerSheets implements LedgerSheets {
 
 	private final GoogleAccessTokens tokens;
 
-	GoogleSheetsLedgerSheets(String baseUrl, Duration connectTimeout, Duration readTimeout, GoogleAccessTokens tokens) {
+	GoogleSpreadsheets(String baseUrl, Duration connectTimeout, Duration readTimeout, GoogleAccessTokens tokens) {
 		HttpClient http = HttpClient.newBuilder()
 			.connectTimeout(connectTimeout)
 			.version(HttpClient.Version.HTTP_1_1)
@@ -62,6 +71,11 @@ public class GoogleSheetsLedgerSheets implements LedgerSheets {
 		this.baseUrl = baseUrl;
 		this.client = RestClient.builder().requestFactory(requestFactory).build();
 		this.tokens = tokens;
+	}
+
+	@Override
+	public boolean enabled() {
+		return tokens.enabled();
 	}
 
 	@Override
@@ -106,6 +120,35 @@ public class GoogleSheetsLedgerSheets implements LedgerSheets {
 			.toBodilessEntity());
 	}
 
+	@Override
+	public int append(String spreadsheetId, String tab, List<Object> row) {
+		if (row.isEmpty() || row.size() > MAX_APPEND_CELLS) {
+			throw new IllegalArgumentException("붙이는 줄은 1~" + MAX_APPEND_CELLS + "칸이다");
+		}
+		char lastColumn = (char) ('A' + row.size() - 1);
+		URI uri = UriComponentsBuilder.fromUriString(baseUrl)
+			.path("/v4/spreadsheets/{id}/values/{range}:append")
+			.queryParam("valueInputOption", "RAW")
+			.queryParam("insertDataOption", "INSERT_ROWS")
+			.buildAndExpand(spreadsheetId, range(tab, "A:" + lastColumn))
+			.encode()
+			.toUri();
+		AppendResponse body = call(() -> client.post()
+			.uri(uri)
+			.header(HttpHeaders.AUTHORIZATION, tokens.authorization())
+			.contentType(MediaType.APPLICATION_JSON)
+			.body(new AppendRequest(List.of(row)))
+			.retrieve()
+			.body(AppendResponse.class));
+		String updatedRange = body == null || body.updates() == null ? null : body.updates().updatedRange();
+		Matcher matcher = updatedRange == null ? null : UPDATED_ROW.matcher(updatedRange);
+		if (matcher == null || !matcher.find()) {
+			// 붙였는데 어디인지 모른다. 부르는 쪽은 앱 오류로 다루고, 다음 시도가 시트를 읽어 붙인 줄을 찾는다.
+			throw new IllegalStateException("구글 시트가 붙인 범위를 알려 주지 않았다");
+		}
+		return Integer.parseInt(matcher.group(1));
+	}
+
 	// 탭 이름은 항상 작은따옴표로 감싼다('2026-11'). 이름 안의 작은따옴표는 두 번 쓴다.
 	private static String range(String tab, String cells) {
 		return "'" + tab.replace("'", "''") + "'!" + cells;
@@ -118,12 +161,12 @@ public class GoogleSheetsLedgerSheets implements LedgerSheets {
 		} catch (RestClientResponseException e) {
 			throw translate(e);
 		} catch (ResourceAccessException e) {
-			throw new LedgerSheetsUnavailable("구글 시트에 닿지 못했다", null, e);
+			throw new SheetsUnavailable("구글 시트에 닿지 못했다", null, e);
 		} catch (RestClientException e) {
 			// 응답 머리글은 받았는데 본문을 꺼내다 끊긴 경우(운영체제에 따라 이 모양으로 온다). 원인에 입출력 오류가 있으면 장애다.
 			// 그 밖(응답 모양이 기대와 다름)은 다시 해도 낫지 않으므로 그대로 던진다(앱 오류).
 			if (hasIoCause(e)) {
-				throw new LedgerSheetsUnavailable("구글 시트의 응답을 끝까지 읽지 못했다", null, e);
+				throw new SheetsUnavailable("구글 시트의 응답을 끝까지 읽지 못했다", null, e);
 			}
 			throw e;
 		}
@@ -143,22 +186,22 @@ public class GoogleSheetsLedgerSheets implements LedgerSheets {
 		int status = e.getStatusCode().value();
 		String message = "구글 시트 응답 " + status;
 		if (status == 429) {
-			return new LedgerSheetsUnavailable(message, retryAfter(e.getResponseHeaders()), null);
+			return new SheetsUnavailable(message, retryAfter(e.getResponseHeaders()), null);
 		}
 		if (status == 408 || status >= 500) {
-			return new LedgerSheetsUnavailable(message, null, null);
+			return new SheetsUnavailable(message, null, null);
 		}
-		LedgerSyncReason reason = switch (status) {
-			case 400 -> e.getResponseBodyAsString().contains(UNPARSABLE_RANGE) ? LedgerSyncReason.TAB_NOT_FOUND
-					: LedgerSyncReason.GOOGLE_REJECTED;
-			case 401, 403 -> LedgerSyncReason.ACCESS_DENIED;
-			case 404 -> LedgerSyncReason.NOT_CONFIGURED;
-			default -> LedgerSyncReason.GOOGLE_REJECTED;
+		SheetsRejection rejection = switch (status) {
+			case 400 -> e.getResponseBodyAsString().contains(UNPARSABLE_RANGE) ? SheetsRejection.TAB_NOT_FOUND
+					: SheetsRejection.REJECTED;
+			case 401, 403 -> SheetsRejection.ACCESS_DENIED;
+			case 404 -> SheetsRejection.SPREADSHEET_NOT_FOUND;
+			default -> SheetsRejection.REJECTED;
 		};
-		if (reason == LedgerSyncReason.GOOGLE_REJECTED) {
+		if (rejection == SheetsRejection.REJECTED) {
 			log.warn("구글 시트가 요청을 거절했다: {}", status);
 		}
-		return new LedgerSheetsRejected(reason, message);
+		return new SheetsRejected(rejection, message);
 	}
 
 	// Retry-After는 초(숫자)만 읽는다. 날짜 모양이면 없는 것으로 보고 정한 간격을 따른다.
@@ -178,6 +221,18 @@ public class GoogleSheetsLedgerSheets implements LedgerSheets {
 	}
 
 	record CellWrite(String range, List<List<Object>> values) {
+	}
+
+	record AppendRequest(List<List<Object>> values) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	record AppendResponse(Updates updates) {
+
+		@JsonIgnoreProperties(ignoreUnknown = true)
+		record Updates(String updatedRange) {
+		}
+
 	}
 
 }
