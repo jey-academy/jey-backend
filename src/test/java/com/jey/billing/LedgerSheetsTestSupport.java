@@ -6,6 +6,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +21,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.web.util.UriUtils;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.jey.TestcontainersConfiguration;
@@ -40,8 +42,12 @@ public abstract class LedgerSheetsTestSupport {
 
 	public static final String SHEET_ID = "sheet-1";
 
-	/** 11월 탭을 읽는 경로. */
-	protected static final String READ_PATH = "/v4/spreadsheets/" + SHEET_ID + "/values/'2026-11'!A:AZ";
+	/** 시험 지점(1, 동탄관)의 2026년 11월 탭. 탭 이름의 기본 틀(실제 장부 모양)로 만든 이름이다. */
+	protected static final String TAB = "11월 동탄관(26)";
+
+	/** 11월 탭을 읽는 경로. 흉내 낸 서버는 인코딩된 경로로 비교한다(한글과 공백). */
+	protected static final String READ_PATH = "/v4/spreadsheets/" + SHEET_ID + "/values/'"
+			+ UriUtils.encodePath(TAB, StandardCharsets.UTF_8) + "'!A:AZ";
 
 	protected static final String WRITE_PATH = "/v4/spreadsheets/" + SHEET_ID + "/values:batchUpdate";
 

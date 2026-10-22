@@ -1,12 +1,16 @@
 package com.jey.billing.application;
 
 import java.time.Duration;
+import java.time.YearMonth;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
+
+import com.jey.billing.domain.ledger.LedgerTabName;
 
 /**
  * 장부(구글 시트) 연결 설정({@code jey.billing.ledger.*}). 틀린 값이면 서버가 뜨지 않는다.
@@ -18,12 +22,14 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param readTimeout 응답 시간 제한. 같은 이유로 15초까지
  * @param serviceAccountKey 서비스 계정 키(JSON)의 base64. 비밀값이라 {@link #toString()}에 나오지 않는다
  * @param retryInterval 다시 시도할 줄을 찾는 간격. 10초 이상(단위를 빠뜨린 값을 막는다)
+ * @param tabName 탭 이름의 틀({@link LedgerTabName}). 기본은 실제 장부 모양 {@code {month}월 {campus}({yy})}(예: {@code 11월 동탄관(26)}).
+ *     두 지점이 같은 스프레드시트를 쓰면 {@code {campus}}가 있어야 한다(없으면 두 지점의 결제가 같은 탭에 섞인다)
  */
 @ConfigurationProperties("jey.billing.ledger")
 public record LedgerProperties(@DefaultValue("https://sheets.googleapis.com") String baseUrl,
 		Map<Long, String> spreadsheets, @DefaultValue("3s") Duration connectTimeout,
 		@DefaultValue("10s") Duration readTimeout, String serviceAccountKey,
-		@DefaultValue("1m") Duration retryInterval) {
+		@DefaultValue("1m") Duration retryInterval, @DefaultValue("{month}월 {campus}({yy})") String tabName) {
 
 	private static final Pattern SPREADSHEET_ID = Pattern.compile("[A-Za-z0-9_-]{1,200}");
 
@@ -32,6 +38,8 @@ public record LedgerProperties(@DefaultValue("https://sheets.googleapis.com") St
 	private static final Duration MAX_READ_TIMEOUT = Duration.ofSeconds(15);
 
 	private static final Duration MIN_RETRY_INTERVAL = Duration.ofSeconds(10);
+
+	private static final String DEFAULT_TAB_NAME = "{month}월 {campus}({yy})";
 
 	public LedgerProperties {
 		spreadsheets = spreadsheets == null ? Map.of() : Map.copyOf(spreadsheets);
@@ -50,6 +58,12 @@ public record LedgerProperties(@DefaultValue("https://sheets.googleapis.com") St
 		if (retryInterval == null || retryInterval.compareTo(MIN_RETRY_INTERVAL) < 0) {
 			throw new IllegalArgumentException("jey.billing.ledger.retry-interval은 10초 이상이다(단위를 적었는지 확인. 예: 1m)");
 		}
+		tabName = tabName == null ? DEFAULT_TAB_NAME : tabName;
+		LedgerTabName parsed = LedgerTabName.of(tabName);
+		if (!parsed.includesCampus() && new HashSet<>(spreadsheets.values()).size() < spreadsheets.size()) {
+			throw new IllegalArgumentException(
+					"두 지점이 같은 장부 스프레드시트를 쓰면 jey.billing.ledger.tab-name에 {campus}가 있어야 한다");
+		}
 	}
 
 	private static boolean isWithin(Duration value, Duration max) {
@@ -61,6 +75,11 @@ public record LedgerProperties(@DefaultValue("https://sheets.googleapis.com") St
 		return Optional.ofNullable(spreadsheets.get(campusId));
 	}
 
+	/** 그 달, 그 지점의 탭 이름(예: {@code 11월 동탄관(26)}). */
+	public String tabNameFor(YearMonth month, String campusName) {
+		return LedgerTabName.of(tabName).format(month, campusName);
+	}
+
 	/** 서비스 계정 키가 있는지. 없으면 구글에 요청할 수 없다(스프레드시트도 없다 — 생성자가 막는다). */
 	public boolean hasServiceAccountKey() {
 		return serviceAccountKey != null && !serviceAccountKey.isBlank();
@@ -70,7 +89,7 @@ public record LedgerProperties(@DefaultValue("https://sheets.googleapis.com") St
 	public String toString() {
 		return "LedgerProperties[baseUrl=" + baseUrl + ", spreadsheets=" + spreadsheets + ", connectTimeout="
 				+ connectTimeout + ", readTimeout=" + readTimeout + ", serviceAccountKey="
-				+ (hasServiceAccountKey() ? "(있음)" : "(없음)") + ", retryInterval=" + retryInterval + "]";
+				+ (hasServiceAccountKey() ? "(있음)" : "(없음)") + ", retryInterval=" + retryInterval + ", tabName=" + tabName + "]";
 	}
 
 }

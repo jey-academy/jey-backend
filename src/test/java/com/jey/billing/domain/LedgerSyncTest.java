@@ -203,7 +203,7 @@ class LedgerSyncTest {
 		sync.requestCancel(CANCELED_ON, NOW);
 		sync.claim(NOW);
 
-		sync.cancelMarked(10, NOW);
+		sync.cancelMarked("2026-11", 10, NOW);
 
 		assertThat(sync.getStatus()).isEqualTo(LedgerSyncStatus.CANCELED);
 		assertThat(sync.isCancelMarked()).isTrue();
@@ -219,9 +219,9 @@ class LedgerSyncTest {
 		sync.requestCancel(CANCELED_ON, NOW);
 		sync.claim(NOW);
 
-		sync.cancelMarked(7, NOW);
+		sync.cancelMarked("11월 동탄관(26)", 7, NOW);
 
-		assertThat(sync.getSheetTab()).isEqualTo("2026-11");
+		assertThat(sync.getSheetTab()).isEqualTo("11월 동탄관(26)");
 		assertThat(sync.getSheetRow()).isEqualTo(7);
 	}
 
@@ -252,7 +252,7 @@ class LedgerSyncTest {
 	@Test
 	void 취소_요청이_없으면_취소_처리를_마칠_수_없다() {
 		assertThatThrownBy(() -> claimed().cancelUnwritten(NOW)).isInstanceOf(IllegalStateException.class);
-		assertThatThrownBy(() -> claimed().cancelMarked(10, NOW)).isInstanceOf(IllegalStateException.class);
+		assertThatThrownBy(() -> claimed().cancelMarked("2026-11", 10, NOW)).isInstanceOf(IllegalStateException.class);
 	}
 
 	@Test
@@ -261,7 +261,7 @@ class LedgerSyncTest {
 		sync.written("2026-11", 10, NOW);
 		sync.requestCancel(CANCELED_ON, NOW);
 		sync.claim(NOW);
-		sync.cancelMarked(10, NOW);
+		sync.cancelMarked("2026-11", 10, NOW);
 
 		sync.requestCancel(CANCELED_ON.plusDays(1), NOW.plusSeconds(60));
 

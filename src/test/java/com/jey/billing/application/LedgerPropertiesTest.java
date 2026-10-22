@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.time.YearMonth;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -73,6 +74,29 @@ class LedgerPropertiesTest {
 		runner.run(context -> assertThat(context.getBean(LedgerProperties.class).retryInterval())
 			.isEqualTo(Duration.ofMinutes(1)));
 		runner.withPropertyValues("jey.billing.ledger.retry-interval=5").run(context -> assertThat(context).hasFailed());
+	}
+
+	@Test
+	void 탭_이름의_틀은_기본이_실제_장부_모양이다() {
+		runner.run(context -> assertThat(context.getBean(LedgerProperties.class)
+			.tabNameFor(YearMonth.of(2026, 11), "동탄관")).isEqualTo("11월 동탄관(26)"));
+	}
+
+	@Test
+	void 탭_이름의_틀이_틀리면_서버가_뜨지_않는다() {
+		runner.withPropertyValues("jey.billing.ledger.tab-name={month}월 {campus}")
+			.run(context -> assertThat(context).hasFailed());
+	}
+
+	// 두 지점이 한 파일을 쓰면 탭 이름에 지점이 있어야 한다. 없으면 두 지점의 결제가 같은 탭에 섞인다.
+	@Test
+	void 두_지점이_같은_파일인데_탭_이름에_지점이_없으면_서버가_뜨지_않는다() {
+		runner.withPropertyValues("jey.billing.ledger.spreadsheets.1=1AbC", "jey.billing.ledger.spreadsheets.2=1AbC",
+				"jey.billing.ledger.service-account-key=a2V5", "jey.billing.ledger.tab-name={year}-{month2}")
+			.run(context -> assertThat(context).hasFailed());
+		runner.withPropertyValues("jey.billing.ledger.spreadsheets.1=1AbC", "jey.billing.ledger.spreadsheets.2=1AbC",
+				"jey.billing.ledger.service-account-key=a2V5")
+			.run(context -> assertThat(context).hasNotFailed());
 	}
 
 	@Test

@@ -83,7 +83,7 @@ public class LedgerSync extends BaseEntity {
 	@Column(name = "last_attempt_at")
 	private Instant lastAttemptAt;
 
-	@Column(name = "sheet_tab", length = 20)
+	@Column(name = "sheet_tab", length = 100)
 	private String sheetTab;
 
 	@Column(name = "sheet_row")
@@ -241,10 +241,10 @@ public class LedgerSync extends BaseEntity {
 	}
 
 	/** 장부에서 이 결제의 줄을 찾아 비고에 취소 표시를 했다. 앱이 몰랐던 줄(쓰고 응답을 잃은 줄)이면 그 줄을 이제 남긴다. */
-	public void cancelMarked(int row, Instant now) {
+	public void cancelMarked(String tab, int row, Instant now) {
 		requireInProgress();
 		requireCancelRequested();
-		this.sheetTab = targetMonth.toString();
+		this.sheetTab = tab;
 		this.sheetRow = row;
 		finishCancel(true);
 	}

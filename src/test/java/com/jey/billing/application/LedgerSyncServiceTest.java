@@ -96,24 +96,24 @@ class LedgerSyncServiceTest extends LedgerSheetsTestSupport {
 		PaymentView paid = pay(invoice(student, List.of(cls), 9), Money.of(315_000), Money.of(29_000));
 
 		LedgerSync sync = awaitStatus(paid.paymentId(), LedgerSyncStatus.SYNCED);
-		assertThat(sync.getSheetTab()).isEqualTo("2026-11");
+		assertThat(sync.getSheetTab()).isEqualTo(TAB);
 		assertThat(sync.getSheetRow()).isEqualTo(7);
 		String date = LedgerFormats.date(LocalDate.ofInstant(paid.paidAt(), clock.getZone()));
 		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH))
 			.withHeader("Authorization", matching("Bearer [\\w-]+\\.[\\w-]+\\.[\\w-]+"))
 			.withRequestBody(equalToJson("""
 					{"valueInputOption": "RAW", "data": [
-					  {"range": "'2026-11'!C7", "values": [["동탄고1"]]},
-					  {"range": "'2026-11'!D7", "values": [["%s(%s)"]]},
-					  {"range": "'2026-11'!E7", "values": [["%s"]]},
-					  {"range": "'2026-11'!F7", "values": [[315000]]},
-					  {"range": "'2026-11'!G7", "values": [["11월 9회분 수강료"]]},
-					  {"range": "'2026-11'!H7", "values": [[280000]]},
-					  {"range": "'2026-11'!L7", "values": [["%s"]]},
-					  {"range": "'2026-11'!M7", "values": [[315000]]},
-					  {"range": "'2026-11'!N7", "values": [[29000]]},
-					  {"range": "'2026-11'!O7", "values": [["11월 9회분 수강료 + 교재비 (29,000원)"]]},
-					  {"range": "'2026-11'!P7", "values": [["앱:결제-%d"]]}
+					  {"range": "'11월 동탄관(26)'!C7", "values": [["동탄고1"]]},
+					  {"range": "'11월 동탄관(26)'!D7", "values": [["%s(%s)"]]},
+					  {"range": "'11월 동탄관(26)'!E7", "values": [["%s"]]},
+					  {"range": "'11월 동탄관(26)'!F7", "values": [[315000]]},
+					  {"range": "'11월 동탄관(26)'!G7", "values": [["11월 9회분 수강료"]]},
+					  {"range": "'11월 동탄관(26)'!H7", "values": [[280000]]},
+					  {"range": "'11월 동탄관(26)'!L7", "values": [["%s"]]},
+					  {"range": "'11월 동탄관(26)'!M7", "values": [[315000]]},
+					  {"range": "'11월 동탄관(26)'!N7", "values": [[29000]]},
+					  {"range": "'11월 동탄관(26)'!O7", "values": [["11월 9회분 수강료 + 교재비 (29,000원)"]]},
+					  {"range": "'11월 동탄관(26)'!P7", "values": [["앱:결제-%d"]]}
 					]}""".formatted(name, className, LedgerFormats.phone(phone), date, paid.paymentId()))));
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM core_audit_log WHERE action = 'billing.ledger-written' "
 				+ "AND target_id = ? AND campus_id = ?", Long.class, student, DONGTAN)).isOne();
@@ -186,7 +186,7 @@ class LedgerSyncServiceTest extends LedgerSheetsTestSupport {
 		long cls = classes.create(DONGTAN, newClassName(), Money.of(280_000), Money.ZERO).getId();
 		google.stubFor(get(urlPathEqualTo(READ_PATH)).willReturn(aResponse().withStatus(400)
 			.withHeader("Content-Type", "application/json")
-			.withBody("{\"error\": {\"code\": 400, \"message\": \"Unable to parse range: '2026-11'!A:AZ\"}}")));
+			.withBody("{\"error\": {\"code\": 400, \"message\": \"Unable to parse range: '11월 동탄관(26)'!A:AZ\"}}")));
 
 		PaymentView paid = pay(invoice(student, List.of(cls), 8), Money.of(280_000), Money.ZERO);
 
@@ -251,7 +251,7 @@ class LedgerSyncServiceTest extends LedgerSheetsTestSupport {
 		String note = LedgerFormats.canceledNote(paid.paymentId(),
 				LocalDate.ofInstant(canceled.canceledAt(), clock.getZone()));
 		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(equalToJson("""
-				{"valueInputOption": "RAW", "data": [{"range": "'2026-11'!P7", "values": [["%s"]]}]}""".formatted(note))));
+				{"valueInputOption": "RAW", "data": [{"range": "'11월 동탄관(26)'!P7", "values": [["%s"]]}]}""".formatted(note))));
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM core_audit_log WHERE action = 'billing.ledger-cancel-marked' "
 				+ "AND target_id = ?", Long.class, student)).isOne();
 	}
@@ -286,11 +286,11 @@ class LedgerSyncServiceTest extends LedgerSheetsTestSupport {
 		awaitStatus(paid.paymentId(), LedgerSyncStatus.SYNCED);
 		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH))
 			.withRequestBody(equalToJson("""
-					{"data": [{"range": "'2026-11'!F7", "values": [[299250]]}]}""", true, true))
+					{"data": [{"range": "'11월 동탄관(26)'!F7", "values": [[299250]]}]}""", true, true))
 			.withRequestBody(equalToJson("""
-					{"data": [{"range": "'2026-11'!G7", "values": [["11월 9회분 수강료 (형제 할인 5%)"]]}]}""", true, true))
+					{"data": [{"range": "'11월 동탄관(26)'!G7", "values": [["11월 9회분 수강료 (형제 할인 5%)"]]}]}""", true, true))
 			.withRequestBody(equalToJson("""
-					{"data": [{"range": "'2026-11'!H7", "values": [[266000]]}]}""", true, true)));
+					{"data": [{"range": "'11월 동탄관(26)'!H7", "values": [[266000]]}]}""", true, true)));
 	}
 
 	// 선생님이 비고 칸을 고쳐 표시가 사라졌다(앞에 메모를 붙임). 취소됨으로 끝내면 장부에 납부한 줄이 남는데 아무도 모른다.
@@ -352,7 +352,7 @@ class LedgerSyncServiceTest extends LedgerSheetsTestSupport {
 		assertThat(sync.isCancelMarked()).isTrue();
 		assertThat(sync.getSheetRow()).isEqualTo(6);
 		// 처음 쓰기(응답을 잃은 것)도 P6에 표시를 썼다. 취소 표시는 한 번이다.
-		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(containing("'2026-11'!P6"))
+		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(containing("'11월 동탄관(26)'!P6"))
 			.withRequestBody(containing("취소됨")));
 	}
 
@@ -380,8 +380,8 @@ class LedgerSyncServiceTest extends LedgerSheetsTestSupport {
 
 		LedgerSync sync = awaitStatus(paid.paymentId(), LedgerSyncStatus.CANCELED);
 		assertThat(sync.isCancelMarked()).isTrue();
-		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(containing("'2026-11'!D6")));
-		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(containing("'2026-11'!P6"))
+		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(containing("'11월 동탄관(26)'!D6")));
+		google.verify(1, postRequestedFor(urlPathEqualTo(WRITE_PATH)).withRequestBody(containing("'11월 동탄관(26)'!P6"))
 			.withRequestBody(containing("취소됨")));
 	}
 
