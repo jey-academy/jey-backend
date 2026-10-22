@@ -38,6 +38,10 @@ import com.jey.core.campus.api.CampusInfo;
 import com.jey.core.member.api.MemberRefs;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.UniqueKeys;
+import com.jey.core.sheets.api.SheetsRejected;
+import com.jey.core.sheets.api.SheetsRejection;
+import com.jey.core.sheets.api.SheetsUnavailable;
+import com.jey.core.sheets.api.Spreadsheets;
 
 /**
  * 결제를 지점의 장부(구글 시트)에 쓴다(ADR-0044). 결제마다 {@link LedgerSync} 한 줄이 상태를 갖는다.
@@ -73,7 +77,7 @@ public class LedgerSyncService {
 
 	private final LedgerEntryAssembler assembler;
 
-	private final LedgerSheets sheets;
+	private final Spreadsheets sheets;
 
 	private final LedgerLock lock;
 
@@ -90,7 +94,7 @@ public class LedgerSyncService {
 	private final Clock clock;
 
 	LedgerSyncService(LedgerSyncRepository syncs, PaymentRepository payments, InvoiceRepository invoices,
-			LedgerEntryAssembler assembler, LedgerSheets sheets, LedgerLock lock, LedgerProperties properties,
+			LedgerEntryAssembler assembler, Spreadsheets sheets, LedgerLock lock, LedgerProperties properties,
 			AuditLog auditLog, CampusCatalog catalog, StudentNames studentNames, TransactionTemplate transaction,
 			Clock clock) {
 		this.syncs = syncs;
@@ -240,21 +244,31 @@ public class LedgerSyncService {
 				return cancel ? markCanceled(spreadsheet.get(), tab, claimed, hold)
 						: write(spreadsheet.get(), tab, claimed, (LedgerEntryAssembler.Assembled.Ready) assembled, hold);
 			}
-		} catch (LedgerSheetsUnavailable e) {
+		} catch (SheetsUnavailable e) {
 			log.warn("구글 시트 장애로 장부 반영을 미룬다: 반영 {}, 시도 {}, {}", claimed.id(), claimed.attempts(), e.getMessage());
 			return new RetryLater(e.retryAfter());
 		} catch (LedgerLockUnavailable e) {
 			log.warn("장부 잠금 저장소 장애로 장부 반영을 미룬다: 반영 {}, 시도 {}", claimed.id(), claimed.attempts(), e);
 			return new RetryLater(null);
-		} catch (LedgerSheetsRejected e) {
-			return cancel && e.reason() == LedgerSyncReason.TAB_NOT_FOUND ? cannotMark(claimed, e.reason())
-					: new Unsynced(e.reason());
+		} catch (SheetsRejected e) {
+			LedgerSyncReason reason = reasonOf(e.rejection());
+			return cancel && reason == LedgerSyncReason.TAB_NOT_FOUND ? cannotMark(claimed, reason) : new Unsynced(reason);
 		} catch (LedgerLayoutException e) {
 			return cancel ? cannotMark(claimed, e.reason()) : new Unsynced(e.reason());
 		} catch (RuntimeException e) {
 			log.error("장부 반영 중 예상하지 못한 오류: 반영 {}", claimed.id(), e);
 			return new Unsynced(LedgerSyncReason.APP_ERROR);
 		}
+	}
+
+	// 구글이 거절한 이유를 장부의 미반영 이유로 바꾼다. 파일이 없는 것은 설정이 틀린 것이다.
+	private static LedgerSyncReason reasonOf(SheetsRejection rejection) {
+		return switch (rejection) {
+			case TAB_NOT_FOUND -> LedgerSyncReason.TAB_NOT_FOUND;
+			case ACCESS_DENIED -> LedgerSyncReason.ACCESS_DENIED;
+			case SPREADSHEET_NOT_FOUND -> LedgerSyncReason.NOT_CONFIGURED;
+			case REJECTED -> LedgerSyncReason.GOOGLE_REJECTED;
+		};
 	}
 
 	// 취소 표시를 할 수 없다. 앱이 쓴 줄이 없으면 쓰지 않은 채 끝내고, 있으면 미반영으로 남긴다(장부에 납부한 줄이 남는다).
@@ -300,7 +314,7 @@ public class LedgerSyncService {
 	private void writeCells(String spreadsheet, String tab, Map<String, Object> cells, LedgerLock.Held hold) {
 		try {
 			sheets.write(spreadsheet, tab, cells);
-		} catch (LedgerSheetsUnavailable e) {
+		} catch (SheetsUnavailable e) {
 			hold.keepUntilExpiry();
 			throw e;
 		}

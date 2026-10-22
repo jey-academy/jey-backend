@@ -25,7 +25,7 @@ class RedisLedgerLock implements LedgerLock {
 	static final String KEY_PREFIX = "jey:billing:ledger-lock:";
 
 	/**
-	 * 한 번의 시도는 구글 요청 둘(읽기, 쓰기)이고 각각 연결·응답 제한이 있다({@code LedgerProperties}의 상한 5초·15초 — 최대 2 × 20초).
+	 * 한 번의 시도는 구글 요청 둘(읽기, 쓰기)이고 각각 연결·응답 제한이 있다({@code jey.sheets}의 상한 5초·15초 — 최대 2 × 20초).
 	 * 그보다 길게 잡는다. 결과를 모르는 쓰기 뒤에는 이 시간 동안 잠금을 남겨 늦게 반영되는 쓰기를 기다린다.
 	 */
 	static final Duration TTL = Duration.ofSeconds(45);

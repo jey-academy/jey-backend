@@ -1,4 +1,4 @@
-package com.jey.billing.infrastructure;
+package com.jey.core.sheets;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -35,7 +35,7 @@ final class ServiceAccountAccessTokens implements GoogleAccessTokens {
 		try {
 			json = Base64.getDecoder().decode(keyBase64.strip());
 		} catch (IllegalArgumentException e) {
-			throw new IllegalArgumentException("장부 서비스 계정 키가 base64가 아니다");
+			throw new IllegalArgumentException("구글 시트 서비스 계정 키가 base64가 아니다");
 		}
 		GoogleCredentials scoped;
 		try {
@@ -43,10 +43,10 @@ final class ServiceAccountAccessTokens implements GoogleAccessTokens {
 				.createScoped(List.of(SHEETS_SCOPE));
 		} catch (IOException | RuntimeException e) {
 			// 원인 예외의 문구에 키의 일부가 실릴 수 있어 잇지 않는다.
-			throw new IllegalArgumentException("장부 서비스 계정 키를 읽지 못했다(서비스 계정 키 JSON인지 확인)");
+			throw new IllegalArgumentException("구글 시트 서비스 계정 키를 읽지 못했다(서비스 계정 키 JSON인지 확인)");
 		}
 		if (!(scoped instanceof ServiceAccountCredentials credentials)) {
-			throw new IllegalArgumentException("장부 서비스 계정 키를 읽지 못했다(서비스 계정 키 JSON인지 확인)");
+			throw new IllegalArgumentException("구글 시트 서비스 계정 키를 읽지 못했다(서비스 계정 키 JSON인지 확인)");
 		}
 		return new ServiceAccountAccessTokens(credentials.createWithUseJwtAccessWithScope(true));
 	}
@@ -57,7 +57,7 @@ final class ServiceAccountAccessTokens implements GoogleAccessTokens {
 			Map<String, List<String>> metadata = credentials.getRequestMetadata();
 			return metadata.get("Authorization").getFirst();
 		} catch (IOException e) {
-			throw new IllegalStateException("장부 인증 머리글을 만들지 못했다", e);
+			throw new IllegalStateException("구글 시트 인증 머리글을 만들지 못했다", e);
 		}
 	}
 

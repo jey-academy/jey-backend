@@ -25,7 +25,7 @@ import org.springframework.web.util.UriUtils;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.jey.TestcontainersConfiguration;
-import com.jey.billing.infrastructure.TestServiceAccountKeys;
+import com.jey.TestServiceAccountKeys;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -64,12 +64,12 @@ public abstract class LedgerSheetsTestSupport {
 
 	@DynamicPropertySource
 	static void ledger(DynamicPropertyRegistry registry) {
-		registry.add("jey.billing.ledger.base-url", google::baseUrl);
+		registry.add("jey.sheets.base-url", google::baseUrl);
 		registry.add("jey.billing.ledger.spreadsheets.1", () -> SHEET_ID);
-		registry.add("jey.billing.ledger.service-account-key", TestServiceAccountKeys::base64);
+		registry.add("jey.sheets.service-account-key", TestServiceAccountKeys::base64);
 		registry.add("jey.billing.ledger.retry-interval", () -> "1h");
-		registry.add("jey.billing.ledger.connect-timeout", () -> "1s");
-		registry.add("jey.billing.ledger.read-timeout", () -> "1s");
+		registry.add("jey.sheets.connect-timeout", () -> "1s");
+		registry.add("jey.sheets.read-timeout", () -> "1s");
 	}
 
 	/** 장부 잠금의 Redis 키(시험용 장부). */

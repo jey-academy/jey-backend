@@ -1,4 +1,4 @@
-package com.jey.billing.infrastructure;
+package com.jey.core.sheets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -7,6 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 import org.junit.jupiter.api.Test;
+
+import com.jey.TestServiceAccountKeys;
 
 // 서비스 계정 키(base64)로 인증 머리글을 만든다. 키는 시험에서 새로 만든 것이고, 토큰 주소는 닿지 않는 곳이다
 // (스스로 서명한 토큰이라 구글에 묻지 않는다는 것을 함께 본다). Docker가 필요 없다.

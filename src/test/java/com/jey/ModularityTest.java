@@ -56,7 +56,7 @@ class ModularityTest {
 		}
 
 		assertThat(found).containsExactlyInAnyOrder("account", "audit", "auth", "campus", "config", "file", "member",
-				"notification", "shared", "web");
+				"notification", "shared", "sheets", "web");
 	}
 
 	// 하위 패키지 밖(com.jey.core 바로 아래)에 놓인 타입은 어느 하위 패키지에도 속하지 않아 경계 규칙이 보지 않는다.
