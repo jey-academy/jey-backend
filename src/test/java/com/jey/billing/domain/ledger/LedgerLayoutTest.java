@@ -158,7 +158,7 @@ class LedgerLayoutTest {
 	void 쓸_칸을_머리글_위치대로_A1_표기로_만든다() {
 		LedgerLayout layout = LedgerLayout.parse(dongtanOctober(), OCTOBER);
 		LedgerRow row = LedgerRow.of(new LedgerEntry(123L, "동탄고1", "김하윤", "EJ5", PhoneNumber.of("01012345678"),
-				OCTOBER, 9, List.of("동탄고 패스"), Money.of(299_250), Money.of(266_000), LocalDate.of(2026, 10, 1),
+				OCTOBER, 9, List.of("제이G패스"), Money.of(299_250), Money.of(266_000), LocalDate.of(2026, 10, 1),
 				Money.of(299_250), Money.of(29_000)));
 
 		assertThat(layout.cells(10, row)).containsExactly(
@@ -166,12 +166,12 @@ class LedgerLayoutTest {
 				org.assertj.core.api.Assertions.entry("D10", "김하윤(EJ5)"),
 				org.assertj.core.api.Assertions.entry("E10", "(010) 1234-5678"),
 				org.assertj.core.api.Assertions.entry("F10", 299_250L),
-				org.assertj.core.api.Assertions.entry("G10", "10월 9회분 수강료 (동탄고 패스)"),
+				org.assertj.core.api.Assertions.entry("G10", "10월 9회분 수강료 (제이G패스)"),
 				org.assertj.core.api.Assertions.entry("H10", 266_000L),
 				org.assertj.core.api.Assertions.entry("L10", "10/1"),
 				org.assertj.core.api.Assertions.entry("M10", 299_250L),
 				org.assertj.core.api.Assertions.entry("N10", 29_000L),
-				org.assertj.core.api.Assertions.entry("O10", "10월 9회분 수강료 (동탄고 패스) + 교재비 (29,000원)"),
+				org.assertj.core.api.Assertions.entry("O10", "10월 9회분 수강료 (제이G패스) + 교재비 (29,000원)"),
 				org.assertj.core.api.Assertions.entry("Q10", "앱:결제-123"));
 	}
 

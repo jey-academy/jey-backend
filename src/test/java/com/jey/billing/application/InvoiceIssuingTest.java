@@ -86,7 +86,7 @@ class InvoiceIssuingTest {
 				assertThat(((Number) row.get("amount")).longValue()).isEqualTo(20_300);
 			});
 		assertThat(invoices.get(issued.invoiceId(), STAFF).lines().get(0).discounts()).singleElement()
-			.satisfies(discount -> assertThat(discount.name()).isEqualTo("동탄고 패스"));
+			.satisfies(discount -> assertThat(discount.name()).isEqualTo("제이G패스"));
 	}
 
 	// 순차 방식에서는 순서가 금액을 바꾼다. 근거가 있는 할인(패스)을 직원이 고른 할인보다 먼저 계산한다.

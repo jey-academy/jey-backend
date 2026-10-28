@@ -45,6 +45,15 @@ class SeedDataTest {
 				.isBetween(now.minus(Duration.ofHours(1)), now);
 	}
 
+	// 상품 이름을 바꿨다(ADR-0049). 코드는 청구에 남는 값이라 그대로다.
+	@Test
+	void 패스_할인의_이름은_제이G패스다() {
+		DiscountType pass = discountTypes.findByCode("DONGTAN_PASS").orElseThrow();
+		assertThat(pass.getName()).isEqualTo("제이G패스");
+		assertThat(pass.getRate()).isEqualByComparingTo("0.05");
+		assertThat(pass.isActive()).isTrue();
+	}
+
 	// 로그인 없이 넣은 행이라 작성자가 없다.
 	@Test
 	void 초기_행은_작성자가_없다() {
