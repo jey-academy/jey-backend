@@ -53,7 +53,7 @@ class CampusPassController {
 		return ConsentNoticeResponse.from(ConsentNotice.of(PassDirection.CAMPUS_ISSUED));
 	}
 
-	@Operation(summary = "JEY 패스 발급",
+	@Operation(summary = "JEY 지점의 제이G패스 발급",
 			description = "다니는 학생의 그 달 수강료 결제를 확인한 뒤 보낸다. 같은 학생이 여러 장 받을 수 있다. 링크 토큰은 이 응답에만 있다. 잃어버리면 링크를 새로 만든다")
 	@Idempotent
 	@PostMapping
@@ -70,7 +70,7 @@ class CampusPassController {
 		return PassLinkResponse.from(campusPassService.renewLink(id));
 	}
 
-	@Operation(summary = "JEY 패스 취소", description = "쓰지 않은 JEY 발급 패스를 취소한다. 기간이 지난 패스도 된다. 결제 환불은 따로 한다. 사용됐거나 이미 취소된 패스는 409")
+	@Operation(summary = "JEY 지점의 제이G패스 취소", description = "쓰지 않은 JEY 발급 패스를 취소한다. 기간이 지난 패스도 된다. 결제 환불은 따로 한다. 사용됐거나 이미 취소된 패스는 409")
 	@Idempotent
 	@PostMapping("/{id}/cancel")
 	PassCancelResponse cancel(@PathVariable long id) {

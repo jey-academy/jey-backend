@@ -26,7 +26,7 @@ class PartnerLedgerRowTest {
 		PartnerLedgerRow row = PartnerLedgerRow.partnerDiscount(7, USED_ON, "김하윤", "JP-0007", Money.of(280_000),
 				new BigDecimal("0.05"), Money.of(14_000), Money.of(266_000), "동탄관");
 
-		assertThat(row.cells()).containsExactly("JEY 패스 할인", "2026-11-03", "김하윤", "JP-0007", 280_000L, "5%", 14_000L,
+		assertThat(row.cells()).containsExactly("제이G패스 할인", "2026-11-03", "김하윤", "JP-0007", 280_000L, "5%", 14_000L,
 				266_000L, "동탄관", "앱:패스-7");
 	}
 
@@ -59,7 +59,7 @@ class PartnerLedgerRowTest {
 	@Test
 	void 앱_표시로_그_패스의_줄_번호를_찾는다() {
 		List<List<String>> values = List.of(PartnerLedgerRow.HEADER,
-				List.of("JEY 패스 할인", "2026-11-01", "가", "JP-1", "1", "5%", "1", "1", "동탄관", "앱:패스-70"),
+				List.of("제이G패스 할인", "2026-11-01", "가", "JP-1", "1", "5%", "1", "1", "동탄관", "앱:패스-70"),
 				List.of(),
 				List.of("JEY에서 사용", "2026-11-03", "나", "DP-7", "", "", "", "", "동탄관", " 앱:패스-7 "));
 

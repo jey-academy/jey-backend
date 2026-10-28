@@ -40,7 +40,7 @@ public record LedgerRow(Map<LedgerColumn, Object> values) {
 		return new LedgerRow(values);
 	}
 
-	// 11월 9회분 수강료 (동탄고 패스 + 형제 할인 5%)
+	// 11월 9회분 수강료 (제이G패스 + 형제 할인 5%)
 	private static String content(LedgerEntry entry) {
 		String base = entry.targetMonth().getMonthValue() + "월 " + entry.sessions() + "회분 수강료";
 		if (entry.discountNames().isEmpty()) {

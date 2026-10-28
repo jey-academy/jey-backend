@@ -58,7 +58,7 @@ public class User extends BaseEntity {
 	@Column(name = "campus_id")
 	private Long campusId;
 
-	// 연계 학원 계정만 가진다. 연계 학원 테이블은 동탄고 패스 모듈에 있어 외래 키는 없다.
+	// 연계 학원 계정만 가진다. 연계 학원 테이블은 제이G패스 모듈에 있어 외래 키는 없다.
 	@Column(name = "partner_id")
 	private Long partnerId;
 

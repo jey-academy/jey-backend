@@ -45,7 +45,7 @@ class PartnerLedgerSyncApiTest extends SheetsTestSupport {
 	private static final String UNSYNCED = BASE + "/unsynced";
 
 	private static final String TAB_PATH = "/v4/spreadsheets/" + PARTNER_SHEET_ID + "/values/'"
-			+ UriUtils.encodePath("JEY 패스", StandardCharsets.UTF_8) + "'";
+			+ UriUtils.encodePath("제이G패스", StandardCharsets.UTF_8) + "'";
 
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -121,7 +121,7 @@ class PartnerLedgerSyncApiTest extends SheetsTestSupport {
 		PartnerLedgerSync sync = unsynced(PARTNER_WITH_LEDGER, "김하윤");
 		stubRead(List.of(headerRow()));
 		google.stubFor(WireMock.post(urlPathEqualTo(TAB_PATH + "!A:J:append"))
-			.willReturn(okJson("{\"updates\": {\"updatedRange\": \"'JEY 패스'!A2:J2\"}}")));
+			.willReturn(okJson("{\"updates\": {\"updatedRange\": \"'제이G패스'!A2:J2\"}}")));
 
 		mockMvc.perform(post(BASE + "/" + sync.getId() + "/retry").with(csrfToken(mockMvc)).with(idempotencyKey()))
 			.andExpect(status().isOk())
@@ -147,7 +147,7 @@ class PartnerLedgerSyncApiTest extends SheetsTestSupport {
 	void 미반영이_아니면_409이고_없으면_404다() throws Exception {
 		stubRead(List.of(headerRow()));
 		google.stubFor(WireMock.post(urlPathEqualTo(TAB_PATH + "!A:J:append"))
-			.willReturn(okJson("{\"updates\": {\"updatedRange\": \"'JEY 패스'!A2:J2\"}}")));
+			.willReturn(okJson("{\"updates\": {\"updatedRange\": \"'제이G패스'!A2:J2\"}}")));
 		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
 		long id = syncs.findByPassId(passId).orElseThrow().getId();

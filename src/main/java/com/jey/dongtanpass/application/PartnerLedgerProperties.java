@@ -18,7 +18,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param retryInterval 다시 시도할 줄을 찾는 간격. 10초 이상(단위를 빠뜨린 값을 막는다)
  */
 @ConfigurationProperties("jey.dongtanpass.partner-ledger")
-public record PartnerLedgerProperties(Map<Long, String> spreadsheets, @DefaultValue("JEY 패스") String tabName,
+public record PartnerLedgerProperties(Map<Long, String> spreadsheets, @DefaultValue("제이G패스") String tabName,
 		@DefaultValue("1m") Duration retryInterval) {
 
 	private static final Pattern SPREADSHEET_ID = Pattern.compile("[A-Za-z0-9_-]{1,200}");
@@ -27,7 +27,7 @@ public record PartnerLedgerProperties(Map<Long, String> spreadsheets, @DefaultVa
 
 	private static final int MAX_TAB_NAME_LENGTH = 100;
 
-	private static final String DEFAULT_TAB_NAME = "JEY 패스";
+	private static final String DEFAULT_TAB_NAME = "제이G패스";
 
 	public PartnerLedgerProperties {
 		spreadsheets = spreadsheets == null ? Map.of() : Map.copyOf(spreadsheets);

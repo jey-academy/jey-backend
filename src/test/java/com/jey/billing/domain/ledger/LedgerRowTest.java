@@ -16,28 +16,28 @@ class LedgerRowTest {
 
 	@Test
 	void 시안의_예와_같은_값을_만든다() {
-		LedgerRow row = LedgerRow.of(sample("동탄고1", List.of("동탄고 패스"), Money.of(29_000)));
+		LedgerRow row = LedgerRow.of(sample("동탄고1", List.of("제이G패스"), Money.of(29_000)));
 
 		assertThat(row.values()).containsOnly(
 				entry(LedgerColumn.SCHOOL, "동탄고1"),
 				entry(LedgerColumn.NAME, "김하윤(EJ5)"),
 				entry(LedgerColumn.PHONE, "(010) 1234-5678"),
 				entry(LedgerColumn.CHARGE, 299_250L),
-				entry(LedgerColumn.CONTENT, "11월 9회분 수강료 (동탄고 패스)"),
+				entry(LedgerColumn.CONTENT, "11월 9회분 수강료 (제이G패스)"),
 				entry(LedgerColumn.MONTHLY_BASE, 266_000L),
 				entry(LedgerColumn.PAID_DATE, "10/31"),
 				entry(LedgerColumn.TUITION, 299_250L),
 				entry(LedgerColumn.BOOK_FEE, 29_000L),
-				entry(LedgerColumn.THIS_MONTH, "11월 9회분 수강료 (동탄고 패스) + 교재비 (29,000원)"),
+				entry(LedgerColumn.THIS_MONTH, "11월 9회분 수강료 (제이G패스) + 교재비 (29,000원)"),
 				entry(LedgerColumn.NOTE, "앱:결제-123"));
 	}
 
 	@Test
 	void 교재비가_0원이면_교재비_칸을_쓰지_않고_납부_내용에도_붙이지_않는다() {
-		LedgerRow row = LedgerRow.of(sample("동탄고1", List.of("동탄고 패스"), Money.ZERO));
+		LedgerRow row = LedgerRow.of(sample("동탄고1", List.of("제이G패스"), Money.ZERO));
 
 		assertThat(row.values()).doesNotContainKey(LedgerColumn.BOOK_FEE);
-		assertThat(row.values()).containsEntry(LedgerColumn.THIS_MONTH, "11월 9회분 수강료 (동탄고 패스)");
+		assertThat(row.values()).containsEntry(LedgerColumn.THIS_MONTH, "11월 9회분 수강료 (제이G패스)");
 	}
 
 	@Test
@@ -49,9 +49,9 @@ class LedgerRowTest {
 
 	@Test
 	void 할인이_여럿이면_이름을_더하기로_잇는다() {
-		LedgerRow row = LedgerRow.of(sample("동탄고1", List.of("동탄고 패스", "형제 할인 5%"), Money.ZERO));
+		LedgerRow row = LedgerRow.of(sample("동탄고1", List.of("제이G패스", "형제 할인 5%"), Money.ZERO));
 
-		assertThat(row.values()).containsEntry(LedgerColumn.CONTENT, "11월 9회분 수강료 (동탄고 패스 + 형제 할인 5%)");
+		assertThat(row.values()).containsEntry(LedgerColumn.CONTENT, "11월 9회분 수강료 (제이G패스 + 형제 할인 5%)");
 	}
 
 	@Test

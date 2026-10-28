@@ -20,7 +20,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
 /**
- * 동탄고 패스. 방향이 둘이다({@link PassDirection}). 연계 학원이 결제를 확인하고 발급해 JEY 지점에서 쓰거나(ADR-0001),
+ * 제이G패스. 방향이 둘이다({@link PassDirection}). 연계 학원이 결제를 확인하고 발급해 JEY 지점에서 쓰거나(ADR-0001),
  * JEY 지점이 다니는 학생의 결제를 확인하고 발급해 연계 학원에서 쓴다. 방향마다 채우는 칸이 다르고 DB의 CHECK가 그 조합을 막는다:
  * 연계 학원 발급분은 {@code partnerId}만, JEY 발급분은 {@code issuerCampusId}·{@code studentId}·{@code discountRate}만 있다.
  * JEY 발급분은 발급 때의 할인율을 남긴다(설정을 바꿔도 이미 준 패스는 그대로). 연계 학원 발급분의 할인율은 받는 지점의 할인 유형에서 읽는다.

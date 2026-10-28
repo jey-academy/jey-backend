@@ -31,7 +31,7 @@
 ## 의존 방향 (dongtanpass → billing)
 반대 방향(`billing → dongtanpass`, 결제할 때 billing이 패스 유효성 확인·사용 처리를 요청)도 검토했다. `dongtanpass → billing`을 고른 이유:
 
-- **안정 의존 원칙**: 수납은 동탄고 패스 없이도 존재하는 기본 기능이고, 동탄고 패스는 그 위에 얹는 프로모션이다. 덜 안정적인 선택 기능이 안정적인 기본 기능에 의존해야 한다.
+- **안정 의존 원칙**: 수납은 제이G패스 없이도 존재하는 기본 기능이고, 제이G패스는 그 위에 얹는 프로모션이다. 덜 안정적인 선택 기능이 안정적인 기본 기능에 의존해야 한다.
 - **할인 모듈 확장성**: `billing`이 할인 출처를 알면 제휴 쿠폰 같은 할인 모듈이 추가될 때마다 `billing`을 고쳐야 한다. 범용 할인 입력(`discountType`, `discountRate`, `discountRef`)을 받으면 새 할인 모듈은 같은 API를 쓰기만 하면 되고 `billing`은 바뀌지 않는다("새 기능 추가 시 수납 코드 무변경").
 - **흐름과 일치**: 사용 처리 API는 dongtanpass에 있다(`POST /api/v1/dongtanpass/passes/{id}/redeem`). 데스크에서 패스 화면으로 시작해 dongtanpass가 청구 생성을 요청한다. 같은 DB라 `dongtanpass_redemption`(pass_id 유니크) 기록과 청구 생성이 한 트랜잭션으로 묶인다.
 

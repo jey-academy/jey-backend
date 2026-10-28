@@ -34,7 +34,7 @@ import com.jey.core.member.StudentService;
 import com.jey.core.shared.BusinessException;
 import com.jey.core.shared.Money;
 
-// 다른 모듈(동탄고 패스)이 근거(참조값)가 있는 할인을 실어 청구를 만든다. 그런 할인은 이 창구로만 붙고, 직원이 고르는 일반 경로로는 붙지 않는다.
+// 다른 모듈(제이G패스)이 근거(참조값)가 있는 할인을 실어 청구를 만든다. 그런 할인은 이 창구로만 붙고, 직원이 고르는 일반 경로로는 붙지 않는다.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @ActiveProfiles("test")
@@ -86,7 +86,7 @@ class InvoiceIssuingTest {
 				assertThat(((Number) row.get("amount")).longValue()).isEqualTo(20_300);
 			});
 		assertThat(invoices.get(issued.invoiceId(), STAFF).lines().get(0).discounts()).singleElement()
-			.satisfies(discount -> assertThat(discount.name()).isEqualTo("동탄고 패스"));
+			.satisfies(discount -> assertThat(discount.name()).isEqualTo("제이G패스"));
 	}
 
 	// 순차 방식에서는 순서가 금액을 바꾼다. 근거가 있는 할인(패스)을 직원이 고른 할인보다 먼저 계산한다.

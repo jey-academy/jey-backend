@@ -3,7 +3,7 @@ package com.jey.dongtanpass.application;
 import com.jey.core.auth.api.RateLimitName;
 
 /**
- * 동탄고 패스 모듈이 거는 횟수 한도의 이름. 몇 번으로 제한하는지는 설정이 정한다({@code HolderRelinkProperties},
+ * 제이G패스 모듈이 거는 횟수 한도의 이름. 몇 번으로 제한하는지는 설정이 정한다({@code HolderRelinkProperties},
  * {@code PassNoVerifyProperties}, {@code HolderCheckProperties}).
  */
 enum DongtanpassRateLimit implements RateLimitName {

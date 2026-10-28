@@ -71,7 +71,7 @@ final class PartnerLedgerRow {
 
 	private static String label(PartnerLedgerKind kind) {
 		return switch (kind) {
-			case PARTNER_DISCOUNT -> "JEY 패스 할인";
+			case PARTNER_DISCOUNT -> "제이G패스 할인";
 			case USED_AT_JEY -> "JEY에서 사용";
 		};
 	}

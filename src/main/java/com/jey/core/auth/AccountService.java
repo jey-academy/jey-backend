@@ -54,7 +54,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p>비밀번호 원문은 해시하는 데만 쓰고 로그, 예외 문구, 감사 로그에 넣지 않는다.
  *
- * <p>연계 학원 계정은 계정 관리 API로 만들지 않는다. 동탄고 패스 모듈이 연계 학원을 확인한 뒤 {@link PartnerAccounts}로 만든다(ADR-0034).
+ * <p>연계 학원 계정은 계정 관리 API로 만들지 않는다. 제이G패스 모듈이 연계 학원을 확인한 뒤 {@link PartnerAccounts}로 만든다(ADR-0034).
  * 만드는 규칙은 직원 계정과 같은 길을 쓴다.
  */
 @Service

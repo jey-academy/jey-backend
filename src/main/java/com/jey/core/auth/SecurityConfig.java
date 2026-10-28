@@ -79,7 +79,7 @@ class SecurityConfig {
 						// 로그인은 인증 없이 열지만 CSRF 토큰은 필요하다.
 						// 다른 사이트가 피해자의 브라우저를 공격자 계정으로 로그인시키는 것을 막는다.
 						.requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
-						// 학부모는 로그인하지 않는다. 동탄고 패스 링크의 토큰이 열쇠다(본문으로 받는다). CSRF 토큰은 필요하다.
+						// 학부모는 로그인하지 않는다. 제이G패스 링크의 토큰이 열쇠다(본문으로 받는다). CSRF 토큰은 필요하다.
 						// 링크를 잃어버리면 학생 이름과 학부모 번호로 다시 받는다(틀린 시도는 횟수로 막는다).
 						.requestMatchers(HttpMethod.POST, "/api/v1/dongtanpass/holder/view", "/api/v1/dongtanpass/holder/qr",
 								"/api/v1/dongtanpass/holder/relink")
