@@ -41,8 +41,8 @@ class GoogleSpreadsheetsTest {
 
 	private static final String WRITE_PATH = "/v4/spreadsheets/sheet-1/values:batchUpdate";
 
-	// 'JEY 패스'!A:D — 주소에서 공백은 인코딩된다. 범위의 끝 열은 붙이는 줄의 칸 수로 정한다.
-	private static final String APPEND_PATH = "/v4/spreadsheets/sheet-1/values/'JEY%20%ED%8C%A8%EC%8A%A4'!A:D:append";
+	// '제이G패스 장부'!A:D — 주소에서 공백은 인코딩된다. 범위의 끝 열은 붙이는 줄의 칸 수로 정한다.
+	private static final String APPEND_PATH = "/v4/spreadsheets/sheet-1/values/'%EC%A0%9C%EC%9D%B4G%ED%8C%A8%EC%8A%A4%20%EC%9E%A5%EB%B6%80'!A:D:append";
 
 	private static final List<Object> FOUR_CELLS = List.of("a", "b", "c", "d");
 
@@ -247,10 +247,10 @@ class GoogleSpreadsheetsTest {
 	@Test
 	void 줄을_붙이면_A열부터_입력한_그대로_끼워_넣고_붙인_줄_번호를_준다() {
 		google.stubFor(post(urlPathEqualTo(APPEND_PATH)).willReturn(okJson("""
-				{"spreadsheetId": "sheet-1", "tableRange": "'JEY 패스'!A1:J6",
-				 "updates": {"updatedRange": "'JEY 패스'!A7:J7", "updatedRows": 1}}""")));
+				{"spreadsheetId": "sheet-1", "tableRange": "'제이G패스 장부'!A1:J6",
+				 "updates": {"updatedRange": "'제이G패스 장부'!A7:J7", "updatedRows": 1}}""")));
 
-		int row = sheets.append(SHEET_ID, "JEY 패스", List.of("JEY 패스 할인", "2026-11-03", 280_000L, ""));
+		int row = sheets.append(SHEET_ID, "제이G패스 장부", List.of("제이G패스 할인", "2026-11-03", 280_000L, ""));
 
 		assertThat(row).isEqualTo(7);
 		google.verify(postRequestedFor(urlPathEqualTo(APPEND_PATH))
@@ -258,27 +258,27 @@ class GoogleSpreadsheetsTest {
 			.withQueryParam("insertDataOption", equalTo("INSERT_ROWS"))
 			.withHeader("Authorization", equalTo("Bearer test-token"))
 			.withRequestBody(equalToJson("""
-					{"values": [["JEY 패스 할인", "2026-11-03", 280000, ""]]}""")));
+					{"values": [["제이G패스 할인", "2026-11-03", 280000, ""]]}""")));
 	}
 
 	@Test
 	void 붙인_범위를_읽지_못하면_앱_오류다() {
 		google.stubFor(post(urlPathEqualTo(APPEND_PATH)).willReturn(okJson("{\"updates\": {}}")));
 
-		assertThatThrownBy(() -> sheets.append(SHEET_ID, "JEY 패스", FOUR_CELLS))
+		assertThatThrownBy(() -> sheets.append(SHEET_ID, "제이G패스 장부", FOUR_CELLS))
 			.isInstanceOf(IllegalStateException.class);
 	}
 
 	@Test
 	void 붙이기의_장애와_거절도_읽기와_같이_바뀐다() {
 		google.stubFor(post(urlPathEqualTo(APPEND_PATH)).willReturn(aResponse().withStatus(503)));
-		assertThatThrownBy(() -> sheets.append(SHEET_ID, "JEY 패스", FOUR_CELLS))
+		assertThatThrownBy(() -> sheets.append(SHEET_ID, "제이G패스 장부", FOUR_CELLS))
 			.isInstanceOf(SheetsUnavailable.class);
 
 		google.stubFor(post(urlPathEqualTo(APPEND_PATH)).willReturn(aResponse().withStatus(400)
 			.withHeader("Content-Type", "application/json")
-			.withBody("{\"error\": {\"code\": 400, \"message\": \"Unable to parse range: 'JEY 패스'!A:A\"}}")));
-		assertRejected(() -> sheets.append(SHEET_ID, "JEY 패스", FOUR_CELLS), SheetsRejection.TAB_NOT_FOUND);
+			.withBody("{\"error\": {\"code\": 400, \"message\": \"Unable to parse range: '제이G패스 장부'!A:A\"}}")));
+		assertRejected(() -> sheets.append(SHEET_ID, "제이G패스 장부", FOUR_CELLS), SheetsRejection.TAB_NOT_FOUND);
 	}
 
 	@Test

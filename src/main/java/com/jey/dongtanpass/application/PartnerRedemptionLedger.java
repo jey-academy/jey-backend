@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 연계 학원의 JEY 패스 사용 내역. 연계 학원은 자기 학원 것만, 관리자는 모든 학원 것(또는 고른 학원)을 본다.
+ * 연계 학원의 제이G패스 사용 내역. 연계 학원은 자기 학원 것만, 관리자는 모든 학원 것(또는 고른 학원)을 본다.
  * 기간 규칙은 JEY 지점 데스크의 사용 내역과 같다(사용일로 자르고 양끝 포함, 1년까지).
  */
 @Service

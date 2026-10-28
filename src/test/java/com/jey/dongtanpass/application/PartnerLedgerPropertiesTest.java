@@ -24,7 +24,7 @@ class PartnerLedgerPropertiesTest {
 			assertThat(context).hasNotFailed();
 			PartnerLedgerProperties properties = context.getBean(PartnerLedgerProperties.class);
 			assertThat(properties.spreadsheetFor(3)).isEmpty();
-			assertThat(properties.tabName()).isEqualTo("JEY 패스");
+			assertThat(properties.tabName()).isEqualTo("제이G패스");
 			assertThat(properties.retryInterval()).isEqualTo(Duration.ofMinutes(1));
 		});
 	}

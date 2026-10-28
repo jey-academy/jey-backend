@@ -39,7 +39,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// 연계 학원의 JEY 패스 사용 내역. 연계 학원은 자기 학원 것만, 관리자는 모든 학원 것을 본다.
+// 연계 학원의 제이G패스 사용 내역. 연계 학원은 자기 학원 것만, 관리자는 모든 학원 것을 본다.
 // 같은 DB에 다른 시험의 기록이 쌓이므로 시험마다 다른 먼 날짜에 기록을 만들고 그날만 본다.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest

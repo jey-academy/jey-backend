@@ -47,7 +47,7 @@ import tools.jackson.databind.json.JsonMapper;
 class PartnerLedgerServiceTest extends SheetsTestSupport {
 
 	private static final String TAB_PATH = "/v4/spreadsheets/" + PARTNER_SHEET_ID + "/values/'"
-			+ UriUtils.encodePath("JEY 패스", StandardCharsets.UTF_8) + "'";
+			+ UriUtils.encodePath("제이G패스", StandardCharsets.UTF_8) + "'";
 
 	private static final String READ_PATH = TAB_PATH + "!A:AZ";
 
@@ -100,7 +100,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
 
 		google.verify(postRequestedFor(urlPathEqualTo(APPEND_PATH)).withRequestBody(equalToJson(JSON.writeValueAsString(
-				Map.of("values", List.of(List.of("JEY 패스 할인", "2026-11-03", "김하윤", passNo(passId), 280_000, "5%",
+				Map.of("values", List.of(List.of("제이G패스 할인", "2026-11-03", "김하윤", passNo(passId), 280_000, "5%",
 						14_000, 266_000, "동탄관", "앱:패스-" + passId)))))));
 		PartnerLedgerSync sync = syncs.findByPassId(passId).orElseThrow();
 		assertThat(sync.getStatus()).isEqualTo(PartnerLedgerStatus.SYNCED);
@@ -137,8 +137,8 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 	@Test
 	void 앞선_시도가_붙인_줄이_있으면_붙이지_않고_그_줄로_반영됨이다() {
 		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
-		stubRead(List.of(PartnerLedgerRow.HEADER, List.of("JEY 패스 할인", "2026-11-01"),
-				List.of("JEY 패스 할인", "2026-11-03", "김하윤", "", "", "", "", "", "", "앱:패스-" + passId)));
+		stubRead(List.of(PartnerLedgerRow.HEADER, List.of("제이G패스 할인", "2026-11-01"),
+				List.of("제이G패스 할인", "2026-11-03", "김하윤", "", "", "", "", "", "", "앱:패스-" + passId)));
 
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
 
@@ -183,7 +183,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 	void 탭이_없으면_미반영이다() {
 		google.stubFor(get(urlPathEqualTo(READ_PATH)).willReturn(aResponse().withStatus(400)
 			.withHeader("Content-Type", "application/json")
-			.withBody("{\"error\": {\"code\": 400, \"message\": \"Unable to parse range: 'JEY 패스'!A:AZ\"}}")));
+			.withBody("{\"error\": {\"code\": 400, \"message\": \"Unable to parse range: '제이G패스'!A:AZ\"}}")));
 		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
 
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
@@ -210,14 +210,14 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 	void 붙이기의_결과를_모르면_다음_시도가_표시를_찾아_두_번_붙이지_않는다() {
 		stubRead(List.of(PartnerLedgerRow.HEADER));
 		google.stubFor(post(urlPathEqualTo(APPEND_PATH)).willReturn(
-				okJson("{\"updates\": {\"updatedRange\": \"'JEY 패스'!A2:J2\"}}").withFixedDelay(2_000)));
+				okJson("{\"updates\": {\"updatedRange\": \"'제이G패스'!A2:J2\"}}").withFixedDelay(2_000)));
 		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITH_LEDGER, "김하윤");
 
 		ledger.record(passId, PARTNER_WITH_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
 		assertThat(syncs.findByPassId(passId).orElseThrow().getStatus()).isEqualTo(PartnerLedgerStatus.PENDING);
 
 		stubRead(List.of(PartnerLedgerRow.HEADER,
-				List.of("JEY 패스 할인", "2026-11-03", "김하윤", "", "", "", "", "", "", "앱:패스-" + passId)));
+				List.of("제이G패스 할인", "2026-11-03", "김하윤", "", "", "", "", "", "", "앱:패스-" + passId)));
 		makeDue(passId);
 		ledger.retryDue();
 
@@ -280,7 +280,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 
 	private static void stubAppend(int row) {
 		google.stubFor(post(urlPathEqualTo(APPEND_PATH)).willReturn(
-				okJson("{\"updates\": {\"updatedRange\": \"'JEY 패스'!A" + row + ":J" + row + "\"}}")));
+				okJson("{\"updates\": {\"updatedRange\": \"'제이G패스'!A" + row + ":J" + row + "\"}}")));
 	}
 
 	private String passNo(long passId) {

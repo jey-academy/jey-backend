@@ -22,7 +22,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// 연계 학원의 JEY 패스 사용 기록. 패스 하나에 한 줄, 같은 학원에서 같은 학생은 한 줄(다른 학원이면 따로).
+// 연계 학원의 제이G패스 사용 기록. 패스 하나에 한 줄, 같은 학원에서 같은 학생은 한 줄(다른 학원이면 따로).
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @ActiveProfiles("test")

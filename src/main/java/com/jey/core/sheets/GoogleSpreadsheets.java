@@ -49,7 +49,7 @@ class GoogleSpreadsheets implements Spreadsheets {
 	/** 붙일 수 있는 칸 수(A~Z). 읽는 범위 안에 있어야 붙인 줄을 다시 읽을 수 있다. */
 	private static final int MAX_APPEND_CELLS = 26;
 
-	/** 붙인 범위({@code 'JEY 패스'!A7:J7})의 첫 줄 번호. 탭 이름에 느낌표가 있을 수 있어 마지막 느낌표 뒤를 본다. */
+	/** 붙인 범위({@code '제이G패스'!A7:J7})의 첫 줄 번호. 탭 이름에 느낌표가 있을 수 있어 마지막 느낌표 뒤를 본다. */
 	private static final Pattern UPDATED_ROW = Pattern.compile("![A-Z]+(\\d+)(?::[A-Z]+\\d+)?$");
 
 	/** 400 가운데 범위(탭 이름)를 읽지 못한 것. 탭이 없을 때 구글이 이렇게 답한다. */
