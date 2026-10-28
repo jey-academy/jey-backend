@@ -61,7 +61,7 @@ class InvoiceController {
 	}
 
 	@Operation(operationId = "issueInvoice", summary = "청구 만들기", description = "학생의 그 달 청구를 만든다. 한 학생 한 달에 열린 청구는 하나다(있으면 409 BILLING_INVOICE_ALREADY_EXISTS — 오류 본문의 invoiceId가 그 청구다. 학생이 지점을 옮겨 옛 지점의 청구이거나 드물게 동시 요청이 겹치면 없다). "
-			+ "금액은 미리 계산과 같다. 근거가 필요한 할인(동탄고 패스)은 고를 수 없다 — 400(BILLING_DISCOUNT_NEEDS_REFERENCE), 패스 사용 기록에서 청구를 만든다(미리 계산은 된다). " + REJECTIONS)
+			+ "금액은 미리 계산과 같다. 근거가 필요한 할인(제이G패스)은 고를 수 없다 — 400(BILLING_DISCOUNT_NEEDS_REFERENCE), 패스 사용 기록에서 청구를 만든다(미리 계산은 된다). " + REJECTIONS)
 	@Idempotent
 	@PostMapping("/invoices")
 	@ResponseStatus(HttpStatus.CREATED)

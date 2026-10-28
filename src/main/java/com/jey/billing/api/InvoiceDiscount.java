@@ -3,7 +3,7 @@ package com.jey.billing.api;
 import java.math.BigDecimal;
 
 /**
- * 다른 모듈이 청구에 실어 보내는 할인 1건. 할인 출처(동탄고 패스, 쿠폰 등)와 무관한 범용 형태다({@link InvoiceIssuing}).
+ * 다른 모듈이 청구에 실어 보내는 할인 1건. 할인 출처(제이G패스, 쿠폰 등)와 무관한 범용 형태다({@link InvoiceIssuing}).
  * 근거가 있는 할인이라 참조값이 꼭 있다. billing은 참조값을 해석하지 않고 청구에 저장만 한다.
  *
  * @param discountType 할인 유형 코드(할인 유형에 있고 켜져 있어야 한다). 30자까지

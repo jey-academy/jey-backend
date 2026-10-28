@@ -7,7 +7,7 @@ import java.util.Set;
 import com.jey.core.shared.BusinessException;
 
 /**
- * 다른 모듈이 근거(참조값)가 있는 할인을 실어 청구를 만드는 창구. 예: 동탄고 패스를 쓴 학생의 청구에 패스 할인과 패스 번호를 붙인다.
+ * 다른 모듈이 근거(참조값)가 있는 할인을 실어 청구를 만드는 창구. 예: 제이G패스를 쓴 학생의 청구에 패스 할인과 패스 번호를 붙인다.
  * 그런 할인(설정 {@code jey.billing.referenced-discount-codes})은 직원이 고르는 일반 경로로는 붙지 않는다.
  *
  * 청구가 열려 있는지도 여기서 묻는다({@link #isOpen}, {@link #openAmong}).
