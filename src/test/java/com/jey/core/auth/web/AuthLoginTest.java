@@ -133,6 +133,8 @@ class AuthLoginTest {
 				.andExpect(jsonPath("$.name").value("김직원"))
 				.andExpect(jsonPath("$.role").value("STAFF"))
 				.andExpect(jsonPath("$.campusId").value(1))
+				// 연계 학원 계정이 아니면 null이다. 필드는 빼지 않는다.
+				.andExpect(content().string(containsString("\"partnerId\":null")))
 				.andExpect(cookie().exists(SESSION))
 				.andExpect(cookie().httpOnly(SESSION, true))
 				.andExpect(cookie().sameSite(SESSION, "Lax"))
@@ -158,7 +160,8 @@ class AuthLoginTest {
 				.andExpect(jsonPath("$.name").value("박원장"))
 				.andExpect(jsonPath("$.role").value("ADMIN"))
 				// 지점이 없으면 필드를 빼지 않고 null로 내보낸다. 응답의 모양이 항상 같다.
-				.andExpect(jsonPath("$.campusId").value(nullValue()));
+				.andExpect(jsonPath("$.campusId").value(nullValue()))
+				.andExpect(content().string(containsString("\"partnerId\":null")));
 	}
 
 	@Test
@@ -608,11 +611,11 @@ class AuthLoginTest {
 		mockMvc.perform(get("/api/v1/test-access/desk").cookie(session))
 				.andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.code").value("AUTH_ROLE_NOT_ALLOWED"));
-		// 내 정보 응답에는 연계 학원 식별자를 내보내지 않는다.
+		// 내 정보 응답에 연계 학원 식별자가 실린다(화면이 학원 로고를 고른다).
 		mockMvc.perform(get("/api/v1/auth/me").cookie(session))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.role").value("PARTNER"))
-				.andExpect(jsonPath("$.partnerId").doesNotExist());
+				.andExpect(jsonPath("$.partnerId").value(7));
 	}
 
 	private User newUser(String prefix, String name, UserRole role, Long campusId) {
