@@ -52,6 +52,52 @@ class StudentUpdateTest {
 	GuardianRepository guardians;
 
 	@Test
+	void 고칠_때마다_판_번호가_오른다() {
+		StudentView created = studentService.register(registration(uniqueName(), mother(randomPhone())));
+		assertThat(created.version()).isZero();
+
+		StudentView first = studentService.update(created.id(), change(created, DONGTAN, null, null, "능동고"));
+		StudentView second = studentService.update(created.id(), change(first, DONGTAN, null, null, "동탄중"));
+
+		assertThat(first.version()).isEqualTo(1);
+		assertThat(second.version()).isEqualTo(2);
+		assertThat(studentService.get(created.id()).version()).isEqualTo(2);
+	}
+
+	// 바뀐 칸이 없으면 UPDATE가 나가지 않아 버전이 그대로다.
+	@Test
+	void 바뀐_값이_없는_저장은_판_번호를_올리지_않는다() {
+		StudentView created = studentService.register(registration(uniqueName(), mother(randomPhone())));
+
+		StudentView first = studentService.update(created.id(), change(created, DONGTAN, null, null));
+		StudentView again = studentService.update(created.id(), change(created, DONGTAN, null, null));
+
+		assertThat(first.version()).isEqualTo(created.version());
+		assertThat(again.version()).isEqualTo(created.version());
+	}
+
+	@Test
+	void 번호를_지우면_판_번호가_오른다() {
+		StudentView created = studentService.register(
+				registrationWithPhone(uniqueName(), randomPhone(), mother(randomPhone())));
+
+		studentService.removePhone(created.id());
+
+		assertThat(studentService.get(created.id()).version()).isGreaterThan(created.version());
+	}
+
+	// 학부모 연결은 학생 행이 아니다. 버전은 학생 정보·번호가 바뀔 때만 오른다.
+	@Test
+	void 학부모를_붙이거나_관계를_바꿔도_판_번호는_그대로다() {
+		StudentView created = studentService.register(registration(uniqueName(), mother(randomPhone())));
+
+		StudentView linked = studentService.addGuardian(created.id(), father(randomPhone()));
+		studentService.changeRelation(created.id(), linked.guardians().getLast().id(), GuardianRelation.OTHER);
+
+		assertThat(studentService.get(created.id()).version()).isEqualTo(created.version());
+	}
+
+	@Test
 	void 학생_정보를_고친다() {
 		AcademyClass neungdongClass = newClass(NEUNGDONG);
 		StudentView created = studentService.register(registration(uniqueName(), mother(randomPhone())));
@@ -300,6 +346,13 @@ class StudentUpdateTest {
 	private static StudentChange change(StudentView current, long campusId, Long classId, PhoneNumber phone) {
 		return new StudentChange(campusId, classId, current.name(), current.school(), current.grade(),
 				current.status(), current.registeredAt(), phone);
+	}
+
+	// 위와 같고 학교도 바꾼다(값이 실제로 바뀌는 저장이 필요할 때).
+	private static StudentChange change(StudentView current, long campusId, Long classId, PhoneNumber phone,
+			String school) {
+		return new StudentChange(campusId, classId, current.name(), school, current.grade(), current.status(),
+				current.registeredAt(), phone);
 	}
 
 }

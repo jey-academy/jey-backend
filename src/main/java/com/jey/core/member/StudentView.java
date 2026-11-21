@@ -12,6 +12,7 @@ import com.jey.core.shared.PhoneNumber;
 /**
  * 학생 한 명의 전체 정보. 전화번호는 {@link PhoneNumber}라서 응답이나 로그로 나가면 가린 표시가 된다.
  *
+ * @param version 버전. 학생 정보·번호가 바뀔 때마다 오른다. 수정할 때 그대로 다시 보낸다(ADR-0050)
  * @param phone 학생 본인 번호. 없으면 {@code null}
  * @param guardians 먼저 연결된 순서
  * @param primaryContact 대표 연락처. 어머니, 먼저 연결된 학부모, 학생 본인 번호 순으로 고른다.
@@ -19,7 +20,7 @@ import com.jey.core.shared.PhoneNumber;
  * @param siblings 같은 학부모에 연결된 다른 학생
  */
 public record StudentView(long id, long campusId, Long classId, String name, String school, Grade grade,
-		StudentStatus status, LocalDate registeredAt, PhoneNumber phone, List<GuardianView> guardians,
+		StudentStatus status, LocalDate registeredAt, long version, PhoneNumber phone, List<GuardianView> guardians,
 		ContactView primaryContact, List<SiblingView> siblings) {
 
 	/**

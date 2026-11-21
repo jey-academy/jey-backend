@@ -187,6 +187,19 @@ class MemberApiTest {
 	}
 
 	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 학생_응답에_판_번호가_있고_수정하면_오른다() throws Exception {
+		String name = uniqueName();
+		StudentView created = studentService.register(registration(name, mother(randomPhone())));
+
+		mockMvc.perform(get(STUDENTS + "/{id}", created.id())).andExpect(jsonPath("$.version").value(0));
+		send(put(STUDENTS + "/{id}", created.id()), updateBody(name, "HIGH_2", "ENROLLED", null))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.version").value(1));
+		mockMvc.perform(get(STUDENTS + "/{id}", created.id())).andExpect(jsonPath("$.version").value(1));
+	}
+
+	@Test
 	@WithJeyUser(role = UserRole.ADMIN)
 	void 관리자가_학생_정보와_번호를_고치고_번호를_지운다() throws Exception {
 		String name = uniqueName();

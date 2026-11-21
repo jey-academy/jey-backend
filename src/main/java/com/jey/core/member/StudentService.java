@@ -443,8 +443,8 @@ public class StudentService {
 				.map(sibling -> new SiblingView(sibling.getId(), sibling.getName(), sibling.getStatus()))
 				.toList();
 		return new StudentView(student.getId(), student.getCampusId(), student.getClassId(), student.getName(),
-				student.getSchool(), student.getGrade(), student.getStatus(), student.getRegisteredAt(), phone,
-				guardianViews, primary, siblings);
+				student.getSchool(), student.getGrade(), student.getStatus(), student.getRegisteredAt(),
+				student.getVersion(), phone, guardianViews, primary, siblings);
 	}
 
 	// 한 페이지의 대표 연락처를 구한다. 학생 수만큼 조회하지 않고 연결과 학부모를 한 번씩만 읽는다.
