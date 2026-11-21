@@ -20,6 +20,8 @@ record StudentResponse(@Schema(requiredMode = RequiredMode.REQUIRED) Long id,
 		@Schema(requiredMode = RequiredMode.REQUIRED) Grade grade,
 		@Schema(requiredMode = RequiredMode.REQUIRED) StudentStatus status,
 		@Schema(requiredMode = RequiredMode.REQUIRED) LocalDate registeredAt,
+		@Schema(description = "학생 정보의 버전. 수정 요청(PUT)에 그대로 다시 보낸다. 학생 정보·번호가 바뀔 때마다 바뀐다(학부모 연결 변경으로는 바뀌지 않는다)",
+				requiredMode = RequiredMode.REQUIRED) Long version,
 		@Schema(description = "학생 본인의 가린 전화번호. 없으면 null", example = "010-****-5678",
 				requiredMode = RequiredMode.REQUIRED, nullable = true) PhoneNumber phone,
 		@Schema(description = "학부모. 먼저 연결된 순서", requiredMode = RequiredMode.REQUIRED) List<GuardianResponse> guardians,
@@ -30,7 +32,8 @@ record StudentResponse(@Schema(requiredMode = RequiredMode.REQUIRED) Long id,
 
 	static StudentResponse from(StudentView student) {
 		return new StudentResponse(student.id(), student.campusId(), student.classId(), student.name(),
-				student.school(), student.grade(), student.status(), student.registeredAt(), student.phone(),
+				student.school(), student.grade(), student.status(), student.registeredAt(), student.version(),
+				student.phone(),
 				student.guardians().stream().map(GuardianResponse::from).toList(),
 				ContactResponse.from(student.primaryContact()),
 				student.siblings().stream().map(SiblingResponse::from).toList());

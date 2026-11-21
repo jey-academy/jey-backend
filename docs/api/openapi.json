@@ -2453,9 +2453,14 @@
           "status" : {
             "enum" : [ "ENROLLED", "WITHDRAWN" ],
             "type" : "string"
+          },
+          "version" : {
+            "description" : "학생 정보의 버전. 수정 요청(PUT)에 그대로 다시 보낸다. 학생 정보·번호가 바뀔 때마다 바뀐다(학부모 연결 변경으로는 바뀌지 않는다)",
+            "format" : "int64",
+            "type" : "integer"
           }
         },
-        "required" : [ "campusId", "classId", "grade", "guardians", "id", "name", "phone", "primaryContact", "registeredAt", "school", "siblings", "status" ],
+        "required" : [ "campusId", "classId", "grade", "guardians", "id", "name", "phone", "primaryContact", "registeredAt", "school", "siblings", "status", "version" ],
         "type" : "object"
       },
       "StudentSearchRequest" : {

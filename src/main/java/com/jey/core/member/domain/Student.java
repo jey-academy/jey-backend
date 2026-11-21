@@ -14,6 +14,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 /**
  * 학생. 지우지 않고 {@link StudentStatus#WITHDRAWN}으로 남긴다. 청구와 패스 사용 내역이 학생을 참조한다.
@@ -72,6 +73,12 @@ public class Student extends BaseEntity {
 	@AttributeOverride(name = "last4Index", column = @Column(name = "phone_last4_bidx", length = 64))
 	@AttributeOverride(name = "keyVersion", column = @Column(name = "key_version"))
 	private ProtectedPhone phone;
+
+	// 버전. 학생 행이 바뀌면 Hibernate가 올린다. 수정 요청은 화면이 받은 값을 다시 보내고, 다르면 거부한다(ADR-0050).
+	// 이 칸만으로는 낡은 화면을 막지 못한다: 서버는 요청마다 최신 행을 읽으므로, 화면의 버전과 비교해야 한다.
+	@Version
+	@Column(nullable = false)
+	private Long version;
 
 	protected Student() {
 	}
@@ -137,6 +144,10 @@ public class Student extends BaseEntity {
 
 	public Long getId() {
 		return id;
+	}
+
+	public Long getVersion() {
+		return version;
 	}
 
 	public Long getCampusId() {
