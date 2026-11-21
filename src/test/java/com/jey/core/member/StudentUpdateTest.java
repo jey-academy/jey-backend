@@ -338,6 +338,48 @@ class StudentUpdateTest {
 		assertFails(() -> guardianService.update(999_999_999L, "김어머니", null), MemberErrorCode.GUARDIAN_NOT_FOUND);
 	}
 
+	@Test
+	void 학부모를_고칠_때마다_버전이_오르고_같은_값이면_그대로다() {
+		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
+		GuardianView screen = student.guardians().getFirst();
+		assertThat(screen.version()).isZero();
+
+		GuardianProfile renamed = guardianService.update(screen.id(), "박어머니", null);
+		GuardianProfile same = guardianService.update(screen.id(), "박어머니", null);
+		GuardianProfile moved = guardianService.update(screen.id(), "박어머니", randomPhone());
+
+		assertThat(renamed.version()).isEqualTo(1);
+		assertThat(same.version()).isEqualTo(1);
+		assertThat(moved.version()).isEqualTo(2);
+		// 학생 상세의 학부모 목록과 학부모 수정 응답의 버전은 같은 값이다(같은 학부모를 두 화면에서 열어도 같다).
+		assertThat(studentService.get(student.id()).guardians().getFirst().version()).isEqualTo(2);
+	}
+
+	@Test
+	void 번호_중복으로_거부된_학부모_수정은_버전을_올리지_않는다() {
+		PhoneNumber others = randomPhone();
+		studentService.register(registration(uniqueName(), mother(others)));
+		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
+		long guardianId = student.guardians().getFirst().id();
+
+		assertFails(() -> guardianService.update(guardianId, "바뀐 이름", others),
+				MemberErrorCode.GUARDIAN_PHONE_DUPLICATED);
+
+		assertThat(studentService.get(student.id()).guardians().getFirst().version()).isZero();
+	}
+
+	// 같은 번호로 다른 학생을 등록하면 새로 만들지 않고 기존 학부모에 붙인다. 학부모 행은 바뀌지 않는다.
+	@Test
+	void 기존_학부모를_다른_학생에_붙여도_학부모_버전은_그대로다() {
+		PhoneNumber shared = randomPhone();
+		StudentView first = studentService.register(registration(uniqueName(), mother(shared)));
+		StudentView sibling = studentService.register(registration(uniqueName(), mother(shared)));
+
+		assertThat(sibling.guardians().getFirst().id()).isEqualTo(first.guardians().getFirst().id());
+		assertThat(studentService.get(first.id()).guardians().getFirst().version()).isZero();
+		assertThat(studentService.get(sibling.id()).guardians().getFirst().version()).isZero();
+	}
+
 	private AcademyClass newClass(long campusId) {
 		return classService.create(campusId, "반-" + uniqueName(), Money.of(280_000), Money.ZERO);
 	}

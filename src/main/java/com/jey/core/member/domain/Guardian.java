@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 /**
  * 학부모. 전화번호 하나에 학부모는 한 명이다(ADR-0023). 학생과의 관계는 {@link StudentGuardian}이 갖는다.
@@ -29,6 +30,11 @@ public class Guardian extends BaseEntity {
 
 	@Embedded
 	private ProtectedPhone phone;
+
+	// 버전. 이름·번호가 바뀌면 Hibernate가 올린다. 학부모 수정 요청은 화면이 받은 값을 다시 보내고, 다르면 거부한다(ADR-0051).
+	@Version
+	@Column(nullable = false)
+	private Long version;
 
 	protected Guardian() {
 	}
@@ -60,6 +66,10 @@ public class Guardian extends BaseEntity {
 
 	public Long getId() {
 		return id;
+	}
+
+	public Long getVersion() {
+		return version;
 	}
 
 	public String getName() {

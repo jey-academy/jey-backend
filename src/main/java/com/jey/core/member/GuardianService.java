@@ -141,7 +141,8 @@ public class GuardianService {
 		auditLog.record(AuditEntry.of(MemberAuditAction.GUARDIAN_UPDATED)
 				.target(MemberRefs.guardian(id))
 				.with("phoneChanged", phoneChanged));
-		return new GuardianProfile(found.getId(), found.getName(), protector.reveal(found.getPhone()));
+		return new GuardianProfile(found.getId(), found.getName(), protector.reveal(found.getPhone()),
+				found.getVersion());
 	}
 
 	/**
@@ -152,8 +153,10 @@ public class GuardianService {
 
 	/**
 	 * 학생과 무관한 학부모 자신의 정보. 전화번호는 응답이나 로그로 나가면 가린 표시가 된다.
+	 *
+	 * @param version 학부모 정보의 버전(저장한 뒤의 값)
 	 */
-	public record GuardianProfile(long id, String name, PhoneNumber phone) {
+	public record GuardianProfile(long id, String name, PhoneNumber phone, long version) {
 	}
 
 }

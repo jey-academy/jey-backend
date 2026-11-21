@@ -24,9 +24,10 @@ public record StudentView(long id, long campusId, Long classId, String name, Str
 		ContactView primaryContact, List<SiblingView> siblings) {
 
 	/**
+	 * @param version 학부모 정보의 버전. 이름·번호가 바뀔 때마다 오른다. 학부모를 고칠 때 그대로 다시 보낸다(ADR-0051)
 	 * @param linkedToExisting 이번 요청에서 새로 만들지 않고 이미 있던 학부모에 붙였는지. 조회에서는 항상 {@code false}
 	 */
-	public record GuardianView(long id, String name, GuardianRelation relation, PhoneNumber phone,
+	public record GuardianView(long id, String name, GuardianRelation relation, PhoneNumber phone, long version,
 			boolean linkedToExisting) {
 	}
 
