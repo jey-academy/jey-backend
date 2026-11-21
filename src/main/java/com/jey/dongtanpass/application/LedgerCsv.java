@@ -7,10 +7,10 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * 발급 장부를 CSV로 쓴다. 연계 학원이 표 계산 프로그램으로 연다.
+ * 장부(발급 장부, 연계 학원 장부)를 CSV로 쓴다. 연계 학원이 표 계산 프로그램으로 연다.
  *
  * <p>UTF-8에 BOM을 붙인다(없으면 표 계산 프로그램이 한글을 깨뜨린다). 모든 칸을 따옴표로 감싸고 줄은 CRLF로 끝낸다.
- * 학생 이름은 연계 학원이 입력한 값이라, 수식으로 읽힐 첫 글자 앞에는 {@code '}를 붙인다(CSV 인젝션).
+ * 학생 이름처럼 사람이 입력한 값이 있으므로, 수식으로 읽힐 첫 글자 앞에는 {@code '}를 붙인다(CSV 인젝션).
  */
 final class LedgerCsv {
 

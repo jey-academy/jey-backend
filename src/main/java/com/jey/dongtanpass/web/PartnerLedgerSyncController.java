@@ -19,7 +19,7 @@ import jakarta.validation.constraints.Min;
 
 /**
  * 연계 학원 장부(구글 시트)에 반영하지 못한 패스 사용. 관리자 전용이다(장부 연결과 권한을 고치는 사람). 사용 처리 자체는 장부와 무관하게
- * 성공해 있다. 연계 학원 계정은 보지 않는다(자기 장부 파일을 직접 본다).
+ * 성공해 있다. 연계 학원 계정은 보지 않는다(자기 장부 파일을 직접 보거나, 시트를 쓰지 않는 학원은 CSV로 받는다).
  */
 @RestController
 @RequestMapping("/api/v1/dongtanpass/partner-ledger-sync")
@@ -35,7 +35,7 @@ class PartnerLedgerSyncController {
 	}
 
 	@Operation(operationId = "listUnsyncedPartnerLedger", summary = "연계 학원 장부 미반영 목록",
-			description = "연계 학원 장부에 쓰지 못한 패스 사용, 최근에 생긴 반영 기록부터. 구글 장애로 다시 시도하는 중인 기록은 여기 없다(정한 간격대로 다시 하고, 끝내 실패하면 GOOGLE_UNAVAILABLE로 들어온다)")
+			description = "연계 학원 장부에 쓰지 못한 패스 사용, 최근에 생긴 반영 기록부터. 구글 장애로 다시 시도하는 중인 기록은 여기 없다(정한 간격대로 다시 하고, 끝내 실패하면 GOOGLE_UNAVAILABLE로 들어온다). 시트를 쓰지 않는 학원의 기록은 나오지 않는다(그 학원을 고르면 빈 목록)")
 	@GetMapping("/unsynced")
 	PartnerLedgerSyncPageResponse listUnsynced(
 			@Parameter(description = "연계 학원. 안 주면 전 학원") @RequestParam(required = false) Long partnerId,

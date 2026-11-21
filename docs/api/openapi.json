@@ -4177,7 +4177,7 @@
     },
     "/api/v1/dongtanpass/partner-ledger-sync/unsynced" : {
       "get" : {
-        "description" : "연계 학원 장부에 쓰지 못한 패스 사용, 최근에 생긴 반영 기록부터. 구글 장애로 다시 시도하는 중인 기록은 여기 없다(정한 간격대로 다시 하고, 끝내 실패하면 GOOGLE_UNAVAILABLE로 들어온다)",
+        "description" : "연계 학원 장부에 쓰지 못한 패스 사용, 최근에 생긴 반영 기록부터. 구글 장애로 다시 시도하는 중인 기록은 여기 없다(정한 간격대로 다시 하고, 끝내 실패하면 GOOGLE_UNAVAILABLE로 들어온다). 시트를 쓰지 않는 학원의 기록은 나오지 않는다(그 학원을 고르면 빈 목록)",
         "operationId" : "listUnsyncedPartnerLedger",
         "parameters" : [ {
           "description" : "연계 학원. 안 주면 전 학원",

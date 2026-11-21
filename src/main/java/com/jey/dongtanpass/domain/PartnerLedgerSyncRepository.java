@@ -21,7 +21,10 @@ public interface PartnerLedgerSyncRepository extends JpaRepository<PartnerLedger
 	/** 그 상태의 줄(관리자의 미반영 목록). */
 	Page<PartnerLedgerSync> findByStatus(PartnerLedgerStatus status, Pageable pageable);
 
-	/** 그 학원들을 뺀 그 상태의 줄(시트를 쓰지 않는 학원의 예전 미반영 줄을 뺀다). {@code partnerIds}는 비어 있지 않아야 한다. */
+	/**
+	 * 그 학원들을 뺀 그 상태의 줄(시트를 쓰지 않는 학원의 예전 미반영 줄을 뺀다). 부르는 쪽은 목록이 비었으면 {@link #findByStatus}를 쓴다
+	 * (빈 목록도 지금은 모든 줄로 답하지만 그 동작에 기대지 않는다).
+	 */
 	Page<PartnerLedgerSync> findByStatusAndPartnerIdNotIn(PartnerLedgerStatus status, Collection<Long> partnerIds,
 			Pageable pageable);
 

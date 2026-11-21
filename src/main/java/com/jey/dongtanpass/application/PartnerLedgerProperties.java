@@ -13,7 +13,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * 연계 학원 장부 설정({@code jey.dongtanpass.partner-ledger.*}, ADR-0048). 틀린 값이면 서버가 뜨지 않는다.
  * 구글 주소·시간 제한·서비스 계정 키는 구글 시트 연결의 설정({@code jey.sheets.*})이다.
  *
- * @param spreadsheets 연계 학원 ID → 스프레드시트 ID. 없는 학원은 장부 연결이 꺼진 것이다(그 학원의 기록은 미반영 {@code NOT_CONFIGURED}).
+ * @param spreadsheets 연계 학원 ID → 스프레드시트 ID. 없는 학원은 장부 연결이 꺼진 것이다. 시트를 쓰지 않는 학원({@code withoutSheet})이
+ *     아니면 그 학원의 기록은 미반영 {@code NOT_CONFIGURED}다(설정을 빠뜨린 것이 드러나게).
  *     운영은 환경 변수 {@code JEY_DONGTANPASS_PARTNERLEDGER_SPREADSHEETS_{학원 ID}}로 정한다
  * @param withoutSheet 구글 시트를 쓰지 않는 연계 학원 ID. 그 학원의 기록은 시트에 쓰지 않고 미반영으로도 잡지 않는다(장부는 CSV로 받는다).
  *     {@code spreadsheets}와 겹칠 수 없다. 운영은 환경 변수 {@code JEY_DONGTANPASS_PARTNERLEDGER_WITHOUTSHEET}에 쉼표로 적는다(예: {@code 3,4})
