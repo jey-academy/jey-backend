@@ -3,6 +3,7 @@ package com.jey.dongtanpass.application;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -12,13 +13,16 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * 연계 학원 장부 설정({@code jey.dongtanpass.partner-ledger.*}, ADR-0048). 틀린 값이면 서버가 뜨지 않는다.
  * 구글 주소·시간 제한·서비스 계정 키는 구글 시트 연결의 설정({@code jey.sheets.*})이다.
  *
- * @param spreadsheets 연계 학원 ID → 스프레드시트 ID. 없는 학원은 장부 연결이 꺼진 것이다(그 학원의 기록은 미반영 {@code NOT_CONFIGURED}).
+ * @param spreadsheets 연계 학원 ID → 스프레드시트 ID. 없는 학원은 장부 연결이 꺼진 것이다. 시트를 쓰지 않는 학원({@code withoutSheet})이
+ *     아니면 그 학원의 기록은 미반영 {@code NOT_CONFIGURED}다(설정을 빠뜨린 것이 드러나게).
  *     운영은 환경 변수 {@code JEY_DONGTANPASS_PARTNERLEDGER_SPREADSHEETS_{학원 ID}}로 정한다
+ * @param withoutSheet 구글 시트를 쓰지 않는 연계 학원 ID. 그 학원의 기록은 시트에 쓰지 않고 미반영으로도 잡지 않는다(장부는 CSV로 받는다).
+ *     {@code spreadsheets}와 겹칠 수 없다. 운영은 환경 변수 {@code JEY_DONGTANPASS_PARTNERLEDGER_WITHOUTSHEET}에 쉼표로 적는다(예: {@code 3,4})
  * @param tabName 기록을 붙이는 탭의 이름. 앱은 탭을 만들지 않는다
  * @param retryInterval 다시 시도할 줄을 찾는 간격. 10초 이상(단위를 빠뜨린 값을 막는다)
  */
 @ConfigurationProperties("jey.dongtanpass.partner-ledger")
-public record PartnerLedgerProperties(Map<Long, String> spreadsheets, @DefaultValue("제이G패스") String tabName,
+public record PartnerLedgerProperties(Map<Long, String> spreadsheets, Set<Long> withoutSheet, @DefaultValue("제이G패스") String tabName,
 		@DefaultValue("1m") Duration retryInterval) {
 
 	private static final Pattern SPREADSHEET_ID = Pattern.compile("[A-Za-z0-9_-]{1,200}");
@@ -37,6 +41,13 @@ public record PartnerLedgerProperties(Map<Long, String> spreadsheets, @DefaultVa
 						"jey.dongtanpass.partner-ledger.spreadsheets의 값은 스프레드시트 ID다(주소 전체가 아니라 /d/ 뒤의 부분)");
 			}
 		}
+		withoutSheet = withoutSheet == null ? Set.of() : Set.copyOf(withoutSheet);
+		for (Long partnerId : withoutSheet) {
+			if (spreadsheets.containsKey(partnerId)) {
+				throw new IllegalArgumentException("연계 학원 " + partnerId
+						+ "이 jey.dongtanpass.partner-ledger.spreadsheets와 without-sheet에 함께 있다(시트를 쓰는지 하나로 정한다)");
+			}
+		}
 		tabName = tabName == null ? DEFAULT_TAB_NAME : tabName;
 		if (tabName.isBlank() || tabName.length() > MAX_TAB_NAME_LENGTH) {
 			throw new IllegalArgumentException("jey.dongtanpass.partner-ledger.tab-name은 1~100자다");
@@ -50,6 +61,11 @@ public record PartnerLedgerProperties(Map<Long, String> spreadsheets, @DefaultVa
 	/** 그 연계 학원의 장부 스프레드시트 ID. 없으면 그 학원의 장부 연결은 꺼져 있다. */
 	public Optional<String> spreadsheetFor(long partnerId) {
 		return Optional.ofNullable(spreadsheets.get(partnerId));
+	}
+
+	/** 그 연계 학원이 구글 시트를 쓰지 않는가. 그 학원의 기록은 시트에 반영하지 않는다. */
+	public boolean isWithoutSheet(long partnerId) {
+		return withoutSheet.contains(partnerId);
 	}
 
 	/**

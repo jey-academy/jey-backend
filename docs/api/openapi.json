@@ -4177,7 +4177,7 @@
     },
     "/api/v1/dongtanpass/partner-ledger-sync/unsynced" : {
       "get" : {
-        "description" : "연계 학원 장부에 쓰지 못한 패스 사용, 최근에 생긴 반영 기록부터. 구글 장애로 다시 시도하는 중인 기록은 여기 없다(정한 간격대로 다시 하고, 끝내 실패하면 GOOGLE_UNAVAILABLE로 들어온다)",
+        "description" : "연계 학원 장부에 쓰지 못한 패스 사용, 최근에 생긴 반영 기록부터. 구글 장애로 다시 시도하는 중인 기록은 여기 없다(정한 간격대로 다시 하고, 끝내 실패하면 GOOGLE_UNAVAILABLE로 들어온다). 시트를 쓰지 않는 학원의 기록은 나오지 않는다(그 학원을 고르면 빈 목록)",
         "operationId" : "listUnsyncedPartnerLedger",
         "parameters" : [ {
           "description" : "연계 학원. 안 주면 전 학원",
@@ -4267,6 +4267,46 @@
         },
         "summary" : "연계 학원 장부 다시 반영",
         "tags" : [ "partner-ledger-sync-controller" ]
+      }
+    },
+    "/api/v1/dongtanpass/partner-ledger/export" : {
+      "get" : {
+        "description" : "구글 시트 장부와 같은 칸(구분, 사용일, 학생, 패스 번호, 원래 수강료, 할인율, 할인액, 받을 금액, JEY 지점)이다. 시트를 쓰든 안 쓰든 받을 수 있다. 두 종류가 섞인다: 이 학원이 할인해 준 기록(구분 \"제이G패스 할인\", JEY 지점은 패스를 발급한 지점), 이 학원이 발급한 패스가 JEY 지점에서 쓰인 기록(구분 \"JEY에서 사용\", 금액 칸은 비어 있고 JEY 지점은 쓴 지점). 사용 시각 최신 순. 금액은 원 단위 정수 글자(280000), 할인율은 퍼센트 글자(5%). 전화번호는 싣지 않는다. UTF-8에 BOM이 붙어 있다. 수식으로 읽힐 칸(=, +, -, @로 시작)은 앞에 '를 붙인다. 기간이 틀렸으면 400(DONGTANPASS_INVALID_PERIOD), 1년을 넘으면 400(DONGTANPASS_PERIOD_TOO_LONG)",
+        "operationId" : "export_1",
+        "parameters" : [ {
+          "description" : "이 사용일(한국 날짜)부터, 포함",
+          "in" : "query",
+          "name" : "from",
+          "required" : true,
+          "schema" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        }, {
+          "description" : "이 사용일(한국 날짜)까지, 포함. 시작일 + 1년까지",
+          "in" : "query",
+          "name" : "to",
+          "required" : true,
+          "schema" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "text/csv" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "CSV 파일"
+          }
+        },
+        "summary" : "연계 학원 장부 CSV",
+        "tags" : [ "partner-ledger-controller" ]
       }
     },
     "/api/v1/dongtanpass/partner-redemptions" : {

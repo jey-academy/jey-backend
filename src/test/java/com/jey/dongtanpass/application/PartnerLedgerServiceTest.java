@@ -17,16 +17,23 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.util.UriUtils;
 
 import com.jey.SheetsTestSupport;
+import com.jey.core.audit.api.AuditLog;
+import com.jey.core.campus.api.CampusCatalog;
+import com.jey.core.sheets.api.Spreadsheets;
 import com.jey.core.shared.Actor;
 import com.jey.core.shared.EventMetadata;
 import com.jey.dongtanpass.DongtanpassFixtures;
@@ -39,11 +46,13 @@ import com.jey.dongtanpass.domain.PartnerLedgerStatus;
 import com.jey.dongtanpass.domain.PartnerLedgerSync;
 import com.jey.dongtanpass.domain.PartnerLedgerSyncRepository;
 import com.jey.dongtanpass.domain.PartnerRedemptionRepository;
+import com.jey.dongtanpass.domain.PartnerRepository;
 import com.jey.dongtanpass.domain.PassRepository;
 import com.jey.dongtanpass.domain.RedemptionRepository;
 import tools.jackson.databind.json.JsonMapper;
 
 // 패스 사용을 그 연계 학원의 장부(흉내 낸 구글 서버)에 한 줄씩 붙인다. 지점 1은 동탄관이다.
+@ExtendWith(OutputCaptureExtension.class)
 class PartnerLedgerServiceTest extends SheetsTestSupport {
 
 	private static final String TAB_PATH = "/v4/spreadsheets/" + PARTNER_SHEET_ID + "/values/'"
@@ -82,6 +91,18 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 	@Autowired
 	Clock clock;
 
+	@Autowired
+	PartnerRepository partners;
+
+	@Autowired
+	Spreadsheets sheets;
+
+	@Autowired
+	CampusCatalog catalog;
+
+	@Autowired
+	AuditLog auditLog;
+
 	private PartnerLedgerFixtures fixtures;
 
 	@BeforeEach
@@ -89,6 +110,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 		fixtures = new PartnerLedgerFixtures(passes, partnerRedemptions, redemptions, transaction);
 		DongtanpassFixtures.upsertPartner(jdbc, PARTNER_WITH_LEDGER, true);
 		DongtanpassFixtures.upsertPartner(jdbc, PARTNER_WITHOUT_LEDGER, true);
+		DongtanpassFixtures.upsertPartner(jdbc, PARTNER_NO_SHEET, true);
 	}
 
 	@Test
@@ -153,6 +175,65 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITHOUT_LEDGER, "김하윤");
 
 		ledger.record(passId, PARTNER_WITHOUT_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
+
+		assertThat(google.getAllServeEvents()).isEmpty();
+		assertUnsynced(passId, PartnerLedgerReason.NOT_CONFIGURED);
+	}
+
+	@Test
+	void 시트를_쓰지_않는_학원의_기록은_반영_상태_줄을_만들지_않고_구글을_부르지_않는다() {
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_NO_SHEET, "김하윤");
+
+		ledger.record(passId, PARTNER_NO_SHEET, PartnerLedgerKind.PARTNER_DISCOUNT);
+
+		assertThat(google.getAllServeEvents()).isEmpty();
+		assertThat(syncs.findByPassId(passId)).isEmpty();
+	}
+
+	// 설정을 잘못 넣었을 때(시트를 쓸 학원을 목록에 넣었을 때) 운영 로그로 알아챌 수 있게 한다.
+	@Test
+	void 시트를_쓰지_않는_학원의_기록을_건너뛰면_패스와_학원을_로그에_남긴다(CapturedOutput output) {
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_NO_SHEET, "김하윤");
+
+		ledger.record(passId, PARTNER_NO_SHEET, PartnerLedgerKind.PARTNER_DISCOUNT);
+
+		assertThat(output.getOut()).contains("시트를 쓰지 않는 연계 학원이라 장부 반영을 건너뛴다: 패스 " + passId + ", 학원 "
+				+ PARTNER_NO_SHEET);
+	}
+
+	// 운영의 기본값(시트를 쓰지 않는 학원이 없음)으로 미반영 목록을 본다. 테스트 설정은 그 목록을 채워 두므로 서비스를 따로 만든다.
+	@Test
+	void 시트를_쓰지_않는_학원이_없으면_미반영_목록은_전_학원의_줄이다() {
+		PartnerLedgerService noneWithoutSheet = new PartnerLedgerService(syncs, passes, partnerRedemptions, redemptions,
+				partners, sheets, new PartnerLedgerProperties(Map.of(), Set.of(), null, Duration.ofMinutes(1)), catalog,
+				auditLog, transaction, clock);
+		long row = oldUnsyncedRow(fixtures.campusPassRedeemedAt(PARTNER_NO_SHEET, "김하윤"), PARTNER_NO_SHEET);
+
+		assertThat(noneWithoutSheet.listUnsynced(null, 0, 100).map(PartnerLedgerSyncView::id)).contains(row);
+		assertThat(noneWithoutSheet.listUnsynced(PARTNER_NO_SHEET, 0, 100).map(PartnerLedgerSyncView::id)).contains(row);
+	}
+
+	// 시트를 끄기 전에 설정이 없어서 쌓인 미반영 줄. 지우지 않고 목록에서만 뺀다.
+	@Test
+	void 시트를_끈_학원의_예전_미반영_줄은_관리자_목록에_나오지_않는다() {
+		long noSheetRow = oldUnsyncedRow(fixtures.campusPassRedeemedAt(PARTNER_NO_SHEET, "김하윤"), PARTNER_NO_SHEET);
+		long withoutLedgerPass = fixtures.campusPassRedeemedAt(PARTNER_WITHOUT_LEDGER, "이서준");
+		ledger.record(withoutLedgerPass, PARTNER_WITHOUT_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
+		long withoutLedgerRow = syncs.findByPassId(withoutLedgerPass).orElseThrow().getId();
+
+		assertThat(ledger.listUnsynced(null, 0, 100).map(PartnerLedgerSyncView::id))
+			.contains(withoutLedgerRow)
+			.doesNotContain(noSheetRow);
+		assertThat(ledger.listUnsynced(PARTNER_NO_SHEET, 0, 100)).isEmpty();
+		assertThat(syncs.findById(noSheetRow)).isPresent();
+	}
+
+	@Test
+	void 시트를_끈_학원의_미반영_줄을_다시_반영해도_구글을_부르지_않는다() {
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_NO_SHEET, "김하윤");
+		long row = oldUnsyncedRow(passId, PARTNER_NO_SHEET);
+
+		ledger.retryUnsynced(row);
 
 		assertThat(google.getAllServeEvents()).isEmpty();
 		assertUnsynced(passId, PartnerLedgerReason.NOT_CONFIGURED);
@@ -259,6 +340,17 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 		await().atMost(Duration.ofSeconds(15)).until(() -> syncs.findByPassId(passId)
 			.map(PartnerLedgerSync::getStatus)
 			.orElse(null) == PartnerLedgerStatus.SYNCED);
+	}
+
+	// 설정이 없어서 미반영이 된 줄을 바로 만든다.
+	private long oldUnsyncedRow(long passId, long partnerId) {
+		return transaction.execute(status -> {
+			PartnerLedgerSync sync = PartnerLedgerSync.pending(passId, partnerId, PartnerLedgerKind.PARTNER_DISCOUNT,
+					clock.instant());
+			sync.claim(clock.instant());
+			sync.unsynced(PartnerLedgerReason.NOT_CONFIGURED);
+			return syncs.saveAndFlush(sync).getId();
+		});
 	}
 
 	private void assertUnsynced(long passId, PartnerLedgerReason reason) {

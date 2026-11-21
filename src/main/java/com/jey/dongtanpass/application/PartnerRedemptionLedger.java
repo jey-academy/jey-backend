@@ -42,12 +42,7 @@ public class PartnerRedemptionLedger {
 	public Page<PartnerRedemptionRow> page(AuthenticatedUser user, Long partnerId, LocalDate from, LocalDate to,
 			int page, int size) {
 		Long scope = scopeOf(user, partnerId);
-		if (outOfRange(from) || outOfRange(to) || from.isAfter(to)) {
-			throw new BusinessException(DongtanpassErrorCode.INVALID_PERIOD);
-		}
-		if (to.isAfter(from.plusYears(RedemptionLedger.MAX_PERIOD_YEARS))) {
-			throw new BusinessException(DongtanpassErrorCode.PERIOD_TOO_LONG);
-		}
+		requirePeriod(from, to);
 		return redemptions.list(scope, startOf(from), startOf(to.plusDays(1)), PageRequest.of(page, size, NEWEST_FIRST))
 			.map(this::rowOf);
 	}
@@ -69,6 +64,20 @@ public class PartnerRedemptionLedger {
 				LocalDate.ofInstant(entry.redeemedAt(), clock.getZone()), entry.partnerId(), entry.partnerName(),
 				entry.passId(), entry.passNo(), entry.studentName(), entry.originalFee(), entry.discountRate(),
 				entry.discountAmount(), entry.payableAmount());
+	}
+
+	/**
+	 * 사용일 기간의 규칙(양끝 포함, 받는 날짜 범위 안, 1년까지). 연계 학원 장부 CSV도 같은 규칙이다.
+	 *
+	 * @throws BusinessException 기간이 틀렸거나 1년을 넘을 때(400)
+	 */
+	static void requirePeriod(LocalDate from, LocalDate to) {
+		if (outOfRange(from) || outOfRange(to) || from.isAfter(to)) {
+			throw new BusinessException(DongtanpassErrorCode.INVALID_PERIOD);
+		}
+		if (to.isAfter(from.plusYears(RedemptionLedger.MAX_PERIOD_YEARS))) {
+			throw new BusinessException(DongtanpassErrorCode.PERIOD_TOO_LONG);
+		}
 	}
 
 	private static boolean outOfRange(LocalDate date) {

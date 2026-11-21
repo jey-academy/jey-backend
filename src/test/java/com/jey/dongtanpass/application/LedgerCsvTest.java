@@ -83,6 +83,15 @@ class LedgerCsvTest {
 		assertThat(text).contains("\"'=1+1\"");
 	}
 
+	@Test
+	void 머리글과_줄을_받아_같은_규칙으로_쓴다() {
+		byte[] file = LedgerCsv.write(List.of("가", "나"), List.of(List.of("=1", "x")));
+
+		assertThat(Arrays.copyOfRange(file, 0, 3)).isEqualTo(BOM);
+		assertThat(new String(file, 3, file.length - 3, StandardCharsets.UTF_8))
+			.isEqualTo("\"가\",\"나\"\r\n\"'=1\",\"x\"\r\n");
+	}
+
 	private static LedgerRow row(String name, PassState state, PaymentMethod method) {
 		return new LedgerRow(1L, "DT-ABC234", name, Instant.parse("2026-10-15T01:00:00Z"), LocalDate.of(2026, 10, 15),
 				LocalDate.of(2026, 11, 15), state, LocalDate.of(2026, 10, 14), Money.of(150000), method);

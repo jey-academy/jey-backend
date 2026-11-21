@@ -47,6 +47,29 @@ class PartnerLedgerRowTest {
 	}
 
 	@Test
+	void CSV_머리글은_앱_표시만_뺀_머리글이다() {
+		assertThat(PartnerLedgerRow.CSV_HEADER).isEqualTo(List.of("구분", "사용일", "학생", "패스 번호", "원래 수강료", "할인율",
+				"할인액", "받을 금액", "JEY 지점"));
+	}
+
+	@Test
+	void CSV_칸은_앱_표시를_빼고_글자로_쓴다() {
+		PartnerLedgerRow row = PartnerLedgerRow.partnerDiscount(7, LocalDate.of(2026, 11, 3), "김하윤", "DT-ABC234",
+				Money.of(280000), new BigDecimal("0.05"), Money.of(14000), Money.of(266000), "동탄관");
+
+		assertThat(row.csvCells()).containsExactly("제이G패스 할인", "2026-11-03", "김하윤", "DT-ABC234", "280000", "5%",
+				"14000", "266000", "동탄관");
+	}
+
+	@Test
+	void JEY에서_쓰인_기록의_CSV_칸은_금액이_비어_있다() {
+		PartnerLedgerRow row = PartnerLedgerRow.usedAtJey(7, LocalDate.of(2026, 11, 3), "이서준", "DT-ABC234", "동탄관");
+
+		assertThat(row.csvCells()).containsExactly("JEY에서 사용", "2026-11-03", "이서준", "DT-ABC234", "", "", "", "",
+				"동탄관");
+	}
+
+	@Test
 	void 머리글이_같은지는_1행만_보고_앞뒤_공백은_무시한다() {
 		List<String> header = PartnerLedgerRow.HEADER.stream().map(name -> " " + name + " ").toList();
 

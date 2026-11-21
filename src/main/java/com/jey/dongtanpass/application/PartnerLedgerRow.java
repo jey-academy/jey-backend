@@ -21,6 +21,9 @@ final class PartnerLedgerRow {
 
 	private static final int MARKER_COLUMN = HEADER.size() - 1;
 
+	/** CSV 장부의 머리글. 시트의 머리글에서 앱 표시만 뺀다(CSV에는 같은 기록을 찾을 일이 없다). */
+	static final List<String> CSV_HEADER = HEADER.subList(0, MARKER_COLUMN);
+
 	private final List<Object> cells;
 
 	private PartnerLedgerRow(List<Object> cells) {
@@ -43,6 +46,11 @@ final class PartnerLedgerRow {
 
 	List<Object> cells() {
 		return cells;
+	}
+
+	/** CSV 장부의 칸. 앱 표시를 빼고 모두 글자로 쓴다(금액은 원 단위 정수, 금액이 없는 칸은 빈 글자). */
+	List<String> csvCells() {
+		return cells.subList(0, MARKER_COLUMN).stream().map(String::valueOf).toList();
 	}
 
 	/** 탭의 1행이 머리글과 같은지(칸마다 앞뒤 공백은 무시). 빈 탭이면 다르다. */

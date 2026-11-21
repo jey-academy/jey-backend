@@ -52,11 +52,17 @@ public final class PartnerLedgerFixtures {
 
 	/** 동탄관(지점 1)이 발급한 패스를 그 학원이 280,000원에 5% 할인으로 썼다. 패스 ID를 준다. */
 	public long campusPassRedeemedAt(long partnerId, String studentName) {
+		return campusPassRedeemedAt(partnerId, studentName, USED_AT);
+	}
+
+	/** 위와 같고, 쓴 시각을 정한다(발급과 결제는 그 3일 전). */
+	public long campusPassRedeemedAt(long partnerId, String studentName, Instant usedAt) {
+		Instant issuedAt = usedAt.minus(Duration.ofDays(3));
 		return transaction.execute(status -> {
 			Pass pass = passes.saveAndFlush(Pass.issueAtCampus(1L, newStudentId(), PassNumber.generate(RANDOM),
-					LinkToken.generate(RANDOM).hash(), studentName, "phone-index", USED_AT.minus(Duration.ofDays(3)),
-					SEOUL, LocalDate.of(2026, 10, 31), Money.of(280_000), PaymentMethod.CARD, new BigDecimal("0.05")));
-			PartnerRedemption redemption = pass.redeemAtPartner(partnerId, Money.of(280_000), USED_AT);
+					LinkToken.generate(RANDOM).hash(), studentName, "phone-index", issuedAt, SEOUL,
+					LocalDate.ofInstant(issuedAt, SEOUL), Money.of(280_000), PaymentMethod.CARD, new BigDecimal("0.05")));
+			PartnerRedemption redemption = pass.redeemAtPartner(partnerId, Money.of(280_000), usedAt);
 			passes.saveAndFlush(pass);
 			partnerRedemptions.saveAndFlush(redemption);
 			return pass.getId();
@@ -65,11 +71,17 @@ public final class PartnerLedgerFixtures {
 
 	/** 그 학원이 발급한 패스를 동탄관(지점 1) 데스크가 썼다. 패스 ID를 준다. */
 	public long partnerPassRedeemedAtDesk(long partnerId, String studentName) {
+		return partnerPassRedeemedAtDesk(partnerId, studentName, USED_AT);
+	}
+
+	/** 위와 같고, 쓴 시각을 정한다(발급과 결제는 그 3일 전). */
+	public long partnerPassRedeemedAtDesk(long partnerId, String studentName, Instant usedAt) {
+		Instant issuedAt = usedAt.minus(Duration.ofDays(3));
 		return transaction.execute(status -> {
 			Pass pass = passes.saveAndFlush(Pass.issue(partnerId, PassNumber.generate(RANDOM),
-					LinkToken.generate(RANDOM).hash(), studentName, "phone-index", USED_AT.minus(Duration.ofDays(3)),
-					SEOUL, LocalDate.of(2026, 10, 31), Money.of(150_000), PaymentMethod.CARD));
-			Redemption redemption = pass.redeem(newStudentId(), 1L, USED_AT);
+					LinkToken.generate(RANDOM).hash(), studentName, "phone-index", issuedAt, SEOUL,
+					LocalDate.ofInstant(issuedAt, SEOUL), Money.of(150_000), PaymentMethod.CARD));
+			Redemption redemption = pass.redeem(newStudentId(), 1L, usedAt);
 			passes.saveAndFlush(pass);
 			redemptions.saveAndFlush(redemption);
 			return pass.getId();
