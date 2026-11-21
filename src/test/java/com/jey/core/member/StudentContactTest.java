@@ -91,7 +91,7 @@ class StudentContactTest {
 		PhoneNumber phone = randomPhoneEndingWith(last4);
 		assertThat(studentService.search(null, name, last4, 0, 20)).isEmpty();
 
-		StudentView updated = studentService.update(student.id(), new StudentChange(DONGTAN, null, name, null,
+		StudentView updated = studentService.update(student.id(), new StudentChange(student.version(), DONGTAN, null, name, null,
 				Grade.HIGH_1, StudentStatus.ENROLLED, student.registeredAt(), phone));
 
 		assertThat(updated.phone()).isEqualTo(phone);
@@ -140,7 +140,7 @@ class StudentContactTest {
 		PhoneNumber phone = randomPhone();
 		StudentView staying = studentService.register(registration(uniqueName(), mother(phone)));
 		StudentView leaving = studentService.register(registration(uniqueName(), mother(phone)));
-		studentService.update(leaving.id(), new StudentChange(DONGTAN, null, leaving.name(), null, Grade.HIGH_1,
+		studentService.update(leaving.id(), new StudentChange(leaving.version(), DONGTAN, null, leaving.name(), null, Grade.HIGH_1,
 				StudentStatus.WITHDRAWN, leaving.registeredAt(), null));
 
 		assertThat(studentService.get(staying.id()).siblings())

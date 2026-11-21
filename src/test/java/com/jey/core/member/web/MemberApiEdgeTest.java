@@ -241,7 +241,7 @@ class MemberApiEdgeTest {
 
 	private static String updateBodyRegisteredAt(String name, String registeredAt) {
 		return """
-				{"campusId": 1, "name": "%s", "grade": "HIGH_1", "status": "ENROLLED", "registeredAt": "%s"}
+				{"version": 0, "campusId": 1, "name": "%s", "grade": "HIGH_1", "status": "ENROLLED", "registeredAt": "%s"}
 				""".formatted(name, registeredAt);
 	}
 
@@ -298,7 +298,7 @@ class MemberApiEdgeTest {
 
 	private static String updateBody(String name, String school) {
 		return """
-				{"campusId": 1, "name": "%s", "school": "%s", "grade": "HIGH_1", "status": "ENROLLED",
+				{"version": 0, "campusId": 1, "name": "%s", "school": "%s", "grade": "HIGH_1", "status": "ENROLLED",
 				 "registeredAt": "2026-03-02"}
 				""".formatted(name, school);
 	}

@@ -31,6 +31,9 @@ public enum MemberErrorCode implements ErrorCode {
 	// 학생 한 명에게 붙일 수 있는 학부모 수를 넘는다. 화면의 등록은 요청 검증에서 먼저 걸리므로, 보통은 나중에 한 명씩 추가할 때 난다.
 	TOO_MANY_GUARDIANS(HttpStatus.CONFLICT, "학부모는 " + StudentGuardian.MAX_PER_STUDENT + "명까지 연결할 수 있습니다."),
 
+	// 화면이 받은 뒤에 다른 사람이 학생 정보를 고쳤다(버전이 다르다, ADR-0050). 다시 불러온 뒤 고친다.
+	STUDENT_CHANGED(HttpStatus.CONFLICT, "다른 사람이 먼저 이 학생 정보를 고쳤습니다. 다시 불러온 뒤 고쳐 주세요."),
+
 	// 전체 번호를 보려 했는데 학생 본인의 번호가 없다.
 	PHONE_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 본인의 전화번호가 없습니다."),
 
@@ -63,7 +66,7 @@ public enum MemberErrorCode implements ErrorCode {
 		return switch (this) {
 			case STUDENT_DUPLICATED, GUARDIAN_PHONE_DUPLICATED, GUARDIAN_ALREADY_LINKED -> true;
 			case STUDENT_NOT_FOUND, GUARDIAN_NOT_FOUND, INVALID_CAMPUS, INVALID_CLASS, CONTACT_REQUIRED,
-					GUARDIAN_PHONE_REPEATED, LAST_CONTACT, TOO_MANY_GUARDIANS, PHONE_NOT_FOUND, PHONE_REVEAL_LIMITED,
+					GUARDIAN_PHONE_REPEATED, LAST_CONTACT, TOO_MANY_GUARDIANS, STUDENT_CHANGED, PHONE_NOT_FOUND, PHONE_REVEAL_LIMITED,
 					PHONE_CHANGE_LIMITED ->
 				false;
 		};

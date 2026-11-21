@@ -181,22 +181,9 @@ class MemberApiTest {
 				.andExpect(jsonPath("$.campusId").value(1));
 		mockMvc.perform(studentSearch(mockMvc, "campusId", "1", "name", name))
 				.andExpect(jsonPath("$.items.length()").value(1));
-		send(put(STUDENTS + "/{id}", dongtanStudent.id()), updateBody(name, "HIGH_2", "ENROLLED", null))
+		send(put(STUDENTS + "/{id}", dongtanStudent.id()), updateBody(dongtanStudent.version(), name, "HIGH_2", "ENROLLED", null))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.grade").value("HIGH_2"));
-	}
-
-	@Test
-	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
-	void 학생_응답에_판_번호가_있고_수정하면_오른다() throws Exception {
-		String name = uniqueName();
-		StudentView created = studentService.register(registration(name, mother(randomPhone())));
-
-		mockMvc.perform(get(STUDENTS + "/{id}", created.id())).andExpect(jsonPath("$.version").value(0));
-		send(put(STUDENTS + "/{id}", created.id()), updateBody(name, "HIGH_2", "ENROLLED", null))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.version").value(1));
-		mockMvc.perform(get(STUDENTS + "/{id}", created.id())).andExpect(jsonPath("$.version").value(1));
 	}
 
 	@Test
@@ -208,20 +195,63 @@ class MemberApiTest {
 		StudentView created = studentService.register(registrationWithPhone(name, original, mother(randomPhone())));
 
 		// 번호를 보내지 않으면 그대로다.
-		send(put(STUDENTS + "/{id}", created.id()), updateBody(name, "HIGH_3", "WITHDRAWN", null))
+		send(put(STUDENTS + "/{id}", created.id()), updateBody(created.version(), name, "HIGH_3", "WITHDRAWN", null))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.grade").value("HIGH_3"))
 				.andExpect(jsonPath("$.status").value("WITHDRAWN"))
 				.andExpect(jsonPath("$.school").isEmpty())
 				.andExpect(jsonPath("$.registeredAt").value("2026-03-02"))
 				.andExpect(jsonPath("$.phone").value(original.masked()));
-		send(put(STUDENTS + "/{id}", created.id()), updateBody(name, "HIGH_3", "WITHDRAWN", changed))
+		send(put(STUDENTS + "/{id}", created.id()), updateBody(created.version() + 1, name, "HIGH_3", "WITHDRAWN", changed))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.phone").value(changed.masked()));
 
 		mockMvc.perform(delete(STUDENTS + "/{id}/phone", created.id()).with(csrfToken(mockMvc)))
 				.andExpect(status().isNoContent());
 		mockMvc.perform(get(STUDENTS + "/{id}", created.id())).andExpect(jsonPath("$.phone").isEmpty());
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 학생_응답에_버전이_있고_수정하면_오른다() throws Exception {
+		String name = uniqueName();
+		StudentView created = studentService.register(registration(name, mother(randomPhone())));
+
+		mockMvc.perform(get(STUDENTS + "/{id}", created.id())).andExpect(jsonPath("$.version").value(0));
+		send(put(STUDENTS + "/{id}", created.id()), updateBody(0, name, "HIGH_2", "ENROLLED", null))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.version").value(1));
+		mockMvc.perform(get(STUDENTS + "/{id}", created.id())).andExpect(jsonPath("$.version").value(1));
+	}
+
+	// 같은 화면(버전 0)에서 두 번째로 저장한 직원은 다시 불러오라는 안내를 받는다. 앞사람의 변경은 남는다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 낡은_버전으로_고치면_409이고_앞사람의_변경이_남는다() throws Exception {
+		String name = uniqueName();
+		StudentView created = studentService.register(registration(name, mother(randomPhone())));
+
+		send(put(STUDENTS + "/{id}", created.id()), updateBody(0, name, "HIGH_2", "ENROLLED", null))
+				.andExpect(status().isOk());
+		send(put(STUDENTS + "/{id}", created.id()), updateBody(0, name, "HIGH_3", "ENROLLED", null))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("MEMBER_STUDENT_CHANGED"));
+		mockMvc.perform(get(STUDENTS + "/{id}", created.id())).andExpect(jsonPath("$.grade").value("HIGH_2"));
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 버전이_글자면_400이다() throws Exception {
+		String name = uniqueName();
+		StudentView created = studentService.register(registration(name, mother(randomPhone())));
+
+		send(put(STUDENTS + "/{id}", created.id()), """
+				{"version": "0", "campusId": 1, "name": "%s", "grade": "HIGH_1", "status": "ENROLLED",
+				 "registeredAt": "2026-03-02"}
+				""".formatted(name))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[?(@.field == 'version')]").isNotEmpty());
 	}
 
 	// 화면이 받은 가린 번호를 그대로 다시 보내면 번호가 망가진다. 가린 번호는 전화번호로 읽히지 않아야 한다.
@@ -233,9 +263,9 @@ class MemberApiTest {
 		StudentView created = studentService.register(registrationWithPhone(name, original, mother(randomPhone())));
 
 		send(put(STUDENTS + "/{id}", created.id()), """
-				{"campusId": 1, "name": "%s", "grade": "HIGH_1", "status": "ENROLLED",
+				{"version": %d, "campusId": 1, "name": "%s", "grade": "HIGH_1", "status": "ENROLLED",
 				 "registeredAt": "2026-03-02", "phone": "%s"}
-				""".formatted(name, original.masked())).andExpect(status().isBadRequest())
+				""".formatted(created.version(), name, original.masked())).andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
 				.andExpect(jsonPath("$.errors[0].field").value("phone"))
 				.andExpect(jsonPath("$.errors[0].message").value("휴대전화 번호 형식이 아닙니다."));
@@ -382,7 +412,8 @@ class MemberApiTest {
 				.andExpect(jsonPath("$.errors[?(@.field == 'campusId')]").isNotEmpty())
 				.andExpect(jsonPath("$.errors[?(@.field == 'grade')]").isNotEmpty())
 				.andExpect(jsonPath("$.errors[?(@.field == 'status')]").isNotEmpty())
-				.andExpect(jsonPath("$.errors[?(@.field == 'registeredAt')]").isNotEmpty());
+				.andExpect(jsonPath("$.errors[?(@.field == 'registeredAt')]").isNotEmpty())
+				.andExpect(jsonPath("$.errors[?(@.field == 'version')]").isNotEmpty());
 		send(put(STUDENTS + "/{id}/guardians/{guardianId}", student.id(), student.guardians().getFirst().id()), "{}")
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errors[?(@.field == 'relation')]").isNotEmpty());
@@ -452,7 +483,7 @@ class MemberApiTest {
 		forbidden(mockMvc.perform(studentSearch(mockMvc, "phoneLast4", "1234")));
 		forbidden(mockMvc.perform(get(STUDENTS + "/{id}", student.id())));
 		forbidden(send(post(STUDENTS), createBody(uniqueName(), 1, randomPhone())));
-		forbidden(send(put(STUDENTS + "/{id}", student.id()), updateBody(student.name(), "HIGH_1", "ENROLLED", null)));
+		forbidden(send(put(STUDENTS + "/{id}", student.id()), updateBody(student.version(), student.name(), "HIGH_1", "ENROLLED", null)));
 		forbidden(mockMvc.perform(delete(STUDENTS + "/{id}/phone", student.id()).with(csrfToken(mockMvc))));
 		forbidden(send(post(STUDENTS + "/{id}/guardians", student.id()),
 				"{\"name\": \"김아버지\", \"relation\": \"FATHER\", \"phone\": \"%s\"}".formatted(randomPhone().value())));
@@ -500,10 +531,12 @@ class MemberApiTest {
 				""".formatted(campusId, name, guardianPhone.value());
 	}
 
-	private static String updateBody(String name, String grade, String status, PhoneNumber phone) {
+	// version은 화면이 받은 버전이다(응답의 version).
+	private static String updateBody(long version, String name, String grade, String status, PhoneNumber phone) {
 		return """
-				{"campusId": 1, "name": "%s", "grade": "%s", "status": "%s", "registeredAt": "2026-03-02"%s}
-				""".formatted(name, grade, status, (phone != null) ? ", \"phone\": \"" + phone.value() + "\"" : "");
+				{"version": %d, "campusId": 1, "name": "%s", "grade": "%s", "status": "%s", "registeredAt": "2026-03-02"%s}
+				""".formatted(version, name, grade, status,
+				(phone != null) ? ", \"phone\": \"" + phone.value() + "\"" : "");
 	}
 
 	// 010-1234-5678

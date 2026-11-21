@@ -85,24 +85,32 @@ class StudentContactConcurrencyTest {
 	}
 
 	// 수정이 학생을 읽은 뒤 번호 지우기가 끝나면, 수정이 읽어 둔 옛 번호를 다시 써서 지운 번호가 되살아난다.
+	// 지우기가 먼저 끝나면 버전이 올라 수정은 거부된다(낡은 화면, ADR-0050). 수정이 먼저면 둘 다 반영된다.
 	@Test
 	void 번호_지우기와_정보_수정이_동시에_와도_지운_번호가_되살아나지_않는다() throws Exception {
 		for (int round = 0; round < ROUNDS; round++) {
 			PhoneNumber phone = randomPhone();
 			String name = uniqueName();
 			StudentView student = studentService.register(registrationWithPhone(name, phone, mother(randomPhone())));
-			StudentChange sameValues = new StudentChange(DONGTAN, null, name, "동탄고", Grade.HIGH_2, student.status(),
-					student.registeredAt(), null);
+			StudentChange sameValues = new StudentChange(student.version(), DONGTAN, null, name, "동탄고",
+					Grade.HIGH_2, student.status(), student.registeredAt(), null);
 
 			List<Object> results = runTogether(() -> {
 				studentService.removePhone(student.id());
 				return "phone";
 			}, () -> studentService.update(student.id(), sameValues));
 
-			assertThat(results).noneMatch(Exception.class::isInstance);
+			assertThat(results.get(0)).isEqualTo("phone");
 			StudentView after = studentService.get(student.id());
 			assertThat(after.phone()).isNull();
-			assertThat(after.grade()).isEqualTo(Grade.HIGH_2);
+			if (results.get(1) instanceof StudentView) {
+				assertThat(after.grade()).isEqualTo(Grade.HIGH_2);
+			}
+			else {
+				assertThat(results.get(1)).isInstanceOfSatisfying(BusinessException.class,
+						ex -> assertThat(ex.getErrorCode()).isEqualTo(MemberErrorCode.STUDENT_CHANGED));
+				assertThat(after.grade()).isEqualTo(student.grade());
+			}
 		}
 	}
 
@@ -160,7 +168,7 @@ class StudentContactConcurrencyTest {
 
 	// 성공한 호출은 돌려준 값을, 실패한 호출은 예외를 담는다.
 	@SafeVarargs
-	private static List<Object> runTogether(Callable<Object>... tasks) throws Exception {
+	static List<Object> runTogether(Callable<Object>... tasks) throws Exception {
 		ExecutorService executor = Executors.newFixedThreadPool(tasks.length);
 		CountDownLatch ready = new CountDownLatch(tasks.length);
 		CountDownLatch start = new CountDownLatch(1);

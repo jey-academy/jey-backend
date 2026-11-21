@@ -148,7 +148,7 @@ class MemberAuditTest {
 		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
 		long guardianId = student.guardians().getFirst().id();
 
-		assertFails(() -> studentService.update(student.id(), new StudentChange(DONGTAN, 999_999_999L, student.name(),
+		assertFails(() -> studentService.update(student.id(), new StudentChange(student.version(), DONGTAN, 999_999_999L, student.name(),
 				null, Grade.HIGH_1, StudentStatus.ENROLLED, student.registeredAt(), null)),
 				MemberErrorCode.INVALID_CLASS);
 		assertFails(() -> studentService.removeGuardian(student.id(), guardianId), MemberErrorCode.LAST_CONTACT);
@@ -274,7 +274,7 @@ class MemberAuditTest {
 	}
 
 	private static StudentChange change(StudentView current, PhoneNumber phone) {
-		return new StudentChange(current.campusId(), current.classId(), current.name(), current.school(),
+		return new StudentChange(current.version(), current.campusId(), current.classId(), current.name(), current.school(),
 				current.grade(), current.status(), current.registeredAt(), phone);
 	}
 

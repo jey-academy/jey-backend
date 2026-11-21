@@ -13,7 +13,10 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 @Schema(description = "학생 정보 수정. 전화번호를 뺀 값은 통째로 바꾼다(보내지 않은 반과 학교는 비워진다)")
-record StudentUpdateRequest(@NotNull Long campusId,
+record StudentUpdateRequest(
+		@Schema(description = "화면이 받은 버전(응답의 version). 지금 버전과 다르면 409(MEMBER_STUDENT_CHANGED) — 다시 불러온 뒤 고친다")
+		@NotNull Long version,
+		@NotNull Long campusId,
 		@Schema(description = "반. 보내지 않으면 반 없음이 된다. 학생의 지점에 속한 반이어야 하고, 새로 옮기는 반은 운영 중이어야 한다") Long classId,
 		@NotBlank @Size(max = Student.MAX_NAME_LENGTH) String name,
 		@Schema(description = "학교. 보내지 않으면 비워진다") @Size(max = Student.MAX_SCHOOL_LENGTH) String school,
@@ -23,7 +26,7 @@ record StudentUpdateRequest(@NotNull Long campusId,
 				+ "번호를 지우려면 DELETE /students/{id}/phone", example = "010-1234-5678") PhoneNumber phone) {
 
 	StudentChange toChange() {
-		return new StudentChange(campusId, classId, name, school, grade, status, registeredAt, phone);
+		return new StudentChange(version, campusId, classId, name, school, grade, status, registeredAt, phone);
 	}
 
 }

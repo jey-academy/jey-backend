@@ -217,11 +217,16 @@ public class StudentService {
 	}
 
 	/**
-	 * @throws BusinessException 없는 학생이거나 지점·반이 틀렸을 때
+	 * @throws BusinessException 없는 학생이거나, 화면이 받은 버전이 지금과 다르거나(다른 사람이 먼저 고쳤다), 지점·반이 틀렸을 때
 	 */
 	@Transactional
 	public StudentView update(long studentId, StudentChange change) {
 		Student student = find(studentId);
+		// 잠근 뒤에 화면이 받은 버전과 비교한다(ADR-0050). 잠금은 저장을 줄 세울 뿐이라, 이 비교가 없으면 뒤에 선 저장이
+		// 화면에 남아 있던 옛 값으로 앞사람의 변경을 되돌린다. 낡은 화면의 값으로 다른 오류를 내지 않게 다른 확인보다 먼저 한다.
+		if (student.getVersion() != change.version()) {
+			throw new BusinessException(MemberErrorCode.STUDENT_CHANGED);
+		}
 		requireValidPlacement(change.campusId(), change.classId(), student);
 		student.update(change.campusId(), change.classId(), change.name(), change.school(), change.grade(),
 				change.status(), change.registeredAt());

@@ -2581,9 +2581,14 @@
           "status" : {
             "enum" : [ "ENROLLED", "WITHDRAWN" ],
             "type" : "string"
+          },
+          "version" : {
+            "description" : "화면이 받은 버전(응답의 version). 지금 버전과 다르면 409(MEMBER_STUDENT_CHANGED) — 다시 불러온 뒤 고친다",
+            "format" : "int64",
+            "type" : "integer"
           }
         },
-        "required" : [ "campusId", "grade", "name", "registeredAt", "status" ],
+        "required" : [ "campusId", "grade", "name", "registeredAt", "status", "version" ],
         "type" : "object"
       },
       "VerifiedPassResponse" : {
