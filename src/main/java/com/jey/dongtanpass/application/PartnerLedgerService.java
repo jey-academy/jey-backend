@@ -270,6 +270,11 @@ public class PartnerLedgerService {
 	}
 
 	private String campusName(Long campusId) {
+		return campusName(catalog, campusId);
+	}
+
+	/** 장부에 쓰는 JEY 지점 이름. 지점이 없으면(있어서는 안 되는 자료) 예외다. 연계 학원 장부 CSV도 같은 규칙이다. */
+	static String campusName(CampusCatalog catalog, Long campusId) {
 		if (campusId == null) {
 			throw new IllegalStateException("장부에 쓸 지점이 없다");
 		}

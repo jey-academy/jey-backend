@@ -28,11 +28,18 @@ final class LedgerCsv {
 	}
 
 	static byte[] write(List<LedgerRow> rows) {
-		StringBuilder text = new StringBuilder(line(HEADER.stream()));
-		for (LedgerRow row : rows) {
-			text.append(line(Stream.of(row.passNo(), row.studentName(), row.issuedOn().toString(),
-					row.expiresOn().toString(), row.state().label(), row.paidOn().toString(),
-					row.paidAmount().amount().toPlainString(), row.paymentMethod().label())));
+		return write(HEADER, rows.stream()
+			.map(row -> List.of(row.passNo(), row.studentName(), row.issuedOn().toString(), row.expiresOn().toString(),
+					row.state().label(), row.paidOn().toString(), row.paidAmount().amount().toPlainString(),
+					row.paymentMethod().label()))
+			.toList());
+	}
+
+	/** 머리글과 줄(칸의 글자)을 같은 규칙으로 쓴다. 다른 장부의 CSV도 이것으로 쓴다. */
+	static byte[] write(List<String> header, List<List<String>> lines) {
+		StringBuilder text = new StringBuilder(line(header.stream()));
+		for (List<String> cells : lines) {
+			text.append(line(cells.stream()));
 		}
 		ByteArrayOutputStream file = new ByteArrayOutputStream();
 		file.writeBytes(BOM);

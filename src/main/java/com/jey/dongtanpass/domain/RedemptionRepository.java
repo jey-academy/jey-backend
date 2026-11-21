@@ -1,6 +1,7 @@
 package com.jey.dongtanpass.domain;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -64,5 +65,20 @@ public interface RedemptionRepository extends Repository<Redemption, Long> {
 			where p.id = r.passId and pa.id = p.partnerId and r.id = :id
 			""")
 	Optional<RedemptionEntry> findEntry(@Param("id") long id);
+
+	/**
+	 * 연계 학원 장부 CSV: 그 학원이 발급한 패스가 JEY 지점에서 쓰인 기록. 순서는 정하지 않는다(부르는 쪽이 다른 기록과 섞어 정렬한다).
+	 *
+	 * @param from 이 시각부터(포함)
+	 * @param before 이 시각 전까지(제외)
+	 */
+	@Query("""
+			select new com.jey.dongtanpass.domain.UsedAtJeyLine(p.id, r.redeemedAt, p.studentName, p.passNo, r.campusId)
+			from Redemption r, Pass p
+			where p.id = r.passId and p.partnerId = :partnerId
+			 and r.redeemedAt >= :from and r.redeemedAt < :before
+			""")
+	List<UsedAtJeyLine> usedAtJeyLines(@Param("partnerId") long partnerId, @Param("from") Instant from,
+			@Param("before") Instant before);
 
 }

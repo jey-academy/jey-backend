@@ -1,6 +1,7 @@
 package com.jey.dongtanpass.domain;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -38,5 +39,21 @@ public interface PartnerRedemptionRepository extends JpaRepository<PartnerRedemp
 			""")
 	Page<PartnerRedemptionEntry> list(@Param("partnerId") Long partnerId, @Param("from") Instant from,
 			@Param("before") Instant before, Pageable pageable);
+
+	/**
+	 * 장부 CSV: 그 학원이 할인해 준 기록. 순서는 정하지 않는다(부르는 쪽이 다른 기록과 섞어 정렬한다).
+	 *
+	 * @param from 이 시각부터(포함)
+	 * @param before 이 시각 전까지(제외)
+	 */
+	@Query("""
+			select new com.jey.dongtanpass.domain.PartnerDiscountLine(p.id, r.redeemedAt, p.studentName, p.passNo,
+			 r.originalFee, r.discountRate, r.discountAmount, r.payableAmount, p.issuerCampusId)
+			from PartnerRedemption r, Pass p
+			where p.id = r.passId and r.partnerId = :partnerId
+			 and r.redeemedAt >= :from and r.redeemedAt < :before
+			""")
+	List<PartnerDiscountLine> discountLines(@Param("partnerId") long partnerId, @Param("from") Instant from,
+			@Param("before") Instant before);
 
 }
