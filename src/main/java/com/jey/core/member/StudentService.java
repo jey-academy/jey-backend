@@ -431,7 +431,8 @@ public class StudentService {
 		List<GuardianView> guardianViews = studentLinks.stream().map(link -> {
 			Guardian guardian = guardianOf(link, guardiansById);
 			return new GuardianView(guardian.getId(), guardian.getName(), link.getRelation(),
-					protector.reveal(guardian.getPhone()), linkedToExisting.contains(guardian.getId()));
+					protector.reveal(guardian.getPhone()), guardian.getVersion(),
+					linkedToExisting.contains(guardian.getId()));
 		}).toList();
 		PhoneNumber phone = student.hasPhone() ? protector.reveal(student.getPhone()) : null;
 		ContactView primary = PrimaryContactRule.chooseGuardian(studentLinks)

@@ -298,6 +298,19 @@ class MemberApiTest {
 		assertNoPlainPhone(body, changed);
 	}
 
+	// 학부모 수정 화면은 학생 상세의 학부모 목록에서 열린다. 거기서 받은 버전과 수정 응답의 버전이 같은 값이다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 학부모_응답에_버전이_있고_수정하면_오른다() throws Exception {
+		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
+		long guardianId = student.guardians().getFirst().id();
+
+		mockMvc.perform(get(STUDENTS + "/{id}", student.id())).andExpect(jsonPath("$.guardians[0].version").value(0));
+		send(put("/api/v1/guardians/{id}", guardianId), "{\"name\": \"박어머니\"}").andExpect(status().isOk())
+				.andExpect(jsonPath("$.version").value(1));
+		mockMvc.perform(get(STUDENTS + "/{id}", student.id())).andExpect(jsonPath("$.guardians[0].version").value(1));
+	}
+
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
 	void 업무_오류는_코드로_알려준다() throws Exception {

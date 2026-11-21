@@ -110,7 +110,9 @@ public class GuardianService {
 	}
 
 	private GuardianProfile updateInTransaction(long id, String name, PhoneNumber phone) {
-		Guardian found = guardians.findById(id)
+		// 잠가서 읽는다. 같은 학부모를 고치는 다른 요청이 커밋하기 전의 값을 읽으면, 저장할 때 모든 칸을 다시 써서
+		// 그 요청이 바꾼 번호를 옛 값으로 되돌린다(이 요청은 번호를 건드리지 않았어도).
+		Guardian found = guardians.findByIdForUpdate(id)
 				.orElseThrow(() -> new BusinessException(MemberErrorCode.GUARDIAN_NOT_FOUND));
 		boolean phoneChanged = false;
 		if (phone != null) {
@@ -139,7 +141,8 @@ public class GuardianService {
 		auditLog.record(AuditEntry.of(MemberAuditAction.GUARDIAN_UPDATED)
 				.target(MemberRefs.guardian(id))
 				.with("phoneChanged", phoneChanged));
-		return new GuardianProfile(found.getId(), found.getName(), protector.reveal(found.getPhone()));
+		return new GuardianProfile(found.getId(), found.getName(), protector.reveal(found.getPhone()),
+				found.getVersion());
 	}
 
 	/**
@@ -150,8 +153,10 @@ public class GuardianService {
 
 	/**
 	 * 학생과 무관한 학부모 자신의 정보. 전화번호는 응답이나 로그로 나가면 가린 표시가 된다.
+	 *
+	 * @param version 학부모 정보의 버전(저장한 뒤의 값)
 	 */
-	public record GuardianProfile(long id, String name, PhoneNumber phone) {
+	public record GuardianProfile(long id, String name, PhoneNumber phone, long version) {
 	}
 
 }
