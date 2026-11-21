@@ -137,7 +137,8 @@ class UpdateRetryApiTest {
 		send(put(STUDENTS + "/{id}", student.id()), null, updateBody(student.version(), student.name(), "HIGH_2"))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("COMMON_IDEMPOTENCY_KEY_REQUIRED"));
-		send(put("/api/v1/guardians/{id}", guardianId), null, "{\"name\": \"바뀐 이름\"}")
+		send(put("/api/v1/guardians/{id}", guardianId), null,
+				guardianBody(student.guardians().getFirst().version(), "바뀐 이름"))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("COMMON_IDEMPOTENCY_KEY_REQUIRED"));
 
@@ -151,12 +152,14 @@ class UpdateRetryApiTest {
 	void 응답을_놓친_학부모_수정도_같은_키면_다시_실행하지_않는다() throws Exception {
 		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
 		long guardianId = student.guardians().getFirst().id();
+		long version = student.guardians().getFirst().version();
 		String key = UUID.randomUUID().toString();
+		String mine = guardianBody(version, "박어머니");
 
-		send(put("/api/v1/guardians/{id}", guardianId), key, "{\"name\": \"박어머니\"}").andExpect(status().isOk());
-		send(put("/api/v1/guardians/{id}", guardianId), UUID.randomUUID().toString(), "{\"name\": \"최어머니\"}")
+		send(put("/api/v1/guardians/{id}", guardianId), key, mine).andExpect(status().isOk());
+		send(put("/api/v1/guardians/{id}", guardianId), UUID.randomUUID().toString(), guardianBody(version + 1, "최어머니"))
 				.andExpect(status().isOk());
-		send(put("/api/v1/guardians/{id}", guardianId), key, "{\"name\": \"박어머니\"}").andExpect(status().isOk())
+		send(put("/api/v1/guardians/{id}", guardianId), key, mine).andExpect(status().isOk())
 				.andExpect(header().string("Idempotency-Replayed", "true"))
 				.andExpect(jsonPath("$.name").value("박어머니"));
 
@@ -169,6 +172,10 @@ class UpdateRetryApiTest {
 			request.with(idempotencyKey(key));
 		}
 		return mockMvc.perform(request);
+	}
+
+	private static String guardianBody(long version, String name) {
+		return "{\"version\": %d, \"name\": \"%s\"}".formatted(version, name);
 	}
 
 	private static String updateBody(long version, String name, String grade) {

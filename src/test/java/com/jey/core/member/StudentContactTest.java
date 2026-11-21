@@ -178,7 +178,7 @@ class StudentContactTest {
 		StudentView first = studentService.register(registration(uniqueName(), mother(original)));
 		StudentView second = studentService.register(registration(uniqueName(), mother(original)));
 
-		guardianService.update(first.guardians().getFirst().id(), "김어머니", changed);
+		guardianService.update(first.guardians().getFirst().id(), 0, "김어머니", changed);
 
 		assertThat(List.of(studentService.get(first.id()), studentService.get(second.id())))
 				.allSatisfy(each -> assertThat(each.primaryContact().phone()).isEqualTo(changed));
@@ -191,7 +191,7 @@ class StudentContactTest {
 		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
 		long guardianId = student.guardians().getFirst().id();
 
-		assertFails(() -> guardianService.update(guardianId, "바뀐 이름", others),
+		assertFails(() -> guardianService.update(guardianId, 0, "바뀐 이름", others),
 				MemberErrorCode.GUARDIAN_PHONE_DUPLICATED);
 
 		assertThat(studentService.get(student.id()).guardians().getFirst().name()).isEqualTo("김어머니");

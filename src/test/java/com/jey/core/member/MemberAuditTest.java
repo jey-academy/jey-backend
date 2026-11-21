@@ -189,9 +189,9 @@ class MemberAuditTest {
 		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
 		long guardianId = student.guardians().getFirst().id();
 
-		assertFails(() -> guardianService.update(guardianId, "김어머니", othersPhone),
+		assertFails(() -> guardianService.update(guardianId, 0, "김어머니", othersPhone),
 				MemberErrorCode.GUARDIAN_PHONE_DUPLICATED);
-		assertFails(() -> guardianService.update(guardianId, "김어머니", othersPhone),
+		assertFails(() -> guardianService.update(guardianId, 0, "김어머니", othersPhone),
 				MemberErrorCode.GUARDIAN_PHONE_DUPLICATED);
 		studentService.addGuardian(student.id(), father(othersPhone));
 		assertFails(() -> studentService.addGuardian(student.id(), father(othersPhone)),
@@ -221,10 +221,10 @@ class MemberAuditTest {
 				.getFirst()
 				.id();
 
-		guardianService.update(guardianId, "박어머니", null);
+		guardianService.update(guardianId, 0, "박어머니", null);
 		// 같은 번호를 다시 보낸 것은 번호를 바꾼 것이 아니다.
-		guardianService.update(guardianId, "박어머니", original);
-		guardianService.update(guardianId, "박어머니", randomPhone());
+		guardianService.update(guardianId, 1, "박어머니", original);
+		guardianService.update(guardianId, 1, "박어머니", randomPhone());
 
 		assertThat(ofGuardian(guardianId, MemberAuditAction.GUARDIAN_UPDATED.code())).extracting(AuditRecord::getDetailJson)
 				.containsExactlyInAnyOrder("{\"phoneChanged\":false}", "{\"phoneChanged\":false}",
@@ -242,7 +242,7 @@ class MemberAuditTest {
 		StudentView student = studentService.register(registrationWithPhone(name, studentPhone, mother(motherPhone)));
 		long guardianId = student.guardians().getFirst().id();
 		studentService.update(student.id(), change(student, changed));
-		guardianService.update(guardianId, "이름바꿈", changed);
+		guardianService.update(guardianId, 0, "이름바꿈", changed);
 		await().atMost(TIMEOUT).untilAsserted(() -> assertThat(registeredEventOf(student.id())).hasSize(1));
 
 		List<AuditRecord> all = new java.util.ArrayList<>(registeredEventOf(student.id()));

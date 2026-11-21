@@ -72,7 +72,7 @@ class MemberDeniedAuditApiTest {
 				""".formatted(name, phone.value())).andExpect(status().isConflict())
 				.andExpect(jsonPath("$.code").value("MEMBER_STUDENT_DUPLICATED"));
 		send(put("/api/v1/guardians/{id}", guardianId),
-				"{\"name\": \"김어머니\", \"phone\": \"%s\"}".formatted(othersPhone.value()))
+				"{\"version\": 0, \"name\": \"김어머니\", \"phone\": \"%s\"}".formatted(othersPhone.value()))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.code").value("MEMBER_GUARDIAN_PHONE_DUPLICATED"));
 		send(post("/api/v1/students/{id}/guardians", student.id()),

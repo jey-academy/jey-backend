@@ -124,7 +124,7 @@ class MemberApiEdgeTest {
 		send(put(STUDENTS + "/{id}", student.id()), updateBody(student.name(), "나".repeat(51)))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errors[?(@.field == 'school')]").isNotEmpty());
-		send(put("/api/v1/guardians/{id}", guardianId), "{\"name\": \"%s\"}".formatted("가".repeat(51)))
+		send(put("/api/v1/guardians/{id}", guardianId), "{\"version\": 0, \"name\": \"%s\"}".formatted("가".repeat(51)))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errors[?(@.field == 'name')]").isNotEmpty());
 

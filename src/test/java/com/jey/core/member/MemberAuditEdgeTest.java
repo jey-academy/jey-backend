@@ -147,7 +147,7 @@ class MemberAuditEdgeTest {
 		doReturn(false).when(checkMisses).existsOtherByPhoneIndex(any(), any());
 		GuardianService racing = new GuardianService(checkMisses, protector, transactionManager, auditLog, probeGuard);
 
-		assertFails(() -> racing.update(guardianId, "바뀐 이름", othersPhone),
+		assertFails(() -> racing.update(guardianId, 0, "바뀐 이름", othersPhone),
 				MemberErrorCode.GUARDIAN_PHONE_DUPLICATED);
 
 		assertThat(ofGuardian(guardianId, MemberAuditAction.GUARDIAN_PHONE_DUPLICATED.code())).singleElement()

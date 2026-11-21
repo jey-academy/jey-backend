@@ -81,24 +81,25 @@ public class GuardianService {
 	 * 학부모의 이름과 번호를 고친다. 트랜잭션 안에서 부르지 않는다.
 	 * 다른 학부모가 쓰는 번호라서 거부될 때, 그 사실을 수정의 트랜잭션이 끝난 뒤에 감사 로그에 남기기 때문이다.
 	 *
+	 * @param version 화면이 받은 버전(응답의 version). 지금 버전과 다르면 거부한다
 	 * @param phone 새 번호. {@code null}이면 그대로 둔다
-	 * @throws BusinessException 없는 학부모이거나, 다른 학부모가 쓰는 번호일 때
+	 * @throws BusinessException 없는 학부모이거나, 화면이 받은 버전이 지금과 다르거나(다른 사람이 먼저 고쳤다), 다른 학부모가 쓰는 번호일 때
 	 * @throws RateLimitedException 번호를 실었는데, 이 계정이 "그 번호가 이미 있다"는 거부를 한도만큼 받아 막혀 있을 때
 	 */
-	public GuardianProfile update(long id, String name, PhoneNumber phone) {
+	public GuardianProfile update(long id, long version, String name, PhoneNumber phone) {
 		if (TransactionSynchronizationManager.isActualTransactionActive()) {
 			throw new IllegalStateException("GuardianService#update는 트랜잭션 밖에서 불러야 한다");
 		}
 		// 번호를 싣지 않은 수정은 "그 번호가 이미 있다"는 답을 받을 일이 없다. 세지도 막지도 않는다.
 		if (phone == null) {
-			return updateRecordingDenial(id, name, null);
+			return updateRecordingDenial(id, version, name, null);
 		}
-		return probeGuard.guard(() -> updateRecordingDenial(id, name, phone));
+		return probeGuard.guard(() -> updateRecordingDenial(id, version, name, phone));
 	}
 
-	private GuardianProfile updateRecordingDenial(long id, String name, PhoneNumber phone) {
+	private GuardianProfile updateRecordingDenial(long id, long version, String name, PhoneNumber phone) {
 		try {
-			return transaction.execute(status -> updateInTransaction(id, name, phone));
+			return transaction.execute(status -> updateInTransaction(id, version, name, phone));
 		}
 		catch (BusinessException ex) {
 			if (ex.getErrorCode() == MemberErrorCode.GUARDIAN_PHONE_DUPLICATED) {
@@ -109,11 +110,17 @@ public class GuardianService {
 		}
 	}
 
-	private GuardianProfile updateInTransaction(long id, String name, PhoneNumber phone) {
+	private GuardianProfile updateInTransaction(long id, long version, String name, PhoneNumber phone) {
 		// 잠가서 읽는다. 같은 학부모를 고치는 다른 요청이 커밋하기 전의 값을 읽으면, 저장할 때 모든 칸을 다시 써서
 		// 그 요청이 바꾼 번호를 옛 값으로 되돌린다(이 요청은 번호를 건드리지 않았어도).
 		Guardian found = guardians.findByIdForUpdate(id)
 				.orElseThrow(() -> new BusinessException(MemberErrorCode.GUARDIAN_NOT_FOUND));
+		// 잠근 뒤에 화면이 받은 버전과 비교한다(ADR-0051). 잠금은 저장을 줄 세울 뿐이라, 이 비교가 없으면 뒤에 선 저장이
+		// 화면에 남아 있던 옛 이름으로 앞사람의 변경을 되돌린다. 번호 중복 확인보다 먼저 해서, 낡은 화면으로 다른 학부모의
+		// 번호인지 캐 볼 수 없게 한다(버전 거부는 번호를 드러내지 않는다).
+		if (found.getVersion() != version) {
+			throw new BusinessException(MemberErrorCode.GUARDIAN_CHANGED);
+		}
 		boolean phoneChanged = false;
 		if (phone != null) {
 			String index = protector.fullIndex(phone);

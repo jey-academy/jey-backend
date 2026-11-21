@@ -314,12 +314,12 @@ class MemberApiTest {
 				.getFirst()
 				.id();
 
-		send(put("/api/v1/guardians/{id}", guardianId), "{\"name\": \" 박어머니 \"}").andExpect(status().isOk())
+		send(put("/api/v1/guardians/{id}", guardianId), "{\"version\": 0, \"name\": \" 박어머니 \"}").andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").value(guardianId))
 				.andExpect(jsonPath("$.name").value("박어머니"))
 				.andExpect(jsonPath("$.phone").value(original.masked()));
 		String body = send(put("/api/v1/guardians/{id}", guardianId),
-				"{\"name\": \"박어머니\", \"phone\": \"%s\"}".formatted(changed.value())).andExpect(status().isOk())
+				"{\"version\": 1, \"name\": \"박어머니\", \"phone\": \"%s\"}".formatted(changed.value())).andExpect(status().isOk())
 				.andExpect(jsonPath("$.phone").value(changed.masked()))
 				.andReturn()
 				.getResponse()
@@ -336,9 +336,40 @@ class MemberApiTest {
 		long guardianId = student.guardians().getFirst().id();
 
 		mockMvc.perform(get(STUDENTS + "/{id}", student.id())).andExpect(jsonPath("$.guardians[0].version").value(0));
-		send(put("/api/v1/guardians/{id}", guardianId), "{\"name\": \"박어머니\"}").andExpect(status().isOk())
+		send(put("/api/v1/guardians/{id}", guardianId), "{\"version\": 0, \"name\": \"박어머니\"}").andExpect(status().isOk())
 				.andExpect(jsonPath("$.version").value(1));
 		mockMvc.perform(get(STUDENTS + "/{id}", student.id())).andExpect(jsonPath("$.guardians[0].version").value(1));
+	}
+
+	// 같은 화면(버전 0)에서 두 번째로 저장한 직원은 다시 불러오라는 안내를 받는다. 앞사람의 변경은 남는다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 낡은_버전으로_학부모를_고치면_409이고_앞사람의_변경이_남는다() throws Exception {
+		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
+		long guardianId = student.guardians().getFirst().id();
+
+		send(put("/api/v1/guardians/{id}", guardianId), "{\"version\": 0, \"name\": \"박어머니\"}")
+				.andExpect(status().isOk());
+		send(put("/api/v1/guardians/{id}", guardianId), "{\"version\": 0, \"name\": \"최어머니\"}")
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("MEMBER_GUARDIAN_CHANGED"));
+		mockMvc.perform(get(STUDENTS + "/{id}", student.id())).andExpect(jsonPath("$.guardians[0].name").value("박어머니"));
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN)
+	void 학부모_수정에서_버전을_빼거나_글자로_보내면_400이다() throws Exception {
+		long guardianId = studentService.register(registration(uniqueName(), mother(randomPhone())))
+				.guardians()
+				.getFirst()
+				.id();
+
+		send(put("/api/v1/guardians/{id}", guardianId), "{\"name\": \"박어머니\"}").andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[?(@.field == 'version')]").isNotEmpty());
+		send(put("/api/v1/guardians/{id}", guardianId), "{\"version\": \"0\", \"name\": \"박어머니\"}")
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errors[?(@.field == 'version')]").isNotEmpty());
 	}
 
 	@Test
@@ -385,7 +416,7 @@ class MemberApiTest {
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.code").value("MEMBER_GUARDIAN_NOT_FOUND"));
 		String duplicated = send(put("/api/v1/guardians/{id}", guardianId),
-				"{\"name\": \"김어머니\", \"phone\": \"%s\"}".formatted(otherPhone.value()))
+				"{\"version\": 0, \"name\": \"김어머니\", \"phone\": \"%s\"}".formatted(otherPhone.value()))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.code").value("MEMBER_GUARDIAN_PHONE_DUPLICATED"))
 				.andReturn()
@@ -430,7 +461,7 @@ class MemberApiTest {
 		send(put(STUDENTS + "/{id}/guardians/{guardianId}", student.id(), student.guardians().getFirst().id()), "{}")
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errors[?(@.field == 'relation')]").isNotEmpty());
-		send(put("/api/v1/guardians/{id}", student.guardians().getFirst().id()), "{\"name\": \" \"}")
+		send(put("/api/v1/guardians/{id}", student.guardians().getFirst().id()), "{\"version\": 0, \"name\": \" \"}")
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errors[?(@.field == 'name')]").isNotEmpty());
 	}
@@ -504,7 +535,7 @@ class MemberApiTest {
 				"{\"relation\": \"FATHER\"}"));
 		forbidden(mockMvc.perform(delete(STUDENTS + "/{id}/guardians/{guardianId}", student.id(), guardianId)
 				.with(csrfToken(mockMvc))));
-		forbidden(send(put("/api/v1/guardians/{id}", guardianId), "{\"name\": \"바뀐 이름\"}"));
+		forbidden(send(put("/api/v1/guardians/{id}", guardianId), "{\"version\": 0, \"name\": \"바뀐 이름\"}"));
 
 		assertThat(studentService.get(student.id()).guardians()).singleElement()
 				.satisfies(each -> assertThat(each.name()).isEqualTo("김어머니"));
@@ -515,7 +546,7 @@ class MemberApiTest {
 		mockMvc.perform(studentSearch(mockMvc)).andExpect(status().isUnauthorized());
 		mockMvc.perform(get(STUDENTS + "/1")).andExpect(status().isUnauthorized());
 		send(post(STUDENTS), createBody(uniqueName(), 1, randomPhone())).andExpect(status().isUnauthorized());
-		send(put("/api/v1/guardians/1"), "{\"name\": \"이름\"}").andExpect(status().isUnauthorized());
+		send(put("/api/v1/guardians/1"), "{\"version\": 0, \"name\": \"이름\"}").andExpect(status().isUnauthorized());
 	}
 
 	@Test
