@@ -89,6 +89,7 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 		fixtures = new PartnerLedgerFixtures(passes, partnerRedemptions, redemptions, transaction);
 		DongtanpassFixtures.upsertPartner(jdbc, PARTNER_WITH_LEDGER, true);
 		DongtanpassFixtures.upsertPartner(jdbc, PARTNER_WITHOUT_LEDGER, true);
+		DongtanpassFixtures.upsertPartner(jdbc, PARTNER_NO_SHEET, true);
 	}
 
 	@Test
@@ -153,6 +154,42 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 		long passId = fixtures.campusPassRedeemedAt(PARTNER_WITHOUT_LEDGER, "김하윤");
 
 		ledger.record(passId, PARTNER_WITHOUT_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
+
+		assertThat(google.getAllServeEvents()).isEmpty();
+		assertUnsynced(passId, PartnerLedgerReason.NOT_CONFIGURED);
+	}
+
+	@Test
+	void 시트를_쓰지_않는_학원의_기록은_반영_상태_줄을_만들지_않고_구글을_부르지_않는다() {
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_NO_SHEET, "김하윤");
+
+		ledger.record(passId, PARTNER_NO_SHEET, PartnerLedgerKind.PARTNER_DISCOUNT);
+
+		assertThat(google.getAllServeEvents()).isEmpty();
+		assertThat(syncs.findByPassId(passId)).isEmpty();
+	}
+
+	// 시트를 끄기 전에 설정이 없어서 쌓인 미반영 줄. 지우지 않고 목록에서만 뺀다.
+	@Test
+	void 시트를_끈_학원의_예전_미반영_줄은_관리자_목록에_나오지_않는다() {
+		long noSheetRow = oldUnsyncedRow(fixtures.campusPassRedeemedAt(PARTNER_NO_SHEET, "김하윤"), PARTNER_NO_SHEET);
+		long withoutLedgerPass = fixtures.campusPassRedeemedAt(PARTNER_WITHOUT_LEDGER, "이서준");
+		ledger.record(withoutLedgerPass, PARTNER_WITHOUT_LEDGER, PartnerLedgerKind.PARTNER_DISCOUNT);
+		long withoutLedgerRow = syncs.findByPassId(withoutLedgerPass).orElseThrow().getId();
+
+		assertThat(ledger.listUnsynced(null, 0, 100).map(PartnerLedgerSyncView::id))
+			.contains(withoutLedgerRow)
+			.doesNotContain(noSheetRow);
+		assertThat(ledger.listUnsynced(PARTNER_NO_SHEET, 0, 100)).isEmpty();
+		assertThat(syncs.findById(noSheetRow)).isPresent();
+	}
+
+	@Test
+	void 시트를_끈_학원의_미반영_줄을_다시_반영해도_구글을_부르지_않는다() {
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_NO_SHEET, "김하윤");
+		long row = oldUnsyncedRow(passId, PARTNER_NO_SHEET);
+
+		ledger.retryUnsynced(row);
 
 		assertThat(google.getAllServeEvents()).isEmpty();
 		assertUnsynced(passId, PartnerLedgerReason.NOT_CONFIGURED);
@@ -259,6 +296,17 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 		await().atMost(Duration.ofSeconds(15)).until(() -> syncs.findByPassId(passId)
 			.map(PartnerLedgerSync::getStatus)
 			.orElse(null) == PartnerLedgerStatus.SYNCED);
+	}
+
+	// 설정이 없어서 미반영이 된 줄을 바로 만든다.
+	private long oldUnsyncedRow(long passId, long partnerId) {
+		return transaction.execute(status -> {
+			PartnerLedgerSync sync = PartnerLedgerSync.pending(passId, partnerId, PartnerLedgerKind.PARTNER_DISCOUNT,
+					clock.instant());
+			sync.claim(clock.instant());
+			sync.unsynced(PartnerLedgerReason.NOT_CONFIGURED);
+			return syncs.saveAndFlush(sync).getId();
+		});
 	}
 
 	private void assertUnsynced(long passId, PartnerLedgerReason reason) {

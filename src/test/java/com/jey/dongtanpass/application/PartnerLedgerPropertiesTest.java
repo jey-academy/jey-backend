@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -46,6 +47,39 @@ class PartnerLedgerPropertiesTest {
 	}
 
 	@Test
+	void 시트를_쓰지_않는_학원이_없으면_빈_목록이다() {
+		runner.run(context -> {
+			PartnerLedgerProperties properties = context.getBean(PartnerLedgerProperties.class);
+			assertThat(properties.withoutSheet()).isEmpty();
+			assertThat(properties.isWithoutSheet(3)).isFalse();
+		});
+	}
+
+	// 운영은 쉼표로 여럿을 적는다. without-sheet는 환경 변수 이름에서 WITHOUTSHEET다.
+	@Test
+	void 운영의_환경_변수_이름으로_시트를_쓰지_않는_학원을_정한다() {
+		runner
+			.withInitializer(context -> context.getEnvironment().getPropertySources()
+				.replace(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
+						new SystemEnvironmentPropertySource(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
+								Map.of("JEY_DONGTANPASS_PARTNERLEDGER_WITHOUTSHEET", "5,6"))))
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+				PartnerLedgerProperties properties = context.getBean(PartnerLedgerProperties.class);
+				assertThat(properties.isWithoutSheet(5)).isTrue();
+				assertThat(properties.isWithoutSheet(6)).isTrue();
+				assertThat(properties.isWithoutSheet(3)).isFalse();
+			});
+	}
+
+	@Test
+	void 같은_학원을_시트와_시트를_쓰지_않는_학원에_함께_두면_서버가_뜨지_않는다() {
+		assertThatThrownBy(() -> new PartnerLedgerProperties(Map.of(3L, "1AbC"), Set.of(3L), null, Duration.ofMinutes(1)))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("without-sheet");
+	}
+
+	@Test
 	void 스프레드시트_ID의_모양이_틀리면_서버가_뜨지_않는다() {
 		runner.withPropertyValues("jey.dongtanpass.partner-ledger.spreadsheets.3=https://docs.google.com/x")
 			.run(context -> assertThat(context).hasFailed());
@@ -66,11 +100,11 @@ class PartnerLedgerPropertiesTest {
 
 	@Test
 	void 장부를_정했는데_구글_시트_연결이_꺼져_있으면_막는다() {
-		PartnerLedgerProperties configured = new PartnerLedgerProperties(Map.of(3L, "1AbC"), null, Duration.ofMinutes(1));
+		PartnerLedgerProperties configured = new PartnerLedgerProperties(Map.of(3L, "1AbC"), null, null, Duration.ofMinutes(1));
 
 		assertThatThrownBy(() -> configured.requireSheetsIfConfigured(false)).isInstanceOf(IllegalStateException.class);
 		configured.requireSheetsIfConfigured(true);
-		new PartnerLedgerProperties(Map.of(), null, Duration.ofMinutes(1)).requireSheetsIfConfigured(false);
+		new PartnerLedgerProperties(Map.of(), null, null, Duration.ofMinutes(1)).requireSheetsIfConfigured(false);
 	}
 
 	@Configuration

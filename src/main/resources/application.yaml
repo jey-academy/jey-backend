@@ -115,6 +115,8 @@ jey:
     # JEY_DONGTANPASS_PARTNERLEDGER_SPREADSHEETS_{학원 ID}로 켠다. 정했는데 jey.sheets의 서비스 계정 키가 없으면 서버가 뜨지 않는다.
     # partner-ledger:
     #   spreadsheets.{학원 ID}: 스프레드시트 ID (여기서는 정하지 않는다)
+    #   without-sheet: 시트를 쓰지 않는 학원 ID 목록(시트에 쓰지 않고 미반영으로 잡지 않는다. 장부는 CSV로 받는다).
+    #     spreadsheets와 겹치면 서버가 뜨지 않는다. 운영은 JEY_DONGTANPASS_PARTNERLEDGER_WITHOUTSHEET=3,4
     #   tab-name: 제이G패스 (기본값)
     # 학부모 링크 다시 받기의 틀린 시도 (ADR-0035). 이름과 번호가 맞은 요청은 세지 않는다. 넘으면 구간이 끝날 때까지 429로 응답한다.
     # 테스트도 이 값을 그대로 쓴다(테스트마다 다른 접속 주소를 쓰고 횟수 키를 비운다).

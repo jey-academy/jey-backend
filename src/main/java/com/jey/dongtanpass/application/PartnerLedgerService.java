@@ -108,9 +108,14 @@ public class PartnerLedgerService {
 	 * 패스를 썼다. 반영 상태 줄을 만들고(있으면 그대로) 바로 한 번 시도한다. 같은 패스로 다시 불러도 결과가 같다(리스너가 다시 돌아도).
 	 * 트랜잭션 밖에서 부른다.
 	 *
+	 * 시트를 쓰지 않는 학원이면 아무것도 하지 않는다(장부는 CSV로 받는다).
+	 *
 	 * @param partnerId 장부의 주인(할인해 준 학원, 또는 패스를 발급한 학원)
 	 */
 	public void record(long passId, long partnerId, PartnerLedgerKind kind) {
+		if (properties.isWithoutSheet(partnerId)) {
+			return;
+		}
 		attempt(ensureRow(passId, partnerId, kind));
 	}
 
@@ -134,11 +139,17 @@ public class PartnerLedgerService {
 		return viewsOf(List.of(syncs.findById(id).orElseThrow())).getFirst();
 	}
 
-	/** 미반영 줄, 최근 것부터. 학원을 주지 않으면 전 학원이다(관리자 전용). */
+	/** 미반영 줄, 최근 것부터. 학원을 주지 않으면 전 학원이다(관리자 전용). 시트를 쓰지 않는 학원의 줄은 빼고 지우지는 않는다. */
 	public Page<PartnerLedgerSyncView> listUnsynced(Long partnerId, int page, int size) {
 		PageRequest request = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
-		Page<PartnerLedgerSync> found = partnerId == null ? syncs.findByStatus(PartnerLedgerStatus.UNSYNCED, request)
-				: syncs.findByStatusAndPartnerId(PartnerLedgerStatus.UNSYNCED, partnerId, request);
+		if (partnerId != null && properties.isWithoutSheet(partnerId)) {
+			return Page.empty(request);
+		}
+		Page<PartnerLedgerSync> found = partnerId != null
+				? syncs.findByStatusAndPartnerId(PartnerLedgerStatus.UNSYNCED, partnerId, request)
+				: properties.withoutSheet().isEmpty() ? syncs.findByStatus(PartnerLedgerStatus.UNSYNCED, request)
+						: syncs.findByStatusAndPartnerIdNotIn(PartnerLedgerStatus.UNSYNCED, properties.withoutSheet(),
+								request);
 		return new PageImpl<>(viewsOf(found.getContent()), found.getPageable(), found.getTotalElements());
 	}
 

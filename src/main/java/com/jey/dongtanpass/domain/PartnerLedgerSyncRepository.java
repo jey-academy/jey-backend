@@ -1,6 +1,7 @@
 package com.jey.dongtanpass.domain;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,6 +20,10 @@ public interface PartnerLedgerSyncRepository extends JpaRepository<PartnerLedger
 
 	/** 그 상태의 줄(관리자의 미반영 목록). */
 	Page<PartnerLedgerSync> findByStatus(PartnerLedgerStatus status, Pageable pageable);
+
+	/** 그 학원들을 뺀 그 상태의 줄(시트를 쓰지 않는 학원의 예전 미반영 줄을 뺀다). {@code partnerIds}는 비어 있지 않아야 한다. */
+	Page<PartnerLedgerSync> findByStatusAndPartnerIdNotIn(PartnerLedgerStatus status, Collection<Long> partnerIds,
+			Pageable pageable);
 
 	/** 한 연계 학원의 그 상태의 줄. */
 	Page<PartnerLedgerSync> findByStatusAndPartnerId(PartnerLedgerStatus status, long partnerId, Pageable pageable);
