@@ -17,16 +17,23 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.util.UriUtils;
 
 import com.jey.SheetsTestSupport;
+import com.jey.core.audit.api.AuditLog;
+import com.jey.core.campus.api.CampusCatalog;
+import com.jey.core.sheets.api.Spreadsheets;
 import com.jey.core.shared.Actor;
 import com.jey.core.shared.EventMetadata;
 import com.jey.dongtanpass.DongtanpassFixtures;
@@ -39,11 +46,13 @@ import com.jey.dongtanpass.domain.PartnerLedgerStatus;
 import com.jey.dongtanpass.domain.PartnerLedgerSync;
 import com.jey.dongtanpass.domain.PartnerLedgerSyncRepository;
 import com.jey.dongtanpass.domain.PartnerRedemptionRepository;
+import com.jey.dongtanpass.domain.PartnerRepository;
 import com.jey.dongtanpass.domain.PassRepository;
 import com.jey.dongtanpass.domain.RedemptionRepository;
 import tools.jackson.databind.json.JsonMapper;
 
 // 패스 사용을 그 연계 학원의 장부(흉내 낸 구글 서버)에 한 줄씩 붙인다. 지점 1은 동탄관이다.
+@ExtendWith(OutputCaptureExtension.class)
 class PartnerLedgerServiceTest extends SheetsTestSupport {
 
 	private static final String TAB_PATH = "/v4/spreadsheets/" + PARTNER_SHEET_ID + "/values/'"
@@ -81,6 +90,18 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 
 	@Autowired
 	Clock clock;
+
+	@Autowired
+	PartnerRepository partners;
+
+	@Autowired
+	Spreadsheets sheets;
+
+	@Autowired
+	CampusCatalog catalog;
+
+	@Autowired
+	AuditLog auditLog;
 
 	private PartnerLedgerFixtures fixtures;
 
@@ -167,6 +188,29 @@ class PartnerLedgerServiceTest extends SheetsTestSupport {
 
 		assertThat(google.getAllServeEvents()).isEmpty();
 		assertThat(syncs.findByPassId(passId)).isEmpty();
+	}
+
+	// 설정을 잘못 넣었을 때(시트를 쓸 학원을 목록에 넣었을 때) 운영 로그로 알아챌 수 있게 한다.
+	@Test
+	void 시트를_쓰지_않는_학원의_기록을_건너뛰면_패스와_학원을_로그에_남긴다(CapturedOutput output) {
+		long passId = fixtures.campusPassRedeemedAt(PARTNER_NO_SHEET, "김하윤");
+
+		ledger.record(passId, PARTNER_NO_SHEET, PartnerLedgerKind.PARTNER_DISCOUNT);
+
+		assertThat(output.getOut()).contains("시트를 쓰지 않는 연계 학원이라 장부 반영을 건너뛴다: 패스 " + passId + ", 학원 "
+				+ PARTNER_NO_SHEET);
+	}
+
+	// 운영의 기본값(시트를 쓰지 않는 학원이 없음)으로 미반영 목록을 본다. 테스트 설정은 그 목록을 채워 두므로 서비스를 따로 만든다.
+	@Test
+	void 시트를_쓰지_않는_학원이_없으면_미반영_목록은_전_학원의_줄이다() {
+		PartnerLedgerService noneWithoutSheet = new PartnerLedgerService(syncs, passes, partnerRedemptions, redemptions,
+				partners, sheets, new PartnerLedgerProperties(Map.of(), Set.of(), null, Duration.ofMinutes(1)), catalog,
+				auditLog, transaction, clock);
+		long row = oldUnsyncedRow(fixtures.campusPassRedeemedAt(PARTNER_NO_SHEET, "김하윤"), PARTNER_NO_SHEET);
+
+		assertThat(noneWithoutSheet.listUnsynced(null, 0, 100).map(PartnerLedgerSyncView::id)).contains(row);
+		assertThat(noneWithoutSheet.listUnsynced(PARTNER_NO_SHEET, 0, 100).map(PartnerLedgerSyncView::id)).contains(row);
 	}
 
 	// 시트를 끄기 전에 설정이 없어서 쌓인 미반영 줄. 지우지 않고 목록에서만 뺀다.

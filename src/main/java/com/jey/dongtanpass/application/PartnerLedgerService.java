@@ -108,12 +108,14 @@ public class PartnerLedgerService {
 	 * 패스를 썼다. 반영 상태 줄을 만들고(있으면 그대로) 바로 한 번 시도한다. 같은 패스로 다시 불러도 결과가 같다(리스너가 다시 돌아도).
 	 * 트랜잭션 밖에서 부른다.
 	 *
-	 * 시트를 쓰지 않는 학원이면 아무것도 하지 않는다(장부는 CSV로 받는다).
+	 * <p>시트를 쓰지 않는 학원이면 반영 상태 줄을 만들지 않고 로그만 남긴다(장부는 CSV로 받는다). 설정을 잘못 넣어 시트를 쓸 학원이 여기에
+	 * 걸리면 미반영 목록에 드러나지 않으므로, 로그가 그것을 알아챌 유일한 흔적이다.
 	 *
 	 * @param partnerId 장부의 주인(할인해 준 학원, 또는 패스를 발급한 학원)
 	 */
 	public void record(long passId, long partnerId, PartnerLedgerKind kind) {
 		if (properties.isWithoutSheet(partnerId)) {
+			log.info("시트를 쓰지 않는 연계 학원이라 장부 반영을 건너뛴다: 패스 {}, 학원 {}", passId, partnerId);
 			return;
 		}
 		attempt(ensureRow(passId, partnerId, kind));
@@ -139,7 +141,10 @@ public class PartnerLedgerService {
 		return viewsOf(List.of(syncs.findById(id).orElseThrow())).getFirst();
 	}
 
-	/** 미반영 줄, 최근 것부터. 학원을 주지 않으면 전 학원이다(관리자 전용). 시트를 쓰지 않는 학원의 줄은 빼고 지우지는 않는다. */
+	/**
+	 * 미반영 줄, 최근 것부터. 학원을 주지 않으면 전 학원이다(관리자 전용). 시트를 쓰지 않는 학원의 줄은 빼고(그 학원을 고르면 빈 목록) 지우지는
+	 * 않는다. 시트를 끌 때 대기 중이던 줄도 다음 시도에서 설정 없음으로 미반영이 되어 같이 빠진다.
+	 */
 	public Page<PartnerLedgerSyncView> listUnsynced(Long partnerId, int page, int size) {
 		PageRequest request = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
 		if (partnerId != null && properties.isWithoutSheet(partnerId)) {
