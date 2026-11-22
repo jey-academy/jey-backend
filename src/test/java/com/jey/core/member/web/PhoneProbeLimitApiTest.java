@@ -79,6 +79,8 @@ class PhoneProbeLimitApiTest {
 
 	private static final long BLOCKED_READER = 9305;
 
+	private static final long STALE_SCREEN = 9306;
+
 	@Autowired
 	MockMvc mockMvc;
 
@@ -115,7 +117,7 @@ class PhoneProbeLimitApiTest {
 					.andExpect(jsonPath("$.code").value("MEMBER_STUDENT_DUPLICATED"));
 		}
 		for (int i = 0; i < 3; i++) {
-			changeGuardianPhone(guardianId, othersPhone).andExpect(status().isConflict())
+			changeGuardianPhone(guardianId, 0, othersPhone).andExpect(status().isConflict())
 					.andExpect(jsonPath("$.code").value("MEMBER_GUARDIAN_PHONE_DUPLICATED"));
 		}
 		for (int i = 0; i < 3; i++) {
@@ -130,8 +132,8 @@ class PhoneProbeLimitApiTest {
 				.andExpect(header().string("Retry-After", matchesPattern("(8[5-9]\\d|900)")));
 		String blockedName = uniqueName();
 		registerStudent(blockedName, randomPhone()).andExpect(status().isTooManyRequests());
-		changeGuardianPhone(guardianId, othersPhone).andExpect(status().isTooManyRequests());
-		changeGuardianPhone(guardianId, randomPhone()).andExpect(status().isTooManyRequests());
+		changeGuardianPhone(guardianId, 0, othersPhone).andExpect(status().isTooManyRequests());
+		changeGuardianPhone(guardianId, 0, randomPhone()).andExpect(status().isTooManyRequests());
 		addGuardian(student.id(), randomPhone()).andExpect(status().isTooManyRequests());
 
 		// 막힌 요청은 일을 하지 않았다. 등록되지 않았고 번호도 바뀌지 않았다.
@@ -160,10 +162,32 @@ class PhoneProbeLimitApiTest {
 		mockMvc.perform(get("/api/v1/students/{id}", student.id())).andExpect(status().isOk());
 		mockMvc.perform(studentSearch(mockMvc, "phoneLast4", phone.last4())).andExpect(status().isOk());
 		// 번호를 싣지 않은 학부모 수정은 "그 번호가 이미 있다"는 답을 받을 일이 없다.
-		send(put("/api/v1/guardians/{id}", guardianId), "{\"name\": \"바뀐 이름\"}").andExpect(status().isOk());
+		send(put("/api/v1/guardians/{id}", guardianId), "{\"version\": 0, \"name\": \"바뀐 이름\"}").andExpect(status().isOk());
 	}
 
 	// 정상 업무가 한도를 깎으면 바쁜 날의 데스크가 막힌다.
+	// 버전 거부(낡은 화면)는 "그 번호가 이미 있다"를 알려 주지 않는다. 한도를 넘게 보내도 횟수로 막히지 않고 같은 409다.
+	// 버전 확인이 번호 중복 확인보다 먼저라, 낡은 화면으로는 다른 학부모의 번호인지 캐 볼 수 없다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = STALE_SCREEN)
+	void 버전_거부는_번호가_드러나는_거부로_세지_않는다() throws Exception {
+		PhoneNumber othersPhone = randomPhone();
+		studentService.register(registration(uniqueName(), mother(othersPhone)));
+		long guardianId = studentService.register(registration(uniqueName(), mother(randomPhone())))
+				.guardians()
+				.getFirst()
+				.id();
+		guardianService.update(guardianId, 0, "바뀐 이름", null);
+
+		for (int i = 0; i < LIMIT + 2; i++) {
+			changeGuardianPhone(guardianId, 0, othersPhone).andExpect(status().isConflict())
+					.andExpect(jsonPath("$.code").value("MEMBER_GUARDIAN_CHANGED"));
+		}
+
+		assertThat(redis.opsForHash().get("jey:auth:account-limit:member.phone-probe:" + STALE_SCREEN, "count"))
+				.isIn(null, "0");
+	}
+
 	@Test
 	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = CAREFUL)
 	void 성공한_요청과_다른_오류는_횟수에_들지_않는다() throws Exception {
@@ -179,7 +203,7 @@ class PhoneProbeLimitApiTest {
 			send(post("/api/v1/students"), "{\"campusId\": 1, \"name\": \"연락처 없음\", \"grade\": \"HIGH_1\", \"guardians\": []}")
 					.andExpect(status().isBadRequest());
 		}
-		changeGuardianPhone(guardianId, randomPhone()).andExpect(status().isOk());
+		changeGuardianPhone(guardianId, 0, randomPhone()).andExpect(status().isOk());
 
 		assertThat(redis.opsForHash().get("jey:auth:account-limit:member.phone-probe:" + CAREFUL, "count"))
 				.isEqualTo("0");
@@ -196,7 +220,7 @@ class PhoneProbeLimitApiTest {
 				.getFirst()
 				.id();
 
-		List<Object> results = runTogether(24, () -> guardianService.update(guardianId, "김어머니", othersPhone));
+		List<Object> results = runTogether(24, () -> guardianService.update(guardianId, 0, "김어머니", othersPhone));
 
 		assertThat(results).filteredOn(RateLimitedException.class::isInstance).hasSize(24 - LIMIT);
 		assertThat(results).filteredOn(each -> !(each instanceof RateLimitedException))
@@ -224,9 +248,10 @@ class PhoneProbeLimitApiTest {
 				""".formatted(name, motherPhone.value()));
 	}
 
-	private ResultActions changeGuardianPhone(long guardianId, PhoneNumber phone) throws Exception {
+	// version은 화면이 받은 학부모 버전이다(성공한 수정마다 1씩 오른다. 거부된 수정은 그대로).
+	private ResultActions changeGuardianPhone(long guardianId, long version, PhoneNumber phone) throws Exception {
 		return send(put("/api/v1/guardians/{id}", guardianId),
-				"{\"name\": \"김어머니\", \"phone\": \"%s\"}".formatted(phone.value()));
+				"{\"version\": %d, \"name\": \"김어머니\", \"phone\": \"%s\"}".formatted(version, phone.value()));
 	}
 
 	private ResultActions addGuardian(long studentId, PhoneNumber phone) throws Exception {

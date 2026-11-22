@@ -34,6 +34,9 @@ public enum MemberErrorCode implements ErrorCode {
 	// 화면이 받은 뒤에 다른 사람이 학생 정보를 고쳤다(버전이 다르다, ADR-0050). 다시 불러온 뒤 고친다.
 	STUDENT_CHANGED(HttpStatus.CONFLICT, "다른 사람이 먼저 이 학생 정보를 고쳤습니다. 다시 불러온 뒤 고쳐 주세요."),
 
+	// 화면이 받은 뒤에 다른 사람이 학부모 정보를 고쳤다(버전이 다르다, ADR-0051). 다시 불러온 뒤 고친다.
+	GUARDIAN_CHANGED(HttpStatus.CONFLICT, "다른 사람이 먼저 이 학부모 정보를 고쳤습니다. 다시 불러온 뒤 고쳐 주세요."),
+
 	// 전체 번호를 보려 했는데 학생 본인의 번호가 없다.
 	PHONE_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 본인의 전화번호가 없습니다."),
 
@@ -66,7 +69,7 @@ public enum MemberErrorCode implements ErrorCode {
 		return switch (this) {
 			case STUDENT_DUPLICATED, GUARDIAN_PHONE_DUPLICATED, GUARDIAN_ALREADY_LINKED -> true;
 			case STUDENT_NOT_FOUND, GUARDIAN_NOT_FOUND, INVALID_CAMPUS, INVALID_CLASS, CONTACT_REQUIRED,
-					GUARDIAN_PHONE_REPEATED, LAST_CONTACT, TOO_MANY_GUARDIANS, STUDENT_CHANGED, PHONE_NOT_FOUND, PHONE_REVEAL_LIMITED,
+					GUARDIAN_PHONE_REPEATED, LAST_CONTACT, TOO_MANY_GUARDIANS, STUDENT_CHANGED, GUARDIAN_CHANGED, PHONE_NOT_FOUND, PHONE_REVEAL_LIMITED,
 					PHONE_CHANGE_LIMITED ->
 				false;
 		};

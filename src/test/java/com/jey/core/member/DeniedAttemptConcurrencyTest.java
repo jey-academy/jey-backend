@@ -76,7 +76,7 @@ class DeniedAttemptConcurrencyTest {
 				.getFirst()
 				.id();
 
-		List<Object> results = runTogether(() -> guardianService.update(guardianId, "김어머니", othersPhone));
+		List<Object> results = runTogether(() -> guardianService.update(guardianId, 0, "김어머니", othersPhone));
 
 		assertAllRejected(results, MemberErrorCode.GUARDIAN_PHONE_DUPLICATED);
 		assertThat(auditLogService.search(STAFF, MemberAuditAction.GUARDIAN_PHONE_DUPLICATED.code(), null, MemberRefs.GUARDIAN,

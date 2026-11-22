@@ -27,7 +27,7 @@ class GuardianController {
 	@Idempotent
 	@PutMapping("/{id}")
 	GuardianProfileResponse update(@PathVariable long id, @Valid @RequestBody GuardianUpdateRequest body) {
-		return GuardianProfileResponse.from(guardianService.update(id, body.name(), body.phone()));
+		return GuardianProfileResponse.from(guardianService.update(id, body.version(), body.name(), body.phone()));
 	}
 
 }

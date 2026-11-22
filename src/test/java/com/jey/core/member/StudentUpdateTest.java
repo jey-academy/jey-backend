@@ -344,8 +344,8 @@ class StudentUpdateTest {
 		long guardianId = student.guardians().getFirst().id();
 		PhoneNumber changed = randomPhoneEndingWith(newLast4);
 
-		GuardianProfile renamed = guardianService.update(guardianId, " 박어머니 ", null);
-		GuardianProfile moved = guardianService.update(guardianId, "박어머니", changed);
+		GuardianProfile renamed = guardianService.update(guardianId, 0, " 박어머니 ", null);
+		GuardianProfile moved = guardianService.update(guardianId, 1, "박어머니", changed);
 
 		assertThat(renamed.name()).isEqualTo("박어머니");
 		assertThat(renamed.phone().last4()).isEqualTo(oldLast4);
@@ -363,11 +363,11 @@ class StudentUpdateTest {
 		long guardianId = studentService.register(registration(uniqueName(), mother(mine))).guardians().getFirst().id();
 		studentService.register(registration(uniqueName(), mother(others)));
 
-		assertFails(() -> guardianService.update(guardianId, "김어머니", others),
+		assertFails(() -> guardianService.update(guardianId, 0, "김어머니", others),
 				MemberErrorCode.GUARDIAN_PHONE_DUPLICATED);
 		// 자기 번호를 그대로 보내는 것은 된다.
-		assertThat(guardianService.update(guardianId, "김어머니", mine).phone()).isEqualTo(mine);
-		assertFails(() -> guardianService.update(999_999_999L, "김어머니", null), MemberErrorCode.GUARDIAN_NOT_FOUND);
+		assertThat(guardianService.update(guardianId, 0, "김어머니", mine).phone()).isEqualTo(mine);
+		assertFails(() -> guardianService.update(999_999_999L, 0, "김어머니", null), MemberErrorCode.GUARDIAN_NOT_FOUND);
 	}
 
 	@Test
@@ -376,9 +376,9 @@ class StudentUpdateTest {
 		GuardianView screen = student.guardians().getFirst();
 		assertThat(screen.version()).isZero();
 
-		GuardianProfile renamed = guardianService.update(screen.id(), "박어머니", null);
-		GuardianProfile same = guardianService.update(screen.id(), "박어머니", null);
-		GuardianProfile moved = guardianService.update(screen.id(), "박어머니", randomPhone());
+		GuardianProfile renamed = guardianService.update(screen.id(), 0, "박어머니", null);
+		GuardianProfile same = guardianService.update(screen.id(), 1, "박어머니", null);
+		GuardianProfile moved = guardianService.update(screen.id(), 1, "박어머니", randomPhone());
 
 		assertThat(renamed.version()).isEqualTo(1);
 		assertThat(same.version()).isEqualTo(1);
@@ -394,7 +394,7 @@ class StudentUpdateTest {
 		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
 		long guardianId = student.guardians().getFirst().id();
 
-		assertFails(() -> guardianService.update(guardianId, "바뀐 이름", others),
+		assertFails(() -> guardianService.update(guardianId, 0, "바뀐 이름", others),
 				MemberErrorCode.GUARDIAN_PHONE_DUPLICATED);
 
 		assertThat(studentService.get(student.id()).guardians().getFirst().version()).isZero();
@@ -410,6 +410,52 @@ class StudentUpdateTest {
 		assertThat(sibling.guardians().getFirst().id()).isEqualTo(first.guardians().getFirst().id());
 		assertThat(studentService.get(first.id()).guardians().getFirst().version()).isZero();
 		assertThat(studentService.get(sibling.id()).guardians().getFirst().version()).isZero();
+	}
+
+	// 두 직원이 같은 학부모 화면을 열어 두고 A는 이름을, B는 번호를 고친다. 판단 근거가 없으면 B의 저장이 화면에 남은
+	// 옛 이름을 다시 써서 A의 변경이 조용히 사라진다.
+	@Test
+	void 같은_학부모_화면에서_고친_두_번째_저장은_거부되고_앞사람의_변경이_남는다() {
+		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
+		GuardianView screen = student.guardians().getFirst();
+
+		guardianService.update(screen.id(), screen.version(), "박어머니", null);
+		assertFails(() -> guardianService.update(screen.id(), screen.version(), screen.name(), randomPhone()),
+				MemberErrorCode.GUARDIAN_CHANGED);
+
+		GuardianView after = studentService.get(student.id()).guardians().getFirst();
+		assertThat(after.name()).isEqualTo("박어머니");
+		assertThat(after.phone()).isEqualTo(screen.phone());
+	}
+
+	// 형제는 같은 학부모에 연결돼 있다. 두 학생의 화면이 보여 주는 학부모의 버전은 하나다.
+	@Test
+	void 형제의_화면에서도_같은_학부모의_버전은_하나다() {
+		PhoneNumber shared = randomPhone();
+		StudentView first = studentService.register(registration(uniqueName(), mother(shared)));
+		StudentView sibling = studentService.register(registration(uniqueName(), mother(shared)));
+		GuardianView fromFirst = first.guardians().getFirst();
+		GuardianView fromSibling = studentService.get(sibling.id()).guardians().getFirst();
+
+		guardianService.update(fromFirst.id(), fromFirst.version(), "박어머니", null);
+
+		assertFails(() -> guardianService.update(fromSibling.id(), fromSibling.version(), "최어머니", null),
+				MemberErrorCode.GUARDIAN_CHANGED);
+		assertThat(studentService.get(sibling.id()).guardians().getFirst().name()).isEqualTo("박어머니");
+	}
+
+	// 낡은 화면으로는 "그 번호가 이미 있다"를 캐 볼 수 없다. 버전을 번호 중복보다 먼저 본다.
+	@Test
+	void 낡은_버전이면_번호가_이미_있어도_먼저_버전으로_거부한다() {
+		PhoneNumber others = randomPhone();
+		studentService.register(registration(uniqueName(), mother(others)));
+		GuardianView screen = studentService.register(registration(uniqueName(), mother(randomPhone())))
+			.guardians()
+			.getFirst();
+		guardianService.update(screen.id(), screen.version(), "박어머니", null);
+
+		assertFails(() -> guardianService.update(screen.id(), screen.version(), "박어머니", others),
+				MemberErrorCode.GUARDIAN_CHANGED);
 	}
 
 	private AcademyClass newClass(long campusId) {

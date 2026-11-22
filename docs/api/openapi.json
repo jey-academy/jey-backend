@@ -730,9 +730,14 @@
             "description" : "새 휴대전화 번호. 보내지 않으면 그대로 둔다. 응답의 가린 번호를 다시 보내면 안 된다. 다른 학부모가 쓰는 번호로는 바꿀 수 없다",
             "example" : "010-1234-5678",
             "type" : "string"
+          },
+          "version" : {
+            "description" : "화면이 받은 버전(응답의 version). 지금 버전과 다르면 409(MEMBER_GUARDIAN_CHANGED) — 다시 불러온 뒤 고친다",
+            "format" : "int64",
+            "type" : "integer"
           }
         },
-        "required" : [ "name" ],
+        "required" : [ "name", "version" ],
         "type" : "object"
       },
       "HolderCheckRequest" : {

@@ -124,7 +124,7 @@ class MemberDeniedRecordTest {
 				.record(argThat(entry -> entry != null && entry.action().outcome() == AuditOutcome.DENIED));
 		GuardianService service = new GuardianService(guardians, protector, transactionManager, deniedFails, probeGuard);
 
-		assertThatThrownBy(() -> service.update(guardianId, "바뀐 이름", othersPhone)).isSameAs(failure)
+		assertThatThrownBy(() -> service.update(guardianId, 0, "바뀐 이름", othersPhone)).isSameAs(failure)
 				.satisfies(thrown -> assertThat(thrown.getSuppressed()).singleElement()
 						.isInstanceOfSatisfying(BusinessException.class, denial -> assertThat(denial.getErrorCode())
 								.isEqualTo(MemberErrorCode.GUARDIAN_PHONE_DUPLICATED)));
@@ -201,7 +201,7 @@ class MemberDeniedRecordTest {
 				.id();
 
 		assertThatIllegalStateException()
-				.isThrownBy(() -> transaction.execute(status -> guardianService.update(guardianId, "바뀐 이름", null)))
+				.isThrownBy(() -> transaction.execute(status -> guardianService.update(guardianId, 0, "바뀐 이름", null)))
 				.withMessageContaining("트랜잭션 밖");
 
 		assertThat(guardians.findById(guardianId).orElseThrow().getName()).isEqualTo("김아버지");

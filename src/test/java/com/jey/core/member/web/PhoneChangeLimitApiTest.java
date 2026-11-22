@@ -88,15 +88,15 @@ class PhoneChangeLimitApiTest {
 		long guardianId = student.guardians().getFirst().id();
 
 		for (int i = 0; i < LIMIT - 1; i++) {
-			changeGuardianPhone(guardianId, randomPhone()).andExpect(status().isOk());
+			changeGuardianPhone(guardianId, i, randomPhone()).andExpect(status().isOk());
 		}
 
 		PhoneNumber next = randomPhone();
-		changeGuardianPhone(guardianId, next).andExpect(status().isTooManyRequests())
+		changeGuardianPhone(guardianId, LIMIT - 1, next).andExpect(status().isTooManyRequests())
 				.andExpect(jsonPath("$.code").value("MEMBER_PHONE_CHANGE_LIMITED"))
 				// 한 시간 구간의 남은 시간(초).
 				.andExpect(header().string("Retry-After", matchesPattern("[1-9]\\d{0,3}")));
-		changeGuardianPhone(guardianId, randomPhone()).andExpect(status().isTooManyRequests());
+		changeGuardianPhone(guardianId, LIMIT - 1, randomPhone()).andExpect(status().isTooManyRequests());
 
 		// 막힌 요청은 번호를 바꾸지 않았다.
 		mockMvc.perform(studentSearch(mockMvc, "phoneLast4", next.last4(), "name", student.name()))
@@ -133,7 +133,7 @@ class PhoneChangeLimitApiTest {
 		long guardianId = student.guardians().getFirst().id();
 
 		for (int i = 0; i < LIMIT * 2; i++) {
-			send(put("/api/v1/guardians/{id}", guardianId), "{\"name\": \"이름-%d\"}".formatted(i))
+			send(put("/api/v1/guardians/{id}", guardianId), "{\"version\": %d, \"name\": \"이름-%d\"}".formatted(i, i))
 					.andExpect(status().isOk());
 			mockMvc.perform(get("/api/v1/students/{id}", student.id())).andExpect(status().isOk());
 		}
@@ -149,7 +149,8 @@ class PhoneChangeLimitApiTest {
 		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
 		long guardianId = student.guardians().getFirst().id();
 		String key = UUID.randomUUID().toString();
-		String body = "{\"name\": \"김어머니\", \"phone\": \"%s\"}".formatted(randomPhone().value());
+		String body = "{\"version\": %d, \"name\": \"김어머니\", \"phone\": \"%s\"}"
+			.formatted(student.guardians().getFirst().version(), randomPhone().value());
 
 		for (int i = 0; i < LIMIT * 2; i++) {
 			mockMvc.perform(put("/api/v1/guardians/{id}", guardianId).with(csrfToken(mockMvc))
@@ -170,9 +171,10 @@ class PhoneChangeLimitApiTest {
 				""".formatted(name, motherPhone.value()));
 	}
 
-	private ResultActions changeGuardianPhone(long guardianId, PhoneNumber phone) throws Exception {
+	// version은 화면이 받은 학부모 버전이다(성공한 수정마다 1씩 오른다. 거부된 수정은 그대로).
+	private ResultActions changeGuardianPhone(long guardianId, long version, PhoneNumber phone) throws Exception {
 		return send(put("/api/v1/guardians/{id}", guardianId),
-				"{\"name\": \"김어머니\", \"phone\": \"%s\"}".formatted(phone.value()));
+				"{\"version\": %d, \"name\": \"김어머니\", \"phone\": \"%s\"}".formatted(version, phone.value()));
 	}
 
 	private ResultActions addGuardian(long studentId, PhoneNumber phone) throws Exception {
