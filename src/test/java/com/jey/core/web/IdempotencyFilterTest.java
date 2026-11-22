@@ -385,16 +385,18 @@ class IdempotencyFilterTest {
 	}
 
 	@Test
-	void 키를_받지_않는_경로와_POST가_아닌_요청은_그대로_지나간다() throws Exception {
+	void 키를_받지_않는_경로와_자료를_바꾸지_않는_요청은_그대로_지나간다() throws Exception {
 		requiresKey = false;
 		filter.doFilter(request("{}"), new MockHttpServletResponse(), respond(201, "{}"));
 		requiresKey = true;
-		MockHttpServletRequest put = request("{}");
-		put.setMethod("PUT");
-		put.removeHeader("Idempotency-Key");
-		filter.doFilter(put, new MockHttpServletResponse(), respond(200, "{}"));
+		for (String method : List.of("GET", "HEAD", "OPTIONS")) {
+			MockHttpServletRequest read = request("{}");
+			read.setMethod(method);
+			read.removeHeader("Idempotency-Key");
+			filter.doFilter(read, new MockHttpServletResponse(), respond(200, "{}"));
+		}
 
-		assertThat(executed).hasValue(2);
+		assertThat(executed).hasValue(4);
 		assertThat(store.claims).isZero();
 	}
 

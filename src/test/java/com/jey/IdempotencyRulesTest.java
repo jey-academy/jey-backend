@@ -52,6 +52,9 @@ class IdempotencyRulesTest {
 	// 메서드를 가리지 않고 받는 경로라 POST로도 불리지만 일을 하지 않는다. 컨테이너가 오류 응답을 만들려고 부른다.
 	private static final Set<String> NOT_AN_ACTION = Set.of("ProblemDetailsErrorController#error");
 
+	private static final Set<RequestMethod> CHANGING_METHODS = Set.of(RequestMethod.POST, RequestMethod.PUT,
+			RequestMethod.PATCH, RequestMethod.DELETE);
+
 	// 요청을 받은 스레드가 필터로 돌아온 뒤에 응답을 쓰는 타입. 필터가 응답을 보관하지 못한다.
 	private static final List<Class<?>> ASYNC_RETURN_TYPES = List.of(Callable.class, Future.class,
 			DeferredResult.class, WebAsyncTask.class, ResponseBodyEmitter.class, StreamingResponseBody.class);
@@ -99,17 +102,17 @@ class IdempotencyRulesTest {
 						.isNotBlank());
 	}
 
-	// 필터는 POST만 본다. 다른 메서드에 붙이면 아무 일도 하지 않는데 붙인 사람은 막힌다고 믿는다.
+	// 필터는 자료를 바꾸는 메서드(POST·PUT·PATCH·DELETE)만 본다. GET에 붙이면 아무 일도 하지 않는데 붙인 사람은 막힌다고 믿는다.
 	@Test
-	void 표시는_POST에만_붙인다() {
-		Set<Method> posts = postHandlers().stream().map(HandlerMethod::getMethod).collect(Collectors.toSet());
+	void 표시는_자료를_바꾸는_메서드에만_붙인다() {
+		Set<Method> changing = changingHandlers().stream().map(HandlerMethod::getMethod).collect(Collectors.toSet());
 		// 테스트용 컨트롤러도 보므로 테스트 소스까지 읽는다(MainClasses와 범위가 달라 이 테스트 안에서만 쓴다).
 		JavaClasses classes = new ClassFileImporter().importPackages("com.jey");
 		List<String> misplaced = classes.stream()
 				.flatMap(type -> type.getMethods().stream())
 				.filter(method -> method.isAnnotatedWith(Idempotent.class)
 						|| method.isAnnotatedWith(NotIdempotent.class))
-				.filter(method -> !posts.contains(method.reflect()))
+				.filter(method -> !changing.contains(method.reflect()))
 				.map(method -> method.getFullName())
 				.toList();
 
@@ -173,6 +176,21 @@ class IdempotencyRulesTest {
 				.filter(entry -> {
 					Set<RequestMethod> methods = entry.getKey().getMethodsCondition().getMethods();
 					return methods.isEmpty() || methods.contains(RequestMethod.POST);
+				})
+				.map(entry -> entry.getValue())
+				.filter(IdempotencyRulesTest::isOurs)
+				.filter(handler -> !NOT_AN_ACTION.contains(name(handler)))
+				.toList();
+	}
+
+	// 자료를 바꾸는 요청을 받을 수 있는 우리 컨트롤러 메서드. 필터가 보는 메서드와 같다.
+	private List<HandlerMethod> changingHandlers() {
+		return handlerMapping.getHandlerMethods()
+				.entrySet()
+				.stream()
+				.filter(entry -> {
+					Set<RequestMethod> methods = entry.getKey().getMethodsCondition().getMethods();
+					return methods.isEmpty() || methods.stream().anyMatch(CHANGING_METHODS::contains);
 				})
 				.map(entry -> entry.getValue())
 				.filter(IdempotencyRulesTest::isOurs)

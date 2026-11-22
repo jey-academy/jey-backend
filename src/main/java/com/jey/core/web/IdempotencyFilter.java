@@ -7,6 +7,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import com.jey.core.auth.api.CurrentActor;
@@ -34,7 +35,7 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
 import org.springframework.web.util.ContentCachingResponseWrapper;
 
 /**
- * {@code Idempotency-Key}가 필요한 POST를 한 번만 실행한다(ADR-0027).
+ * {@code Idempotency-Key}가 필요한 변경 요청(POST·PUT·PATCH·DELETE)을 한 번만 실행한다(ADR-0027).
  *
  * <p>같은 계정이 같은 키로 같은 요청을 다시 보내면 컨트롤러를 실행하지 않고 처음의 응답을 그대로 돌려준다.
  * 응답을 받지 못한 화면이 다시 보내도 일이 두 번 일어나지 않는다.
@@ -78,6 +79,8 @@ class IdempotencyFilter extends OncePerRequestFilter implements Ordered {
 
 	private static final Pattern KEY = Pattern.compile(KEY_FORMAT);
 
+	private static final Set<String> CHANGING_METHODS = Set.of("POST", "PUT", "PATCH", "DELETE");
+
 	private static final int MAX_LOGGED_URI_LENGTH = 200;
 
 	private static final List<MediaType> JSON_ONLY = List.of(MediaType.APPLICATION_JSON);
@@ -105,9 +108,10 @@ class IdempotencyFilter extends OncePerRequestFilter implements Ordered {
 		return 0;
 	}
 
+	// 자료를 바꾸는 메서드만 본다. 표시를 붙일 수 있는 메서드도 이것뿐이다(IdempotencyRulesTest).
 	@Override
 	protected boolean shouldNotFilter(HttpServletRequest request) {
-		return !"POST".equals(request.getMethod());
+		return !CHANGING_METHODS.contains(request.getMethod());
 	}
 
 	@Override

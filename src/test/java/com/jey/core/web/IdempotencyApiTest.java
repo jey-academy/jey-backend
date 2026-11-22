@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContext;
@@ -26,6 +27,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import static com.jey.TestCsrf.csrfToken;
@@ -156,6 +158,60 @@ class IdempotencyApiTest {
 			send("/things", invalidKey, "{\"name\": \"\"}").andExpect(status().isBadRequest())
 					.andExpect(jsonPath("$.code").value("COMMON_VALIDATION_FAILED"));
 		}
+		assertThat(IdempotencyTestController.EXECUTIONS).hasValue(1);
+	}
+
+	// 버전을 싣는 수정처럼, 다시 보내면 결과가 달라지는 PUT·DELETE도 같은 장치로 한 번만 실행한다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = SENDER)
+	void PUT도_같은_키로_다시_보내면_한_번만_실행하고_처음의_응답을_돌려준다() throws Exception {
+		MockHttpServletResponse first = send(HttpMethod.PUT, "/things/7", key, THING).andExpect(status().isOk())
+				.andExpect(jsonPath("$.serial").value(1))
+				.andExpect(jsonPath("$.id").value(7))
+				.andExpect(header().doesNotExist("Idempotency-Replayed"))
+				.andReturn()
+				.getResponse();
+
+		MockHttpServletResponse again = send(HttpMethod.PUT, "/things/7", key, THING).andExpect(status().isOk())
+				.andExpect(header().string("Idempotency-Replayed", "true"))
+				.andReturn()
+				.getResponse();
+
+		assertThat(again.getContentAsByteArray()).isEqualTo(first.getContentAsByteArray());
+		assertThat(IdempotencyTestController.EXECUTIONS).hasValue(1);
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = SENDER)
+	void DELETE도_같은_키로_다시_보내면_한_번만_실행한다() throws Exception {
+		send(HttpMethod.DELETE, "/things/7", key, null).andExpect(status().isNoContent());
+		send(HttpMethod.DELETE, "/things/7", key, null).andExpect(status().isNoContent())
+				.andExpect(header().string("Idempotency-Replayed", "true"));
+
+		assertThat(IdempotencyTestController.EXECUTIONS).hasValue(1);
+	}
+
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = SENDER)
+	void 키를_받는_PUT에_키가_없으면_실행하지_않는다() throws Exception {
+		expectSecurityHeaders(send(HttpMethod.PUT, "/things/7", null, THING).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_IDEMPOTENCY_KEY_REQUIRED")));
+		send(HttpMethod.DELETE, "/things/7", null, null).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("COMMON_IDEMPOTENCY_KEY_REQUIRED"));
+
+		assertThat(IdempotencyTestController.EXECUTIONS).hasValue(0);
+	}
+
+	// 지문에 메서드가 들어간다. 같은 키를 다른 메서드에 쓰면 다른 일을 시킨 것이다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = 1, id = SENDER)
+	void 같은_키를_다른_메서드에_쓰면_거부한다() throws Exception {
+		send(HttpMethod.PUT, "/things/7", key, THING).andExpect(status().isOk());
+
+		send(HttpMethod.DELETE, "/things/7", key, null).andExpect(status().isUnprocessableEntity())
+				.andExpect(jsonPath("$.code").value("COMMON_IDEMPOTENCY_KEY_REUSED"));
+		send(HttpMethod.PUT, "/things/8", key, THING).andExpect(status().isUnprocessableEntity());
+
 		assertThat(IdempotencyTestController.EXECUTIONS).hasValue(1);
 	}
 
@@ -390,11 +446,20 @@ class IdempotencyApiTest {
 	}
 
 	private ResultActions send(String path, String idempotencyKey, String json) throws Exception {
-		return mockMvc.perform(request(path, idempotencyKey, json));
+		return send(HttpMethod.POST, path, idempotencyKey, json);
+	}
+
+	private ResultActions send(HttpMethod method, String path, String idempotencyKey, String json) throws Exception {
+		return mockMvc.perform(request(method, path, idempotencyKey, json));
 	}
 
 	private MockHttpServletRequestBuilder request(String path, String idempotencyKey, String json) throws Exception {
-		MockHttpServletRequestBuilder request = post(BASE + path).with(csrfToken(mockMvc));
+		return request(HttpMethod.POST, path, idempotencyKey, json);
+	}
+
+	private MockHttpServletRequestBuilder request(HttpMethod method, String path, String idempotencyKey, String json)
+			throws Exception {
+		MockHttpServletRequestBuilder request = MockMvcRequestBuilders.request(method, BASE + path).with(csrfToken(mockMvc));
 		if (idempotencyKey != null) {
 			request.header("Idempotency-Key", idempotencyKey);
 		}
