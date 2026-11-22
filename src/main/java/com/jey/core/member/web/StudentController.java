@@ -73,11 +73,14 @@ class StudentController {
 		return StudentResponse.from(studentService.get(id));
 	}
 
+	// 버전을 싣는 수정이라 다시 보내면 결과가 달라진다. 응답을 놓친 화면의 재전송은 키로 알아본다(ADR-0027).
+	@Idempotent
 	@PutMapping("/{id}")
 	StudentResponse update(@PathVariable long id, @Valid @RequestBody StudentUpdateRequest body) {
 		return StudentResponse.from(studentService.update(id, body.toChange()));
 	}
 
+	@NotIdempotent("다시 보내면 이미 지운 번호라 아무 일도 하지 않는다(204)")
 	@DeleteMapping("/{id}/phone")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	void removePhone(@PathVariable long id) {
@@ -91,12 +94,14 @@ class StudentController {
 		return StudentResponse.from(studentService.addGuardian(id, body.toInput()));
 	}
 
+	@NotIdempotent("같은 관계로 다시 바꾸므로 결과가 같다")
 	@PutMapping("/{id}/guardians/{guardianId}")
 	StudentResponse changeRelation(@PathVariable long id, @PathVariable long guardianId,
 			@Valid @RequestBody RelationUpdateRequest body) {
 		return StudentResponse.from(studentService.changeRelation(id, guardianId, body.relation()));
 	}
 
+	@NotIdempotent("다시 보내면 이미 끊긴 연결이라 404(MEMBER_GUARDIAN_NOT_FOUND)로 끝난다. 다른 자료는 바뀌지 않는다")
 	@DeleteMapping("/{id}/guardians/{guardianId}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	void removeGuardian(@PathVariable long id, @PathVariable long guardianId) {

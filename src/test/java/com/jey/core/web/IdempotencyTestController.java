@@ -17,7 +17,10 @@ import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -44,6 +47,19 @@ class IdempotencyTestController {
 	@ResponseStatus(HttpStatus.CREATED)
 	Map<String, Object> create(@Valid @RequestBody Thing body, @RequestParam(required = false) String note) {
 		return Map.of("serial", EXECUTIONS.incrementAndGet(), "name", body.name());
+	}
+
+	@Idempotent
+	@PutMapping("/things/{id}")
+	Map<String, Object> update(@PathVariable long id, @Valid @RequestBody Thing body) {
+		return Map.of("serial", EXECUTIONS.incrementAndGet(), "id", id, "name", body.name());
+	}
+
+	@Idempotent
+	@DeleteMapping("/things/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	void delete(@PathVariable long id) {
+		EXECUTIONS.incrementAndGet();
 	}
 
 	@Idempotent

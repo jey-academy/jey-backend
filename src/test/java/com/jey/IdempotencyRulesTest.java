@@ -38,10 +38,11 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// 부작용이 있는 POST는 Idempotency-Key로 한 번만 실행한다(ADR-0027).
-// 붙이는 것을 잊으면 다시 보낸 요청이 조용히 두 번 실행된다. 그래서 POST마다 "받는다"와 "받지 않는다(이유)" 중 하나를 적게 한다.
+// 부작용이 있는 변경 요청은 Idempotency-Key로 한 번만 실행한다(ADR-0027).
+// 붙이는 것을 잊으면 다시 보낸 요청이 조용히 두 번 실행된다. 그래서 자료를 바꾸는 메서드(POST·PUT·PATCH·DELETE)마다
+// "받는다"와 "받지 않는다(이유)" 중 하나를 적게 한다. 버전을 싣는 수정처럼 다시 보내면 결과가 달라지는 PUT도 있다.
 //
-// 무엇이 POST인지는 서버가 실제로 등록한 매핑에 묻는다. 필터도 같은 곳에 묻는다.
+// 무엇이 변경 메서드인지는 서버가 실제로 등록한 매핑에 묻는다. 필터도 같은 곳에 묻는다.
 // 애너테이션을 직접 읽으면 클래스에 적은 메서드 조건, 메서드를 정하지 않은 매핑, 합성 애너테이션을 놓친다.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -52,6 +53,9 @@ class IdempotencyRulesTest {
 	// 메서드를 가리지 않고 받는 경로라 POST로도 불리지만 일을 하지 않는다. 컨테이너가 오류 응답을 만들려고 부른다.
 	private static final Set<String> NOT_AN_ACTION = Set.of("ProblemDetailsErrorController#error");
 
+	private static final Set<RequestMethod> CHANGING_METHODS = Set.of(RequestMethod.POST, RequestMethod.PUT,
+			RequestMethod.PATCH, RequestMethod.DELETE);
+
 	// 요청을 받은 스레드가 필터로 돌아온 뒤에 응답을 쓰는 타입. 필터가 응답을 보관하지 못한다.
 	private static final List<Class<?>> ASYNC_RETURN_TYPES = List.of(Callable.class, Future.class,
 			DeferredResult.class, WebAsyncTask.class, ResponseBodyEmitter.class, StreamingResponseBody.class);
@@ -61,10 +65,10 @@ class IdempotencyRulesTest {
 	RequestMappingHandlerMapping handlerMapping;
 
 	@Test
-	void 모든_POST에는_키를_받는지_받지_않는지가_적혀_있다() {
+	void 자료를_바꾸는_메서드에는_모두_키를_받는지_받지_않는지가_적혀_있다() {
 		List<String> unmarked = new ArrayList<>();
 		List<String> both = new ArrayList<>();
-		for (HandlerMethod handler : postHandlers()) {
+		for (HandlerMethod handler : changingHandlers()) {
 			boolean idempotent = handler.hasMethodAnnotation(Idempotent.class);
 			boolean notIdempotent = handler.hasMethodAnnotation(NotIdempotent.class);
 			if (!idempotent && !notIdempotent) {
@@ -75,16 +79,17 @@ class IdempotencyRulesTest {
 			}
 		}
 
-		assertThat(unmarked).as("@Idempotent나 @NotIdempotent(이유)가 없는 POST").isEmpty();
-		assertThat(both).as("둘 다 붙은 POST").isEmpty();
+		assertThat(unmarked).as("@Idempotent나 @NotIdempotent(이유)가 없는 변경 메서드").isEmpty();
+		assertThat(both).as("둘 다 붙은 변경 메서드").isEmpty();
 	}
 
 	// 테스트용 컨트롤러만으로도 "하나 이상"은 채워진다. 실제 경로가 잡히는지 이름으로 본다.
 	@Test
-	void POST를_찾는_방법이_실제_경로를_본다() {
-		assertThat(postHandlers()).extracting(IdempotencyRulesTest::name)
+	void 변경_메서드를_찾는_방법이_실제_경로를_본다() {
+		assertThat(changingHandlers()).extracting(IdempotencyRulesTest::name)
 				.contains("AuthController#login", "AuthController#logout", "StudentController#register",
-						"ClassController#create")
+						"ClassController#create", "StudentController#update", "ClassController#update",
+						"StudentController#removeGuardian", "CampusBenefitController#change")
 				.doesNotContainAnyElementsOf(NOT_AN_ACTION);
 		// 빼 둔 것이 실제로 있는 메서드인지 본다. 이름이 바뀌면 여기서 드러난다.
 		assertThat(allHandlers()).extracting(IdempotencyRulesTest::name).containsAll(NOT_AN_ACTION);
@@ -92,24 +97,24 @@ class IdempotencyRulesTest {
 
 	@Test
 	void 받지_않는_이유가_비어_있지_않다() {
-		assertThat(postHandlers()).filteredOn(handler -> handler.hasMethodAnnotation(NotIdempotent.class))
+		assertThat(changingHandlers()).filteredOn(handler -> handler.hasMethodAnnotation(NotIdempotent.class))
 				.isNotEmpty()
 				.allSatisfy(handler -> assertThat(handler.getMethodAnnotation(NotIdempotent.class).value())
 						.as(name(handler))
 						.isNotBlank());
 	}
 
-	// 필터는 POST만 본다. 다른 메서드에 붙이면 아무 일도 하지 않는데 붙인 사람은 막힌다고 믿는다.
+	// 필터는 자료를 바꾸는 메서드(POST·PUT·PATCH·DELETE)만 본다. GET에 붙이면 아무 일도 하지 않는데 붙인 사람은 막힌다고 믿는다.
 	@Test
-	void 표시는_POST에만_붙인다() {
-		Set<Method> posts = postHandlers().stream().map(HandlerMethod::getMethod).collect(Collectors.toSet());
+	void 표시는_자료를_바꾸는_메서드에만_붙인다() {
+		Set<Method> changing = changingHandlers().stream().map(HandlerMethod::getMethod).collect(Collectors.toSet());
 		// 테스트용 컨트롤러도 보므로 테스트 소스까지 읽는다(MainClasses와 범위가 달라 이 테스트 안에서만 쓴다).
 		JavaClasses classes = new ClassFileImporter().importPackages("com.jey");
 		List<String> misplaced = classes.stream()
 				.flatMap(type -> type.getMethods().stream())
 				.filter(method -> method.isAnnotatedWith(Idempotent.class)
 						|| method.isAnnotatedWith(NotIdempotent.class))
-				.filter(method -> !posts.contains(method.reflect()))
+				.filter(method -> !changing.contains(method.reflect()))
 				.map(method -> method.getFullName())
 				.toList();
 
@@ -154,25 +159,26 @@ class IdempotencyRulesTest {
 	}
 
 	// 지금 키를 받는 실제 경로. 표시를 실수로 떼면 여기서 드러난다.
+	// 학생·학부모 수정은 버전을 실어 다시 보내면 결과가 달라진다(ADR-0027 개정).
 	@Test
-	void 자료를_만드는_POST는_키를_받는다() {
+	void 자료를_만드는_POST와_버전을_싣는_수정은_키를_받는다() {
 		assertThat(idempotentHandlers()).extracting(IdempotencyRulesTest::name)
 				.contains("StudentController#register", "StudentController#addGuardian", "ClassController#create",
-						"DiscountTypeController#create");
+						"DiscountTypeController#create", "StudentController#update", "GuardianController#update");
 	}
 
 	private List<HandlerMethod> idempotentHandlers() {
-		return postHandlers().stream().filter(handler -> handler.hasMethodAnnotation(Idempotent.class)).toList();
+		return changingHandlers().stream().filter(handler -> handler.hasMethodAnnotation(Idempotent.class)).toList();
 	}
 
-	// POST 요청을 받을 수 있는 우리 컨트롤러 메서드. 메서드를 정하지 않은 매핑은 POST도 받는다.
-	private List<HandlerMethod> postHandlers() {
+	// 자료를 바꾸는 요청을 받을 수 있는 우리 컨트롤러 메서드. 필터가 보는 메서드와 같다.
+	private List<HandlerMethod> changingHandlers() {
 		return handlerMapping.getHandlerMethods()
 				.entrySet()
 				.stream()
 				.filter(entry -> {
 					Set<RequestMethod> methods = entry.getKey().getMethodsCondition().getMethods();
-					return methods.isEmpty() || methods.contains(RequestMethod.POST);
+					return methods.isEmpty() || methods.stream().anyMatch(CHANGING_METHODS::contains);
 				})
 				.map(entry -> entry.getValue())
 				.filter(IdempotencyRulesTest::isOurs)

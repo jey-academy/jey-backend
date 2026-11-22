@@ -60,6 +60,7 @@ class AccountController {
 	}
 
 	@Operation(summary = "이름·역할·지점 고치기", description = "역할이나 지점을 바꾸면 그 계정은 로그아웃된다. 자기 자신의 역할·지점은 바꿀 수 없다")
+	@NotIdempotent("통째로 바꾸는 수정이라 다시 보내도 결과가 같다. 역할·지점이 그대로면 세션도 다시 끊지 않는다")
 	@PutMapping("/{id}")
 	AccountResponse update(@PathVariable long id, @Valid @RequestBody AccountUpdateRequest body) {
 		return AccountResponse.from(accountService.update(id, body.toChange()));
