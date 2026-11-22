@@ -3,6 +3,7 @@ package com.jey.core.member.web;
 import com.jey.core.auth.api.AllowedRoles;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.member.GuardianService;
+import com.jey.core.shared.Idempotent;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -22,6 +23,8 @@ class GuardianController {
 		this.guardianService = guardianService;
 	}
 
+	// 응답을 놓친 화면이 같은 내용을 다시 보내도 처음의 응답을 받는다(ADR-0027).
+	@Idempotent
 	@PutMapping("/{id}")
 	GuardianProfileResponse update(@PathVariable long id, @Valid @RequestBody GuardianUpdateRequest body) {
 		return GuardianProfileResponse.from(guardianService.update(id, body.name(), body.phone()));

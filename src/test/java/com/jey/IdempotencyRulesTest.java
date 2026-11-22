@@ -157,15 +157,16 @@ class IdempotencyRulesTest {
 	}
 
 	// 지금 키를 받는 실제 경로. 표시를 실수로 떼면 여기서 드러난다.
+	// 학생·학부모 수정은 버전을 실어 다시 보내면 결과가 달라진다(ADR-0027 개정).
 	@Test
-	void 자료를_만드는_POST는_키를_받는다() {
+	void 자료를_만드는_POST와_버전을_싣는_수정은_키를_받는다() {
 		assertThat(idempotentHandlers()).extracting(IdempotencyRulesTest::name)
 				.contains("StudentController#register", "StudentController#addGuardian", "ClassController#create",
-						"DiscountTypeController#create");
+						"DiscountTypeController#create", "StudentController#update", "GuardianController#update");
 	}
 
 	private List<HandlerMethod> idempotentHandlers() {
-		return postHandlers().stream().filter(handler -> handler.hasMethodAnnotation(Idempotent.class)).toList();
+		return changingHandlers().stream().filter(handler -> handler.hasMethodAnnotation(Idempotent.class)).toList();
 	}
 
 	// POST 요청을 받을 수 있는 우리 컨트롤러 메서드. 메서드를 정하지 않은 매핑은 POST도 받는다.

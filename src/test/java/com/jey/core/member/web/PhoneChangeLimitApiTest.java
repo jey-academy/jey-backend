@@ -1,6 +1,7 @@
 package com.jey.core.member.web;
 
 import java.util.List;
+import java.util.UUID;
 
 import com.jey.TestcontainersConfiguration;
 import com.jey.WithJeyUser;
@@ -59,6 +60,8 @@ class PhoneChangeLimitApiTest {
 	private static final long REGISTRAR = 9402;
 
 	private static final long NAME_EDITOR = 9403;
+
+	private static final long RETRIER = 9404;
 
 	@Autowired
 	MockMvc mockMvc;
@@ -137,6 +140,27 @@ class PhoneChangeLimitApiTest {
 
 		assertThat(redis.opsForHash().get("jey:auth:account-limit:member.phone-change:" + NAME_EDITOR, "count"))
 				.isEqualTo("1");
+	}
+
+	// 같은 키로 다시 보낸 수정은 필터가 컨트롤러 앞에서 처음 응답을 돌려준다. 새로 바꾼 번호가 없으므로 세지 않는다.
+	@Test
+	@WithJeyUser(role = UserRole.STAFF, campusId = DONGTAN, id = RETRIER)
+	void 같은_키로_다시_보낸_번호_수정은_횟수에_들지_않는다() throws Exception {
+		StudentView student = studentService.register(registration(uniqueName(), mother(randomPhone())));
+		long guardianId = student.guardians().getFirst().id();
+		String key = UUID.randomUUID().toString();
+		String body = "{\"name\": \"김어머니\", \"phone\": \"%s\"}".formatted(randomPhone().value());
+
+		for (int i = 0; i < LIMIT * 2; i++) {
+			mockMvc.perform(put("/api/v1/guardians/{id}", guardianId).with(csrfToken(mockMvc))
+					.with(idempotencyKey(key))
+					.contentType(MediaType.APPLICATION_JSON)
+					.content(body)).andExpect(status().isOk());
+		}
+
+		// 등록 한 번과 번호 수정 한 번.
+		assertThat(redis.opsForHash().get("jey:auth:account-limit:member.phone-change:" + RETRIER, "count"))
+				.isEqualTo("2");
 	}
 
 	private ResultActions registerStudent(String name, PhoneNumber motherPhone) throws Exception {

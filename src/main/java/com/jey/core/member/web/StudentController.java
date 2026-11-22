@@ -73,6 +73,8 @@ class StudentController {
 		return StudentResponse.from(studentService.get(id));
 	}
 
+	// 버전을 싣는 수정이라 다시 보내면 결과가 달라진다. 응답을 놓친 화면의 재전송은 키로 알아본다(ADR-0027).
+	@Idempotent
 	@PutMapping("/{id}")
 	StudentResponse update(@PathVariable long id, @Valid @RequestBody StudentUpdateRequest body) {
 		return StudentResponse.from(studentService.update(id, body.toChange()));
