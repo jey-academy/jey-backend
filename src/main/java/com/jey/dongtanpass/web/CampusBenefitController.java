@@ -3,6 +3,7 @@ package com.jey.dongtanpass.web;
 import com.jey.core.auth.api.AllowedRoles;
 import com.jey.core.auth.api.UserRole;
 import com.jey.dongtanpass.application.CampusBenefitService;
+import com.jey.core.shared.NotIdempotent;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,6 +30,7 @@ class CampusBenefitController {
 	}
 
 	@Operation(summary = "JEY 발급 패스의 할인율 바꾸기", description = "이후에 발급하는 패스부터 새 값이다. 이미 발급한 패스는 발급 때 값 그대로다")
+	@NotIdempotent("할인율을 통째로 바꾸는 수정이라 다시 보내도 결과가 같다")
 	@PutMapping
 	CampusBenefitResponse change(@Valid @RequestBody CampusBenefitUpdateRequest body) {
 		return new CampusBenefitResponse(campusBenefitService.change(body.discountRate()));

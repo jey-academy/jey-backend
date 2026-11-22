@@ -6,6 +6,7 @@ import com.jey.core.auth.api.AllowedRoles;
 import com.jey.core.auth.api.UserRole;
 import com.jey.core.campus.DiscountTypeService;
 import com.jey.core.shared.Idempotent;
+import com.jey.core.shared.NotIdempotent;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -43,6 +44,7 @@ class DiscountTypeController {
 	}
 
 	@AllowedRoles(UserRole.ADMIN)
+	@NotIdempotent("통째로 바꾸는 수정이라 다시 보내도 결과가 같다")
 	@PutMapping("/{id}")
 	DiscountTypeResponse update(@PathVariable long id, @Valid @RequestBody DiscountTypeUpdateRequest body) {
 		return DiscountTypeResponse

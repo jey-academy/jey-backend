@@ -17,7 +17,7 @@ import java.lang.annotation.Target;
  * 다시 돌려주는 것은 상태와 본문뿐이다. 응답 헤더({@code Location} 등)에 뜻을 싣는 메서드라면 헤더도 보관하게 먼저 고친다.
  * 처음의 응답은 접근 규칙(역할)을 다시 묻지 않고 그 계정에 돌려준다.
  *
- * <p>모든 POST 메서드에는 이것이나 {@link NotIdempotent}가 있어야 한다.
+ * <p>자료를 바꾸는 메서드(POST·PUT·PATCH·DELETE)에는 모두 이것이나 {@link NotIdempotent}가 있어야 한다. GET에는 붙이지 않는다.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
