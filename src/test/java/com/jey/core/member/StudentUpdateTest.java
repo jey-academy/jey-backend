@@ -51,8 +51,25 @@ class StudentUpdateTest {
 	@Autowired
 	GuardianRepository guardians;
 
+	// 두 직원이 같은 학생 화면을 열어 두고 A는 반을, B는 학교를 고친다. 서버의 행 잠금은 두 저장을 줄 세울 뿐이라,
+	// 버전을 보지 않으면 B의 저장이 화면에 남아 있던 옛 반을 다시 써서 A의 변경이 조용히 사라진다.
 	@Test
-	void 고칠_때마다_판_번호가_오른다() {
+	void 같은_화면에서_고친_두_번째_저장은_거부되고_앞사람의_변경이_남는다() {
+		AcademyClass aClass = newClass(DONGTAN);
+		StudentView screen = studentService.register(registration(uniqueName(), mother(randomPhone())));
+
+		studentService.update(screen.id(), change(screen, DONGTAN, aClass.getId(), null));
+		assertFails(() -> studentService.update(screen.id(), new StudentChange(screen.version(), DONGTAN,
+				screen.classId(), screen.name(), "능동고", screen.grade(), screen.status(), screen.registeredAt(), null)),
+				MemberErrorCode.STUDENT_CHANGED);
+
+		StudentView after = studentService.get(screen.id());
+		assertThat(after.classId()).isEqualTo(aClass.getId());
+		assertThat(after.school()).isEqualTo(screen.school());
+	}
+
+	@Test
+	void 수정할_때마다_버전이_오르고_응답의_버전으로_다시_고칠_수_있다() {
 		StudentView created = studentService.register(registration(uniqueName(), mother(randomPhone())));
 		assertThat(created.version()).isZero();
 
@@ -64,9 +81,9 @@ class StudentUpdateTest {
 		assertThat(studentService.get(created.id()).version()).isEqualTo(2);
 	}
 
-	// 바뀐 칸이 없으면 UPDATE가 나가지 않아 버전이 그대로다.
+	// 바뀐 칸이 없으면 UPDATE가 나가지 않아 버전이 그대로다. 같은 화면에서 저장을 두 번 눌러도 거부되지 않는다.
 	@Test
-	void 바뀐_값이_없는_저장은_판_번호를_올리지_않는다() {
+	void 바뀐_값이_없는_저장은_버전을_올리지_않는다() {
 		StudentView created = studentService.register(registration(uniqueName(), mother(randomPhone())));
 
 		StudentView first = studentService.update(created.id(), change(created, DONGTAN, null, null));
@@ -77,24 +94,39 @@ class StudentUpdateTest {
 	}
 
 	@Test
-	void 번호를_지우면_판_번호가_오른다() {
-		StudentView created = studentService.register(
+	void 번호를_지우면_버전이_올라_그_전_화면의_저장은_거부된다() {
+		StudentView screen = studentService.register(
 				registrationWithPhone(uniqueName(), randomPhone(), mother(randomPhone())));
 
-		studentService.removePhone(created.id());
+		studentService.removePhone(screen.id());
 
-		assertThat(studentService.get(created.id()).version()).isGreaterThan(created.version());
+		assertThat(studentService.get(screen.id()).version()).isGreaterThan(screen.version());
+		assertFails(() -> studentService.update(screen.id(), change(screen, DONGTAN, null, null, "능동고")),
+				MemberErrorCode.STUDENT_CHANGED);
 	}
 
-	// 학부모 연결은 학생 행이 아니다. 버전은 학생 정보·번호가 바뀔 때만 오른다.
+	// 학부모 연결은 수정(PUT)이 덮어쓰는 칸이 아니다. 학부모를 붙인 뒤 열어 둔 수정 화면이 괜히 거부되지 않는다.
 	@Test
-	void 학부모를_붙이거나_관계를_바꿔도_판_번호는_그대로다() {
-		StudentView created = studentService.register(registration(uniqueName(), mother(randomPhone())));
+	void 학부모를_붙이거나_관계를_바꿔도_버전은_그대로다() {
+		StudentView screen = studentService.register(registration(uniqueName(), mother(randomPhone())));
 
-		StudentView linked = studentService.addGuardian(created.id(), father(randomPhone()));
-		studentService.changeRelation(created.id(), linked.guardians().getLast().id(), GuardianRelation.OTHER);
+		StudentView linked = studentService.addGuardian(screen.id(), father(randomPhone()));
+		long fatherId = linked.guardians().getLast().id();
+		studentService.changeRelation(screen.id(), fatherId, GuardianRelation.OTHER);
 
-		assertThat(studentService.get(created.id()).version()).isEqualTo(created.version());
+		assertThat(studentService.get(screen.id()).version()).isEqualTo(screen.version());
+		assertThat(studentService.update(screen.id(), change(screen, DONGTAN, null, null, "능동고")).school())
+			.isEqualTo("능동고");
+	}
+
+	// 낡은 화면의 값으로 다른 오류(반이 틀렸다 등)를 내지 않는다. 먼저 다시 불러오게 한다.
+	@Test
+	void 낡은_버전이면_지점이나_반이_틀려도_먼저_버전으로_거부한다() {
+		StudentView screen = studentService.register(registration(uniqueName(), mother(randomPhone())));
+		studentService.update(screen.id(), change(screen, DONGTAN, null, null, "능동고"));
+
+		assertFails(() -> studentService.update(screen.id(), change(screen, DONGTAN, 999_999_999L, null)),
+				MemberErrorCode.STUDENT_CHANGED);
 	}
 
 	@Test
@@ -103,7 +135,7 @@ class StudentUpdateTest {
 		StudentView created = studentService.register(registration(uniqueName(), mother(randomPhone())));
 		String renamed = uniqueName();
 
-		StudentView updated = studentService.update(created.id(), new StudentChange(NEUNGDONG, neungdongClass.getId(),
+		StudentView updated = studentService.update(created.id(), new StudentChange(created.version(), NEUNGDONG, neungdongClass.getId(),
 				" " + renamed + " ", "능동고", Grade.HIGH_2, StudentStatus.WITHDRAWN, REGISTERED, null));
 
 		assertThat(updated.campusId()).isEqualTo(NEUNGDONG);
@@ -150,13 +182,13 @@ class StudentUpdateTest {
 	void 지점을_바꾸면서_반을_그대로_두면_고칠_수_없다() {
 		AcademyClass dongtanClass = newClass(DONGTAN);
 		StudentView created = studentService.register(registration(uniqueName(), mother(randomPhone())));
-		studentService.update(created.id(), change(created, DONGTAN, dongtanClass.getId(), null));
+		StudentView placed = studentService.update(created.id(), change(created, DONGTAN, dongtanClass.getId(), null));
 
-		assertFails(() -> studentService.update(created.id(), change(created, NEUNGDONG, dongtanClass.getId(), null)),
+		assertFails(() -> studentService.update(created.id(), change(placed, NEUNGDONG, dongtanClass.getId(), null)),
 				MemberErrorCode.INVALID_CLASS);
-		assertFails(() -> studentService.update(created.id(), change(created, 999_999, null, null)),
+		assertFails(() -> studentService.update(created.id(), change(placed, 999_999, null, null)),
 				MemberErrorCode.INVALID_CAMPUS);
-		assertFails(() -> studentService.update(created.id(), change(created, DONGTAN, 999_999_999L, null)),
+		assertFails(() -> studentService.update(created.id(), change(placed, DONGTAN, 999_999_999L, null)),
 				MemberErrorCode.INVALID_CLASS);
 
 		assertThat(studentService.get(created.id()).campusId()).isEqualTo(DONGTAN);
@@ -169,10 +201,10 @@ class StudentUpdateTest {
 		AcademyClass closing = newClass(DONGTAN);
 		StudentView inClass = studentService.register(registration(uniqueName(), mother(randomPhone())));
 		StudentView outside = studentService.register(registration(uniqueName(), mother(randomPhone())));
-		studentService.update(inClass.id(), change(inClass, DONGTAN, closing.getId(), null));
+		StudentView placed = studentService.update(inClass.id(), change(inClass, DONGTAN, closing.getId(), null));
 		classService.update(closing.getId(), closing.getName(), Money.of(280_000), Money.ZERO, false);
 
-		assertThat(studentService.update(inClass.id(), change(inClass, DONGTAN, closing.getId(), null)).classId())
+		assertThat(studentService.update(inClass.id(), change(placed, DONGTAN, closing.getId(), null)).classId())
 				.isEqualTo(closing.getId());
 		assertFails(() -> studentService.update(outside.id(), change(outside, DONGTAN, closing.getId(), null)),
 				MemberErrorCode.INVALID_CLASS);
@@ -386,15 +418,15 @@ class StudentUpdateTest {
 
 	// 나머지 값은 그대로 두고 지점, 반, 번호만 바꾼 수정.
 	private static StudentChange change(StudentView current, long campusId, Long classId, PhoneNumber phone) {
-		return new StudentChange(campusId, classId, current.name(), current.school(), current.grade(),
+		return new StudentChange(current.version(), campusId, classId, current.name(), current.school(), current.grade(),
 				current.status(), current.registeredAt(), phone);
 	}
 
 	// 위와 같고 학교도 바꾼다(값이 실제로 바뀌는 저장이 필요할 때).
 	private static StudentChange change(StudentView current, long campusId, Long classId, PhoneNumber phone,
 			String school) {
-		return new StudentChange(campusId, classId, current.name(), school, current.grade(), current.status(),
-				current.registeredAt(), phone);
+		return new StudentChange(current.version(), campusId, classId, current.name(), school, current.grade(),
+				current.status(), current.registeredAt(), phone);
 	}
 
 }

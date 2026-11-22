@@ -108,7 +108,7 @@ class MemberDirectoryTest {
 	void 퇴원한_학생도_돌려준다() {
 		String name = uniqueName();
 		StudentView created = studentService.register(registration(name, mother(randomPhone())));
-		studentService.update(created.id(), new StudentChange(DONGTAN, null, name, null, Grade.HIGH_1,
+		studentService.update(created.id(), new StudentChange(created.version(), DONGTAN, null, name, null, Grade.HIGH_1,
 				StudentStatus.WITHDRAWN, created.registeredAt(), null));
 
 		assertThat(directory.findStudent(created.id())).map(StudentInfo::enrolled).contains(false);

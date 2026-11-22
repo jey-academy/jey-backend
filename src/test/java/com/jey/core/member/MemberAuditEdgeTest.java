@@ -217,7 +217,7 @@ class MemberAuditEdgeTest {
 		String name = uniqueName();
 		StudentView student = studentService.register(registrationWithPhone(name, phone, mother(randomPhone())));
 
-		studentService.update(student.id(), new StudentChange(student.campusId(), null, name, student.school(),
+		studentService.update(student.id(), new StudentChange(student.version(), student.campusId(), null, name, student.school(),
 				student.grade(), student.status(), student.registeredAt(), phone));
 
 		assertThat(ofStudent(student.id(), MemberAuditAction.STUDENT_UPDATED.code())).singleElement()
